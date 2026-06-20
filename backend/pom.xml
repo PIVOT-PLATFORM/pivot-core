@@ -159,6 +159,34 @@
 					<threshold>Medium</threshold>
 					<failOnError>true</failOnError>
 				</configuration>
+				<!-- ASM 9.8 : supporte class 69 (Java 25) pour analyse JDK runtime -->
+				<dependencies>
+					<dependency>
+						<groupId>org.ow2.asm</groupId>
+						<artifactId>asm</artifactId>
+						<version>9.8</version>
+					</dependency>
+					<dependency>
+						<groupId>org.ow2.asm</groupId>
+						<artifactId>asm-analysis</artifactId>
+						<version>9.8</version>
+					</dependency>
+					<dependency>
+						<groupId>org.ow2.asm</groupId>
+						<artifactId>asm-commons</artifactId>
+						<version>9.8</version>
+					</dependency>
+					<dependency>
+						<groupId>org.ow2.asm</groupId>
+						<artifactId>asm-tree</artifactId>
+						<version>9.8</version>
+					</dependency>
+					<dependency>
+						<groupId>org.ow2.asm</groupId>
+						<artifactId>asm-util</artifactId>
+						<version>9.8</version>
+					</dependency>
+				</dependencies>
 			</plugin>
 		</plugins>
 	</build>

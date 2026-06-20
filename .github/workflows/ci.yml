@@ -255,6 +255,10 @@ jobs:
           PIVOT_API_URL: http://localhost:8080
         run: npm run build -- --configuration production
 
+      - name: Serve frontend
+        working-directory: frontend
+        run: npx --yes serve dist/frontend/browser -p 4200 --single &
+
       - name: Start backend
         env:
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pivot_e2e
