@@ -117,7 +117,7 @@ jobs:
             --sarif --output semgrep-results.sarif \
             backend/src/main/java \
             backend/src/test/java \
-            frontend/src
+            frontend/src || true
           FINDINGS=$(jq '.runs[0].results | length' semgrep-results.sarif)
           echo "Semgrep findings (non-suppressed): $FINDINGS"
           if [ "$FINDINGS" -gt 0 ]; then
@@ -175,4 +175,14 @@ jobs:
           path: |
             plumber-results.json
             plumber-pbom.cdx.json
+
+      - name: Plumber Gate (conformite >= 90% requise)
+        if: hashFiles('plumber-results.json') != ''
+        run: |
+          SCORE=$(jq '.compliance' plumber-results.json)
+          echo "Plumber compliance: ${SCORE}%"
+          if [ "$SCORE" -lt 90 ]; then
+            echo "::error::Plumber compliance ${SCORE}% < 90%% (security gate)"
+            exit 1
+          fi
           retention-days: 30
