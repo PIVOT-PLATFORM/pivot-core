@@ -6,9 +6,8 @@ name: DAST - Full Scan (ISO prod)
 #   user  : dast-user@pivot.local  / Pivot@DastTest1!
 #   admin : dast-admin@pivot.local / Pivot@DastTest1!
 
+# DESACTIVE - pas de backend deploye. Reactiver quand PIVOT_APP_URL disponible.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions: read-all

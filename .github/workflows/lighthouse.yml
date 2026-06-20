@@ -1,8 +1,8 @@
 name: Lighthouse
 
+# DESACTIVE - pas de backend/frontend deploye. Reactiver quand PIVOT_APP_URL disponible.
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions: read-all
 

@@ -13,8 +13,8 @@ Merge sur main
 ├── security.yml    ← idem PR
 ├── scorecard.yml   ← idem PR
 ├── release.yml     ← Semantic Release + Docker + Trivy + SLSA
-├── dast-full.yml   ← ZAP Full Scan (ROLE_USER + ROLE_ADMIN)
-├── lighthouse.yml  ← Perf + Accessibilité
+├── dast-full.yml   ← [DESACTIVE] ZAP Full Scan — réactiver quand backend déployé
+├── lighthouse.yml  ← [DESACTIVE] Perf + Accessibilité — réactiver quand frontend déployé
 └── mutation.yml    ← PIT Mutation Testing
 
 Release publiée (tag)
@@ -77,9 +77,11 @@ Déclenche tous les workflows PR **+** les workflows post-merge ci-dessous.
 | **Tests Frontend (Vitest)** | Vitest + coverage · rapport `lcov.info` |
 | **E2E — Playwright** | Build backend + Angular · Chromium · tests `frontend/e2e/` |
 | **SonarCloud Analysis** | Analyse qualité SonarCloud (coverage + duplication + hotspots) |
-| **SCA — Dependency Audit** | `mvn dependency-check` + `npm audit` · alerte si CVE HIGH/CRITICAL |
+| **SCA — Dependency Audit** | Trivy `fs` scan (backend + frontend) · SARIF → GitHub Security · bloque sur CVE CRITICAL/HIGH |
 
 Artifacts conservés : `backend-coverage` · `frontend-coverage` · `e2e-report` (30 jours).
+
+**SonarCloud** : propriétés passées via `-D` (organisation, projectKey, binaires, sources, exclusions). Pas de `sonar-project.properties` auto-découvert — fichier de référence dans `.github/workflows/configuration/sonar-project.properties`.
 
 ---
 
@@ -90,7 +92,7 @@ Artifacts conservés : `backend-coverage` · `frontend-coverage` · `e2e-report`
 | Job | Outil | Ce qu'il fait |
 |-----|-------|--------------|
 | **Gitleaks — Secret Scan** | Gitleaks v2 (licence pro) | Scan historique git complet (`fetch-depth: 0`). Bloc sur tout secret détecté. SARIF → GitHub Security. |
-| **CodeQL — SAST** | CodeQL v3 | Analyse statique Java + JavaScript. Matrix 2 jobs parallèles. SARIF → GitHub Security. |
+| **CodeQL — SAST** | CodeQL v4 | Analyse statique Java + JavaScript. Matrix 2 jobs parallèles. SARIF → GitHub Security. Exclusion CSRF (`java/spring-disabled-csrf-protection`) — API stateless JWT, pas de session cookie. |
 | **Semgrep — SAST** | Semgrep v1 | Règles : `java`, `spring`, `owasp-top-ten`, `security-audit`, `jwt`, `sql-injection`, `xss`, `command-injection`, `secrets`, `javascript`, `typescript`. |
 | **Plumber — CI/CD Compliance** | Plumber | Vérifie conformité pipelines CI. SARIF + rapport texte. |
 
@@ -122,7 +124,7 @@ Séquence d'exécution :
 
 ### `dast-full.yml` — DAST Full Scan
 
-**Déclencheurs :** push `main` · `workflow_dispatch`
+**Déclencheurs :** `workflow_dispatch` uniquement (**désactivé** — réactiver quand backend déployé)
 **Non bloquant** (`continue-on-error: true`) — résultats en issues GitHub.
 
 Démarre une instance backend locale avec profil `dast-seed` (données mock, jamais prod).
@@ -153,7 +155,7 @@ Non bloquant. Crée une issue GitHub `[DAST] ZAP Baseline — alertes de sécuri
 
 ### `lighthouse.yml` — Performance & Accessibilité
 
-**Déclencheurs :** push `main`
+**Déclencheurs :** `workflow_dispatch` uniquement (**désactivé** — réactiver quand frontend déployé)
 **Non bloquant** (`continue-on-error: true`)
 
 Démarre backend + sert le build Angular en production.
@@ -235,3 +237,4 @@ Référence des SHAs dans [`.github/workflows/`](.github/workflows/) — chaque 
 | Version | Date | Évolutions principales |
 |---------|------|------------------------|
 | v1 | 2026-06-20 | Documentation initiale — 10 workflows |
+| v2 | 2026-06-20 | SCA Trivy (remplace OWASP DC) · CodeQL v4 · SonarCloud props via -D · DAST + Lighthouse désactivés (pas de backend déployé) |
