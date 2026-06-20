@@ -25,13 +25,13 @@ skills:
         - "nouveau DTO ou entité JPA"
         - "nouvelle exception métier"
 
-  - id: pivot-bdd-flyway
-    file: .project/skills/skill-bdd-flyway.yaml
+  - id: pivot-bdd-liquibase
+    file: .project/skills/skill-bdd-liquibase.yaml
     priority: 1
     load_when:
       agents: [Architecte_BDD_PostgreSQL, Dev_Agent]
       triggers:
-        - "tout fichier de migration Flyway (V*.sql)"
+        - "tout fichier de migration Liquibase (db/migration/)"
         - "toute entité JPA créée ou modifiée"
         - "toute requête @Query créée ou modifiée"
         - "nouveau Repository"
@@ -47,19 +47,6 @@ skills:
         - "nouveau @PreAuthorize"
         - "modification du mapping claims → rôles"
         - "AC sécurité présent dans l'US"
-
-  # ── FRONTEND ANGULAR ──────────────────────────────────────────────────────────
-
-  - id: pivot-angular-architecture
-    file: .project/skills/skill-angular-architecture.yaml
-    priority: 1
-    load_when:
-      agents: [Architecte_Angular, Expert_UX_UI, Dev_Agent]
-      triggers:
-        - "tout fichier .ts, .html ou .scss créé ou modifié"
-        - "nouveau composant Angular"
-        - "nouveau service Angular"
-        - "nouvelle route lazy-loaded"
 
   # ── MODULES ──────────────────────────────────────────────────────────────────
 
@@ -148,12 +135,11 @@ loading_protocol:
 
   example: |
     US 42 — Activation de module par l'admin
-    Target: backend/modules/whiteboard/ + frontend/modules/whiteboard/
+    Target: src/main/java/.../modules/whiteboard/
     Skills chargées:
       - pivot-spring-architecture   # priority 1 — fichiers Java
-      - pivot-bdd-flyway            # priority 1 — migration table modules
+      - pivot-bdd-liquibase         # priority 1 — migration table modules
       - pivot-oidc-security         # priority 1 — AC sécurité présent
-      - pivot-angular-architecture  # priority 1 — composant Angular
       - pivot-module-system         # priority 1 — US module activable
       - pivot-ac-traceability       # priority 1 — toujours
       - pivot-testing-strategy      # priority 1 — tests requis

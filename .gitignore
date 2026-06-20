@@ -9,9 +9,6 @@ hs_err_pid*
 replay_pid*
 .mvn/wrapper/maven-wrapper.jar
 
-# ===== Frontend (code Angular dans pivot-ui — ignorer jusqu'a migration) =====
-frontend/
-
 # ===== Secrets / Env =====
 .env
 .env.local
