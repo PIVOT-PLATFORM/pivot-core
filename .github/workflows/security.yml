@@ -120,10 +120,8 @@ jobs:
             backend/src/test/java \
             frontend/src || SEMGREP_EXIT=$?
           if [ "${SEMGREP_EXIT:-0}" -ne 0 ] && [ -f semgrep-results.sarif ]; then
-            echo "=== Semgrep findings ==="
-            jq -r '.runs[].results[] |
-              "[\(.ruleId)] \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine // "?") -- \(.message.text[0:200])"
-            ' semgrep-results.sarif 2>/dev/null || true
+            echo "=== Semgrep exit ${SEMGREP_EXIT} - findings count: $(jq '.runs[0].results | length' semgrep-results.sarif) ==="
+            jq -r '.runs[0].results[] | "[\(.ruleId)] \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine // "?") -- \(.message.text[0:300])"' semgrep-results.sarif
           fi
           exit "${SEMGREP_EXIT:-0}"
         env:
