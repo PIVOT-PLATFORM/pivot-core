@@ -109,10 +109,10 @@ jobs:
             p/typescript
 
   # -----------------------------------------
-  # CI/CD CONFORMITE - actionlint
+  # CI/CD CONFORMITE - Plumber
   # -----------------------------------------
-  actionlint:
-    name: Actionlint - CI/CD Compliance
+  plumber:
+    name: Plumber - CI/CD Compliance
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -122,10 +122,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install actionlint
+      - name: Install Plumber v0.3.0
         run: |
-          bash <(curl -sL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          mv ./actionlint /usr/local/bin/actionlint
+          curl -sSL https://github.com/getplumber/plumber/releases/download/v0.3.0/plumber-linux-amd64 \
+            -o /usr/local/bin/plumber
+          chmod +x /usr/local/bin/plumber
 
-      - name: Run actionlint
-        run: actionlint -color .github/workflows/*.yml
+      - name: Run Plumber scan
+        run: plumber scan --config .github/workflows/configuration/plumber.yaml --format sarif --output plumber-results.sarif
+        continue-on-error: true
+
+      - name: Upload Plumber SARIF
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        if: always() && hashFiles('plumber-results.sarif') != ''
+        with:
+          sarif_file: plumber-results.sarif
+          category: plumber-cicd
+
+      - name: Plumber report (text)
+        run: plumber scan --config .github/workflows/configuration/plumber.yaml
