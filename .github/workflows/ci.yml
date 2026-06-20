@@ -345,7 +345,7 @@ jobs:
   sca:
     name: SCA - Dependency Audit
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -362,10 +362,13 @@ jobs:
 
       - name: Cache NVD database
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: nvd-cache
         with:
           path: ~/.dependency-check/data
-          key: nvd-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: nvd-${{ runner.os }}-
+          key: nvd-${{ runner.os }}-weekly-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            nvd-${{ runner.os }}-weekly-
+            nvd-${{ runner.os }}-
 
       - name: Maven dependency check (OWASP)
         working-directory: backend
@@ -375,8 +378,9 @@ jobs:
           mvn --no-transfer-progress org.owasp:dependency-check-maven:check \
             -DfailBuildOnCVSS=7 \
             -DnvdApiKey="${NVD_API_KEY}" \
-            -DnvdApiDelay=4000 \
-            -DnvdMaxRetryCount=5
+            -DnvdApiDelay=10000 \
+            -DnvdMaxRetryCount=20 \
+            -DnvdValidForHours=24
 
       - name: Setup Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
