@@ -1,0 +1,13 @@
+# Tout changement requiert review de l'équipe core
+* @ApoSkunz
+
+# Workflows et config CI/CD — review obligatoire
+.github/workflows/ @ApoSkunz
+.github/CODEOWNERS @ApoSkunz
+
+# Config sécurité
+backend/src/main/java/fr/pivot/backend/config/SecurityConfig.java @ApoSkunz
+backend/src/main/resources/application.yml @ApoSkunz
+
+# Contrat de modules — review architecture
+backend/src/main/java/fr/pivot/backend/modules/ @ApoSkunz
