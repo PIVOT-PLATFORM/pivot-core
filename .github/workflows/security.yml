@@ -118,7 +118,25 @@ jobs:
             --error \
             backend/src/main/java \
             backend/src/test/java \
-            frontend/src
+            frontend/src || {
+            EXIT=$?
+            echo "=== Semgrep findings (exit $EXIT) ==="
+            python3 -c "
+import json, sys
+with open('semgrep-results.sarif') as f:
+    data = json.load(f)
+for run in data.get('runs', []):
+    for result in run.get('results', []):
+        loc = result['locations'][0]['physicalLocation']
+        uri = loc['artifactLocation']['uri']
+        line = loc.get('region', {}).get('startLine', '?')
+        msg = result.get('message', {}).get('text', '')[:300]
+        print(f\"[{result['ruleId']}] {uri}:{line}\")
+        print(f\"  {msg}\")
+        print()
+" 2>/dev/null || true
+            exit $EXIT
+          }
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
