@@ -26,19 +26,7 @@
 		<!-- JaCoCo 0.8.13 + SpotBugs ASM 9.7 support class 68 max; revert when tools add Java 25 support -->
 		<maven.compiler.release>24</maven.compiler.release>
 		<testcontainers.version>1.21.1</testcontainers.version>
-		<!-- SonarCloud -->
-		<sonar.organization>pivot-platform</sonar.organization>
-		<sonar.projectKey>PIVOT-PLATFORM_PIVOT-CORE</sonar.projectKey>
-		<sonar.projectName>PIVOT-PLATFORM_PIVOT-CORE</sonar.projectName>
-		<sonar.host.url>https://sonarcloud.io</sonar.host.url>
-		<sonar.sources>src/main/java</sonar.sources>
-		<sonar.tests>src/test/java</sonar.tests>
-		<sonar.java.binaries>target/classes</sonar.java.binaries>
-		<sonar.java.source>24</sonar.java.source>
-		<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
-		<sonar.exclusions>**/generated/**,src/main/resources/**</sonar.exclusions>
-		<sonar.test.exclusions>target/**</sonar.test.exclusions>
-		<sonar.sourceEncoding>UTF-8</sonar.sourceEncoding>
+
 	</properties>
 
 	<dependencyManagement>
