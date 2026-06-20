@@ -333,8 +333,7 @@ jobs:
           mvn -f backend/pom.xml --no-transfer-progress sonar:sonar \
             -Dmaven.compiler.release=24 \
             -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.token="${SONAR_TOKEN}" \
-            -Dproject.settings=".github/workflows/configuration/sonar-project.properties"
+            -Dsonar.token="${SONAR_TOKEN}"
 
   # -----------------------------------------
   # 7. SCA - AUDIT DEPENDANCES (Trivy)
