@@ -149,6 +149,7 @@ jobs:
           mvn --no-transfer-progress sonar:sonar \
             -Dmaven.compiler.release=24 \
             -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.organization=pivot-platform \
             -Dsonar.token="${SONAR_TOKEN}"
 
   # -----------------------------------------
