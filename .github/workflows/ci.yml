@@ -336,8 +336,7 @@ jobs:
             -Dmaven.compiler.release=24 \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.token="${SONAR_TOKEN}" \
-            -Dsonar.projectBaseDir=.. \
-            -Dproject.settings=../.github/workflows/configuration/sonar-project.properties
+            -Dsonar.projectBaseDir=..
 
   # -----------------------------------------
   # 7. SCA - AUDIT DEPENDANCES (Trivy)
