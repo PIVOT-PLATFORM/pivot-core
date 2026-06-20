@@ -322,6 +322,10 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage/
 
+      - name: Compile backend (sonar.java.binaries)
+        working-directory: backend
+        run: mvn --no-transfer-progress compile -DskipTests -Dmaven.compiler.release=24
+
       - name: SonarCloud Scan
         working-directory: backend
         env:
@@ -334,10 +338,12 @@ jobs:
             -Dsonar.projectKey=pivot-platform_PIVOT \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.token="${SONAR_TOKEN}" \
+            -Dsonar.java.binaries=target/classes \
+            -Dsonar.java.libraries=target/dependency \
             -Dsonar.javascript.lcov.reportPaths=../frontend/coverage/lcov.info \
-            -Dsonar.sources=src/main/java,../frontend/src \
-            -Dsonar.tests=src/test/java,../frontend/src \
-            -Dsonar.exclusions="**/generated/**,**/*.spec.ts,**/node_modules/**,src/main/resources/**,../frontend/dist/**" \
+            -Dsonar.sources=src/main/java \
+            -Dsonar.tests=src/test/java \
+            -Dsonar.exclusions="**/generated/**,**/node_modules/**,src/main/resources/**" \
             -Dsonar.sourceEncoding=UTF-8
 
   # -----------------------------------------

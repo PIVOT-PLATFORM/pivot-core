@@ -118,11 +118,11 @@ jobs:
             --error \
             backend/src/main/java \
             backend/src/test/java \
-            frontend/src || {
-            EXIT=$?
-            echo "=== Semgrep findings (exit $EXIT) ==="
-            python3 -c "
-import json, sys
+            frontend/src || SEMGREP_EXIT=$?
+          if [ "${SEMGREP_EXIT:-0}" -ne 0 ] && [ -f semgrep-results.sarif ]; then
+            echo "=== Semgrep findings ==="
+            python3 - <<'PYEOF'
+import json
 with open('semgrep-results.sarif') as f:
     data = json.load(f)
 for run in data.get('runs', []):
@@ -131,12 +131,12 @@ for run in data.get('runs', []):
         uri = loc['artifactLocation']['uri']
         line = loc.get('region', {}).get('startLine', '?')
         msg = result.get('message', {}).get('text', '')[:300]
-        print(f\"[{result['ruleId']}] {uri}:{line}\")
-        print(f\"  {msg}\")
+        print(f"[{result['ruleId']}] {uri}:{line}")
+        print(f"  {msg}")
         print()
-" 2>/dev/null || true
-            exit $EXIT
-          }
+PYEOF
+          fi
+          exit "${SEMGREP_EXIT:-0}"
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
