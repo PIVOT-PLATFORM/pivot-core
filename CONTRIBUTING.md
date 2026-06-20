@@ -1,7 +1,9 @@
-# Contributing to PIVOT
+# Contributing to PIVOT-CORE
 
-PIVOT est une suite collaborative open-source — outils activables par les admins, auto-hébergeable, sans lock-in SaaS.
-Toute contribution est bienvenue, qu'il s'agisse d'un bug, d'un module, ou de documentation.
+**PIVOT-CORE** est le backend Java/Spring Boot de la suite collaborative PIVOT — API REST, base de données (PostgreSQL + Liquibase), sécurité (Spring Security + JWT/OIDC) et système de modules.
+Toute contribution est bienvenue : bug, module, migration BDD, ou documentation.
+
+> Pour contribuer au frontend Angular, voir [pivot-ui](https://github.com/ApoSkunz/pivot-ui).
 
 ---
 
@@ -147,14 +149,9 @@ Standards complets dans `CLAUDE.md`. Règles clés :
 - Pas de logique dans les contrôleurs — déléguer aux services
 - DTOs pour toutes les entrées/sorties API — jamais les entités JPA directement
 - Pas de `@Transactional` sur les contrôleurs
+- Migrations Liquibase versionnées et irréversibles — jamais de `DROP` sans migration compensatoire
 
-**Angular (frontend)**
-- TypeScript strict — pas de `any`
-- OnPush change detection par défaut
-- WCAG 2.1 AA sur tous les éléments interactifs
-- SCSS BEM ou tokens centralisés — pas de styles inline
-
-**Tous langages**
+**Général**
 - Conventional Commits : `type(scope): message`
 - Pas de secrets dans le code — variables d'environnement
 - `git add` fichier par fichier — jamais `git add .`
@@ -167,11 +164,10 @@ Standards complets dans `CLAUDE.md`. Règles clés :
 
 Tous les checks CI doivent passer avant merge :
 
-1. Qualité — Checkstyle · SpotBugs · ESLint · TypeScript
-2. Tests — JUnit + Testcontainers · Jest Angular
-3. E2E — Playwright (Chromium)
-4. SonarCloud — Quality Gate ≥ 80 % coverage code nouveau
-5. Sécurité — Gitleaks · CodeQL · Semgrep · Plumber
+1. Qualité — Checkstyle · SpotBugs
+2. Tests — JUnit + Testcontainers
+3. SonarCloud — Quality Gate ≥ 80 % coverage code nouveau
+4. Sécurité — Gitleaks · CodeQL (Java) · Semgrep · Plumber
 
 ### Processus de review
 

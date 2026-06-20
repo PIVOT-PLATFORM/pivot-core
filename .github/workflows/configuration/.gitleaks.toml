@@ -3,18 +3,13 @@ title = "PIVOT Gitleaks Configuration"
 [extend]
 useDefault = true
 
-[[allowlist.regexes]]
-description = "Secrets CI test non-sensibles (pas de valeur en production)"
-regex = '''ci-(test|e2e)-secret-key-pivot'''
-
-[[allowlist.regexes]]
-description = "Clés de test dast locales"
-regex = '''Pivot@DastTest1!'''
-
-[[allowlist.paths]]
-description = "Fichiers de test et fixtures"
-regex = '''src/test/.*'''
-
-[[allowlist.paths]]
-description = "Documentation et exemples"
-regex = '''.*\.example$'''
+[allowlist]
+description = "PIVOT CI credentials and test paths"
+regexes = [
+    '''ci-(test|e2e|dast|mutation|lighthouse)-[a-z-]*secret-key[a-z0-9-]*''',
+    '''Pivot@DastTest1!'''
+]
+paths = [
+    '''src/test/.*''',
+    '''.*\.example$'''
+]

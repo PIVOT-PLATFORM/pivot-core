@@ -9,17 +9,6 @@ hs_err_pid*
 replay_pid*
 .mvn/wrapper/maven-wrapper.jar
 
-# ===== Angular / Node =====
-node_modules/
-dist/
-.angular/
-.cache/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.npm
-*.log
-
 # ===== Secrets / Env =====
 .env
 .env.local
@@ -30,12 +19,7 @@ yarn-error.log*
 *.pfx
 
 # ===== Tests / Coverage =====
-playwright-report/
-test-results/
-coverage/
 jacoco.xml
-out-tsc/
-.sass-cache/
 
 # ===== Docker =====
 docker-compose.override.yml

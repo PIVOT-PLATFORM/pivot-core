@@ -3,7 +3,16 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
+  workflow_dispatch:
 
 permissions: read-all
 
@@ -12,82 +21,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 1. QUALITÃ‰ CODE â€” BACKEND JAVA
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
+  # 1. QUALITE CODE - BACKEND JAVA
+  # -----------------------------------------
   quality-backend:
-    name: Code Quality â€” Java
+    name: Code Quality - Java
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
       - name: Setup Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           java-version: '25'
           distribution: 'temurin'
           cache: maven
 
-      - name: Checkstyle
-        run: mvn --no-transfer-progress checkstyle:check
+      - name: Compile + Checkstyle + SpotBugs
+        run: mvn --no-transfer-progress compile checkstyle:check spotbugs:check -Dmaven.compiler.release=24
 
-      - name: SpotBugs
-        run: mvn --no-transfer-progress spotbugs:check
-
-      - name: Compile (typecheck)
-        run: mvn --no-transfer-progress compile
-
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 2. QUALITÃ‰ CODE â€” FRONTEND ANGULAR
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  quality-frontend:
-    name: Code Quality â€” Angular
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: TypeScript check
-        run: npx tsc --noEmit
-
-      - name: ESLint
-        run: npm run lint
-
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 3. TESTS BACKEND (TU + TI)
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
+  # 2. TESTS BACKEND (TU + TI)
+  # -----------------------------------------
   tests-backend:
     name: Tests Backend (TU + TI)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: backend
 
     services:
       postgres:
@@ -116,12 +80,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
       - name: Setup Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -135,226 +99,90 @@ jobs:
           SPRING_REDIS_HOST: localhost
           SPRING_REDIS_PORT: 6379
           JWT_SECRET: ci-test-secret-key-for-pivot-application-tests-must-be-at-least-64-chars
-        run: mvn --no-transfer-progress verify -Pcoverage
+        run: mvn --no-transfer-progress verify -Pcoverage -Dmaven.compiler.release=24
 
       - name: Upload backend coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: backend-coverage
-          path: backend/target/site/jacoco/jacoco.xml
+          path: target/site/jacoco/jacoco.xml
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 4. TESTS FRONTEND (Vitest)
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  tests-frontend:
-    name: Tests Frontend (Vitest)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests with coverage
-        run: npm run test:ci
-
-      - name: Upload frontend coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/lcov.info
-
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 5. E2E PLAYWRIGHT
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  e2e:
-    name: E2E â€” Playwright
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    needs: [tests-backend, tests-frontend]
-
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: pivot_e2e
-          POSTGRES_USER: pivot
-          POSTGRES_PASSWORD: pivot_e2e
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U pivot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Java 25
-        uses: actions/setup-java@v4
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Build backend
-        working-directory: backend
-        env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pivot_e2e
-          SPRING_DATASOURCE_USERNAME: pivot
-          SPRING_DATASOURCE_PASSWORD: pivot_e2e
-        run: mvn --no-transfer-progress package -DskipTests
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-
-      - name: Build frontend
-        working-directory: frontend
-        env:
-          PIVOT_API_URL: http://localhost:8080
-        run: npm run build -- --configuration production
-
-      - name: Start backend
-        env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pivot_e2e
-          SPRING_DATASOURCE_USERNAME: pivot
-          SPRING_DATASOURCE_PASSWORD: pivot_e2e
-          SPRING_REDIS_HOST: localhost
-          JWT_SECRET: ci-e2e-secret-key-for-pivot-application-end-to-end-tests-must-be-at-least-64-chars
-        run: java -jar backend/target/*.jar &
-
-      - name: Wait for backend
-        run: curl --retry 20 --retry-delay 3 --retry-connrefused --silent --output /dev/null http://localhost:8080/actuator/health
-
-      - name: Run Playwright
-        working-directory: frontend
-        env:
-          PIVOT_API_URL: http://localhost:8080
-        run: npx playwright test --project=chromium
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-report
-          path: frontend/playwright-report/
-          retention-days: 7
-
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 6. SONARCLOUD
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
+  # 3. SONARCLOUD
+  # -----------------------------------------
   sonar:
     name: SonarCloud Analysis
     runs-on: ubuntu-latest
-    needs: [tests-backend, tests-frontend, e2e]
+    needs: [tests-backend]
     timeout-minutes: 15
     if: github.actor != 'dependabot[bot]'
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Setup Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           java-version: '25'
           distribution: 'temurin'
           cache: maven
 
       - name: Download backend coverage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: backend-coverage
-          path: backend/target/site/jacoco/
+          path: target/site/jacoco/
 
-      - name: Download frontend coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/
+      - name: Compile (sonar.java.binaries)
+        run: mvn --no-transfer-progress compile -DskipTests -Dmaven.compiler.release=24
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v3
-        with:
-          args: >
-            -Dproject.settings=.github/workflows/configuration/sonar-project.properties
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          mvn --no-transfer-progress sonar:sonar \
+            -Dmaven.compiler.release=24 \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.organization=pivot-platform \
+            -Dsonar.token="${SONAR_TOKEN}"
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 7. SCA â€” AUDIT DÃ‰PENDANCES
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
+  # 4. SCA - AUDIT DEPENDANCES (Trivy)
+  # -----------------------------------------
   sca:
-    name: SCA â€” Dependency Audit
+    name: SCA - Dependency Audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
-      - name: Setup Java 25
-        uses: actions/setup-java@v4
+      - name: Trivy - Maven pom.xml
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: maven
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          format: sarif
+          output: trivy-backend.sarif
+          severity: HIGH,CRITICAL
+          exit-code: 1
 
-      - name: Maven dependency check (OWASP)
-        working-directory: backend
-        run: mvn --no-transfer-progress org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=7
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        if: always() && hashFiles('trivy-backend.sarif') != ''
         with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: npm audit (production deps)
-        working-directory: frontend
-        run: npm audit --audit-level=high --omit=dev
+          sarif_file: trivy-backend.sarif
+          category: trivy-sca-backend

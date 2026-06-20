@@ -36,7 +36,7 @@ Ce code de conduite s'applique dans tous les espaces communautaires PIVOT (GitHu
 
 Les cas de comportement abusif, harcelant ou autrement inacceptable peuvent être signalés à :
 
-**alexandresolane.web@gmail.com**
+**[GitHub private message](https://github.com/orgs/PIVOT-PLATFORM/people)** ou en contactant directement un mainteneur (@ApoSkunz, @0bno).
 
 Toutes les plaintes seront examinées et feront l'objet d'une enquête rapide et équitable. Les responsables de la communauté respecteront la vie privée et la sécurité de la personne ayant signalé un incident.
 

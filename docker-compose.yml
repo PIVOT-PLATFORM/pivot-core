@@ -1,8 +1,10 @@
 services:
+
   postgres:
-    image: postgres:18
+    image: postgres:18-alpine
+    container_name: pivot-postgres
     environment:
-      POSTGRES_DB: pivot
+      POSTGRES_DB: pivot_dev
       POSTGRES_USER: pivot
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
     volumes:
@@ -10,13 +12,15 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pivot"]
+      test: ["CMD-SHELL", "pg_isready -U pivot -d pivot_dev"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    container_name: pivot-redis
     ports:
       - "6379:6379"
     healthcheck:
@@ -24,50 +28,49 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  backend:
-    build:
-      context: ./backend
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: pivot-mailpit
     ports:
-      - "8090:8080"
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # UI web (http://localhost:8025)
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pivot-core
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot_dev
       SPRING_DATASOURCE_USERNAME: pivot
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
-      SPRING_REDIS_HOST: redis
-      SPRING_REDIS_PORT: 6379
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-minimum-64-characters-long-pivot-key}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost}
-      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
       SPRING_MAIL_HOST: mailpit
       SPRING_MAIL_PORT: 1025
       SPRING_MAIL_USERNAME: ${MAIL_USERNAME:-pivot@localhost}
       SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       PIVOT_MAIL_FROM: ${MAIL_FROM:-pivot@localhost}
       PIVOT_APP_URL: ${APP_URL:-http://localhost}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-minimum-64-characters-long-pivot-key}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
+      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-
-  mailpit:
-    image: axllent/mailpit:latest
-    ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # UI web
-    environment:
-      MP_MAX_MESSAGES: 500
-      MP_SMTP_AUTH_ACCEPT_ANY: 1
-      MP_SMTP_AUTH_ALLOW_INSECURE: 1
-
-  frontend:
-    build:
-      context: ./frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
+    restart: unless-stopped
 
 volumes:
   postgres_data:

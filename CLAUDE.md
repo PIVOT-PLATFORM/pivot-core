@@ -1,8 +1,10 @@
-# CLAUDE.md — PIVOT
+# CLAUDE.md — PIVOT-CORE
 
 ## Projet
 
-**PIVOT** — suite collaborative open-source, ensemble d'outils activables par les administrateurs.
+**PIVOT-CORE** — backend Java/Spring Boot de la suite collaborative PIVOT. Contient l'API REST, la base de données (PostgreSQL + Liquibase), la sécurité (Spring Security + JWT/OIDC) et le système de modules.
+
+Le frontend Angular est dans **pivot-ui**. La documentation générale du projet vit dans **pivot-docs**.
 
 **Vision :** rendre accessible à tous (associations, TPE/PME, entreprises) des outils collaboratifs de qualité, auto-hébergeables, sans lock-in SaaS.
 
@@ -41,37 +43,36 @@ Concise et directe. Techniquement précise. Pas de récapitulatifs inutiles.
 | Couche | Technologie |
 |--------|-------------|
 | Backend | Java 25 · Spring Boot 4.x · Maven |
-| Frontend | Angular 22 · TypeScript · SCSS |
-| BDD | PostgreSQL 18 · Spring Data JPA · Flyway |
+| BDD | PostgreSQL 18 · Spring Data JPA · Liquibase |
 | Cache / Temps réel | Redis · Spring WebSocket (STOMP) |
 | Auth | Spring Security · JWT · OIDC (compatible tout IdP : Keycloak, Azure AD, Okta…) |
-| Tests | JUnit 5 · Mockito · Testcontainers (TI) · Vitest (Angular) · Playwright (E2E) |
+| Tests | JUnit 5 · Mockito · Testcontainers (TI) |
 | Observabilité | Spring Actuator · Micrometer · Prometheus |
 | CI/CD | GitHub Actions · SonarCloud · Semantic Release · Plumber |
 | Déploiement | Docker · Docker Compose |
+| Frontend | → **pivot-ui** (Angular 22 · TypeScript · SCSS · Vitest · Playwright) |
 
 ---
 
 ## Structure du dépôt
 
 ```
-pivot/
-├── backend/                   # Spring Boot (Maven)
-│   ├── src/main/java/
-│   ├── src/main/resources/
-│   └── src/test/java/
-├── frontend/                  # Angular
-│   └── src/
-├── docs/
-│   ├── adr/                   # Architecture Decision Records
-│   ├── gates/                 # Artifacts ACDD (us-{id}/gate-{n}.yaml)
-│   └── audits/                # Audits par domaine
+pivot-core/
+├── src/                       # Spring Boot (Maven)
+│   ├── main/java/
+│   ├── main/resources/
+│   │   └── db/migration/      # Migrations Liquibase
+│   └── test/java/
+├── gates/                     # Artifacts ACDD (us-{id}/gate-{n}.yaml)
 ├── .github/
 │   ├── workflows/
 │   └── ISSUE_TEMPLATE/
 ├── .plumber.yaml              # Config Plumber (CI/CD compliance)
-└── docker-compose.yml
+├── Dockerfile
+└── docker-compose.yml         # Infra locale : postgres + redis + mailpit + app
 ```
+
+Frontend Angular → **pivot-ui**. Documentation → **pivot-docs**.
 
 ---
 
@@ -82,27 +83,25 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 | Expert | Domaine |
 |--------|---------|
 | **Architecte Java / Spring** | Architecture Spring Boot, patterns (Repository, Service, DTO), SOLID, modules |
-| **Architecte Angular** | Architecture Angular, modules lazy-loaded, RxJS, OnPush, state management |
-| **Architecte BDD PostgreSQL** | Schéma, migrations Flyway, index, performances, intégrité référentielle |
+| **Architecte BDD PostgreSQL** | Schéma, migrations Liquibase, index, performances, intégrité référentielle |
 | **Expert DevSecOps** | CI/CD GitHub Actions, SonarCloud, Semgrep, Gitleaks, Plumber, SBOM, Semantic Release |
-| **Expert Red Team** | OWASP Top 10, OIDC bypass, injection SQL, XSS, CSRF, IDOR, JWT attacks |
+| **Expert Red Team** | OWASP Top 10, OIDC bypass, injection SQL, CSRF, IDOR, JWT attacks |
 | **Expert Blue Team** | Spring Security hardening, CORS, CSP, audit log, réponse aux rapports Red Team |
 | **Expert OIDC / IAM** | OIDC PKCE S256, Spring Security OAuth2 Resource Server, Keycloak, claims mapping, rôles |
-| **Expert QA** | Stratégie TU/TI/E2E, Testcontainers, coverage ≥ 80 %, non-régression |
+| **Expert QA** | Stratégie TU/TI, Testcontainers, coverage ≥ 80 %, non-régression |
 | **Expert RGPD** | Conformité RGPD/CNIL, bases légales, droits des personnes, registre Art. 30 |
 | **Product Owner** | GitHub Issues backlog, Epics, US, critères d'acceptation, priorisation |
 | **Scrum Master** | Coordination, sprints, impediments, backlog consistency |
-| **Expert UX/UI** | Design system SCSS, accessibilité WCAG 2.1 AA, tokens CSS |
 | **Architecte Modules** | Système de modules activables, registre, feature flags, isolation inter-modules |
+| **Experts Angular / UX/UI** | → **pivot-ui** |
 
 ### Faire appel aux experts
 
 | Type de tâche | Expert(s) |
 |---------------|-----------|
 | Controller, Service, Repository Java | **Architecte Java / Spring** |
-| Composant Angular, SCSS, routing | **Architecte Angular** + **Expert UX/UI** |
-| Schéma BDD, migration Flyway, requête SQL | **Architecte BDD PostgreSQL** |
-| Tests TU/TI/E2E, stratégie de couverture | **Expert QA** |
+| Schéma BDD, migration Liquibase, requête @Query | **Architecte BDD PostgreSQL** |
+| Tests TU/TI, Testcontainers, couverture | **Expert QA** |
 | CI/CD, GitHub Actions, Plumber, SBOM | **Expert DevSecOps** |
 | Vulnérabilité sécurité, vecteur d'attaque | **Expert Red Team** → **Expert Blue Team** |
 | OIDC, rôles, Spring Security config | **Expert OIDC / IAM** + **Expert Blue Team** |
@@ -110,6 +109,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 | Backlog, US, acceptance criteria | **Product Owner** |
 | Système de modules, registre, activation | **Architecte Modules** |
 | Bug inexpliqué | **Architecte Java** en premier, puis **Expert Red Team** si suspicion sécurité |
+| Frontend Angular, SCSS, composants | → **pivot-ui** |
 
 **Règles :**
 - Mentionner l'expert explicitement quand son domaine est engagé.
@@ -227,14 +227,7 @@ Tout PR avec :
 Claude exécute ces commandes **sans attendre d'instruction** :
 
 ```bash
-# Backend
-cd backend && mvn verify -q        # compile + tests + Checkstyle + SpotBugs
-
-# Frontend
-cd frontend
-npm run lint                        # ESLint + TypeCheck strict (0 warning)
-npm run test:ci                     # Vitest coverage
-npm run build -- --configuration production
+mvn verify -q        # compile + tests + Checkstyle + SpotBugs
 ```
 
 Rapporter ✅ ou stderr complet. Toute erreur ou warning non justifié = **stop, corriger avant push**.
@@ -265,10 +258,9 @@ Format **Conventional Commits** (`type(scope): message`) — alimente Semantic R
 
 | Commit | Contenu typique |
 |--------|----------------|
-| `chore(db):` | migrations Flyway, schéma |
+| `chore(db):` | migrations Liquibase, schéma |
 | `feat(backend):` | service, repository, controller |
 | `feat(api):` | endpoint REST, DTO |
-| `feat(frontend):` | composant Angular, service, route |
 | `feat(modules):` | registre de modules, feature flags |
 | `feat(auth):` | OIDC, Spring Security, rôles |
 | `feat(ws):` | WebSocket, STOMP handlers |
@@ -282,7 +274,7 @@ Co-author sur chaque commit : `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthro
 
 ## Gates ACDD — Confidence Gates
 
-Chaque gate produit un artifact YAML dans `docs/gates/us-{id}/`. Score 0–100, jamais booléen.
+Chaque gate produit un artifact YAML dans `gates/us-{id}/`. Score 0–100, jamais booléen.
 
 | Gate | Moment | Seuils |
 |------|--------|--------|
@@ -297,7 +289,7 @@ Chaque gate produit un artifact YAML dans `docs/gates/us-{id}/`. Score 0–100, 
 
 **Checks Gate 3 :** SonarCloud ≥ 80 % (25) · zéro finding critique/high (25) · linters clean (20) · Gitleaks clean (20) · build Docker (10)
 
-**Format artifact** `docs/gates/us-{id}/gate-{n}.yaml` :
+**Format artifact** `gates/us-{id}/gate-{n}.yaml` :
 ```yaml
 gate: READINESS          # READINESS | COVERAGE | QUALITY | MERGE_CONFIDENCE
 us_id: 42
@@ -361,7 +353,7 @@ AC ambigu à l'implémentation → **stopper et demander au PO Agent** — jamai
 
 ### Artifacts gates
 
-Structure dans `docs/gates/us-{id}/` :
+Structure dans `gates/us-{id}/` :
 - `gate-1.yaml` — Readiness (avant implémentation)
 - `gate-2-{commit}.yaml` — Coverage (après chaque commit)
 - `gate-3.yaml` — Quality (après CI verte)
@@ -402,14 +394,6 @@ git push origin --delete feat/us-{id}-{slug}
 - Pas de logique dans les contrôleurs — déléguer aux services
 - DTOs pour toutes les entrées/sorties API — **jamais les entités JPA directement**
 - Pas de `@Transactional` sur les contrôleurs — uniquement sur les services
-
-### Angular (frontend)
-
-- TypeScript strict — pas de `any`
-- OnPush change detection par défaut
-- RxJS pour l'asynchrone — pas de Promise sauf interop
-- SCSS BEM ou tokens centralisés — pas de styles inline
-- WCAG 2.1 AA sur tous les éléments interactifs
 
 ### Général
 
@@ -456,27 +440,7 @@ Rôles portés via claims OIDC ou assignés localement. Le mapping claims → r�
 
 ## Audits
 
-Dans `docs/audits/` — un fichier par catégorie, mis à jour en place. **Jamais de fichiers datés.**
-
-| Catégorie | Fichier |
-|-----------|---------|
-| Sécurité applicative | `audit-cyber.md` |
-| Architecture | `audit-architecture.md` |
-| BDD PostgreSQL | `audit-bdd.md` |
-| CI/CD / DevSecOps | `audit-cicd.md` |
-| QA / Tests | `audit-qa.md` |
-| RGPD | `audit-rgpd.md` |
-| Modules / Plugins | `audit-modules.md` |
-| UX / Accessibilité | `audit-ux.md` |
-
-Historique des révisions en bas de chaque fichier :
-
-```markdown
-## Historique des révisions
-| Version | Date | Score | Évolutions principales |
-|---------|------|-------|------------------------|
-| v1 | AAAA-MM-JJ | X.X/10 | Audit initial |
-```
+Dans **pivot-docs** — un fichier par catégorie, mis à jour en place. **Jamais de fichiers datés.**
 
 ---
 
@@ -516,12 +480,12 @@ Index : `.project/skills/_index.yaml`
 | Skill | Fichier | Charger quand |
 |-------|---------|---------------|
 | Spring Architecture | `skill-spring-architecture.yaml` | Tout fichier Java (Controller, Service, Repository, DTO) |
-| Angular Architecture | `skill-angular-architecture.yaml` | Tout fichier .ts / .html / .scss |
-| BDD & Flyway | `skill-bdd-flyway.yaml` | Migration Flyway, entité JPA, requête @Query |
+| BDD & Liquibase | `skill-bdd-liquibase.yaml` | Migration Liquibase, entité JPA, requête @Query |
+
 | OIDC & Spring Security | `skill-oidc-security.yaml` | Fichier auth/, SecurityConfig, @PreAuthorize, AC sécurité |
-| Module System | `skill-module-system.yaml` | Fichier modules/ ou registry/, route guard, US module |
+| Module System | `skill-module-system.yaml` | Fichier modules/ ou registry/, US module |
 | AC Traceability | `skill-ac-traceability.yaml` | **Toujours** — toute implémentation d'US, Gate 2, Gate 4 |
-| Testing Strategy | `skill-testing-strategy.yaml` | Nouveau test, coverage < 80 %, spec Playwright |
+| Testing Strategy | `skill-testing-strategy.yaml` | Nouveau test, coverage < 80 %, Testcontainers |
 | DevOps CI/CD | `skill-devops-cicd.yaml` | Fichier .github/workflows/, Dockerfile, config CI |
 | Observabilité | `skill-observability.yaml` | Nouveau log, nouvelle métrique, endpoint health |
 | RGPD | `skill-rgpd.yaml` | US touchant données personnelles (email, nom, contenu) |

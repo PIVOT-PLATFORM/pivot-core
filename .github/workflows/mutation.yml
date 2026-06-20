@@ -12,10 +12,10 @@ concurrency:
 
 jobs:
   mutation:
-    name: PIT â€” Mutation Testing
+    name: PIT - Mutation Testing
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    # Non bloquant â€” indicateur de qualitÃ© des tests, ne bloque pas le merge
+    # Non bloquant - indicateur de qualite des tests, ne bloque pas le merge
     continue-on-error: true
     defaults:
       run:
@@ -38,12 +38,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
       - name: Setup Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           java-version: '25'
           distribution: 'temurin'
@@ -55,7 +55,7 @@ jobs:
           SPRING_DATASOURCE_USERNAME: pivot
           SPRING_DATASOURCE_PASSWORD: pivot_mutation
           SPRING_REDIS_HOST: localhost
-          JWT_SECRET: ci-mutation-secret-key
+          JWT_SECRET: ci-mutation-testing-secret-key-for-pivot-application-pitest-must-be-64-chars-xxxxxx
         run: |
           mvn --no-transfer-progress test \
             -Dspring.profiles.active=test
@@ -65,7 +65,7 @@ jobs:
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pivot_mutation
           SPRING_DATASOURCE_USERNAME: pivot
           SPRING_DATASOURCE_PASSWORD: pivot_mutation
-          JWT_SECRET: ci-mutation-secret-key
+          JWT_SECRET: ci-mutation-testing-secret-key-for-pivot-application-pitest-must-be-64-chars-xxxxxx
         run: |
           mvn --no-transfer-progress org.pitest:pitest-maven:mutationCoverage \
             -DmutationThreshold=60 \
@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload PIT report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pitest-report
           path: backend/target/pit-reports/

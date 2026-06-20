@@ -9,7 +9,7 @@ permissions: read-all
 
 jobs:
   sbom:
-    name: SBOM â€” CycloneDX (Maven + npm)
+    name: SBOM - CycloneDX (Maven)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -17,47 +17,25 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
       - name: Setup Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           java-version: '25'
           distribution: 'temurin'
           cache: maven
 
-      - name: Generate SBOM â€” Backend (Maven CycloneDX)
-        working-directory: backend
+      - name: Generate SBOM - Maven CycloneDX
         run: |
           mvn --no-transfer-progress org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom \
             -DoutputFormat=JSON \
             -DoutputName=sbom-backend.cdx
-          cp target/sbom-backend.cdx.json ../sbom-backend.cdx.json
+          cp target/sbom-backend.cdx.json sbom-backend.cdx.json
 
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci --ignore-scripts
-
-      - name: Generate SBOM â€” Frontend (npm)
-        working-directory: frontend
-        run: |
-          npm sbom \
-            --omit dev \
-            --package-lock-only \
-            --sbom-format cyclonedx \
-            --sbom-type application \
-            > ../sbom-frontend.cdx.json
-
-      - name: Fetch previous release SBOMs (diff)
+      - name: Fetch previous release SBOM (diff)
         id: prev
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -71,21 +49,13 @@ jobs:
               --output sbom-backend-prev.cdx.json 2>/dev/null \
               && echo "prev_backend=true" >> "$GITHUB_OUTPUT" \
               || echo "prev_backend=false" >> "$GITHUB_OUTPUT"
-
-            gh release download "$PREV_TAG" \
-              --pattern "sbom-frontend.cdx.json" \
-              --output sbom-frontend-prev.cdx.json 2>/dev/null \
-              && echo "prev_frontend=true" >> "$GITHUB_OUTPUT" \
-              || echo "prev_frontend=false" >> "$GITHUB_OUTPUT"
           else
             echo "prev_backend=false" >> "$GITHUB_OUTPUT"
-            echo "prev_frontend=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Diff SBOMs vs release prÃ©cÃ©dente
+      - name: Diff SBOM vs release precedente
         env:
           PREV_BACKEND: ${{ steps.prev.outputs.prev_backend }}
-          PREV_FRONTEND: ${{ steps.prev.outputs.prev_frontend }}
           PREV_TAG: ${{ steps.prev.outputs.prev_tag }}
         run: |
           python3 - <<'PYEOF'
@@ -110,31 +80,27 @@ jobs:
               tag = os.environ.get("PREV_TAG", "previous release")
               out.write(f'## {label} SBOM diff (vs {tag})\n\n')
               if not (added or removed or changed):
-                  out.write('Aucun changement de dÃ©pendances.\n\n')
+                  out.write('Aucun changement de dependances.\n\n')
                   return
               for k, v in sorted(added.items()):
                   out.write(f'+ {k}  {v}\n')
               for k, v in sorted(removed.items()):
                   out.write(f'- {k}  {v}\n')
               for k, (o, n) in sorted(changed.items()):
-                  out.write(f'~ {k}  {o} â†’ {n}\n')
+                  out.write(f'~ {k}  {o} -> {n}\n')
               out.write('\n')
 
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
           with open(summary_path, 'a') as out:
               if os.environ.get('PREV_BACKEND') == 'true':
                   diff_report('Backend (Java/Maven)', 'sbom-backend-prev.cdx.json', 'sbom-backend.cdx.json', out)
-              if os.environ.get('PREV_FRONTEND') == 'true':
-                  diff_report('Frontend (Angular/npm)', 'sbom-frontend-prev.cdx.json', 'sbom-frontend.cdx.json', out)
           PYEOF
 
       - name: Upload SBOM as CI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-${{ github.event.release.tag_name || github.sha }}
-          path: |
-            sbom-backend.cdx.json
-            sbom-frontend.cdx.json
+          path: sbom-backend.cdx.json
           retention-days: 365
 
       - name: Attach SBOM to GitHub Release
@@ -144,5 +110,4 @@ jobs:
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
             sbom-backend.cdx.json \
-            sbom-frontend.cdx.json \
             --clobber

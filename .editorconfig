@@ -7,18 +7,10 @@ indent_style = space
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-# Frontend Angular / TypeScript — 2 espaces
-[*.{ts,js,html,scss,css,json}]
-indent_size = 2
-
-[*.ts]
-quote_type = single
-
-# Backend Java — 4 espaces
 [*.java]
 indent_size = 4
 
-[*.{xml,yml,yaml}]
+[*.{xml,yml,yaml,json,properties}]
 indent_size = 2
 
 [*.md]
