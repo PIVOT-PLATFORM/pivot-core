@@ -52,6 +52,9 @@ docker-compose.override.yml
 *.swo
 .vscode/
 
+# ===== Scripts locaux (non versionnés) =====
+docs/backlog/
+
 # ===== Claude Code =====
 .claude/settings.local.json
 
