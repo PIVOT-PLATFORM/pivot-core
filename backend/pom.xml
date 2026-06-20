@@ -23,6 +23,8 @@
 
 	<properties>
 		<java.version>25</java.version>
+		<!-- JaCoCo 0.8.13 + SpotBugs ASM 9.7 support class 68 max; revert when tools add Java 25 support -->
+		<maven.compiler.release>24</maven.compiler.release>
 		<testcontainers.version>1.21.1</testcontainers.version>
 	</properties>
 
@@ -160,7 +162,7 @@
 					<plugin>
 						<groupId>org.jacoco</groupId>
 						<artifactId>jacoco-maven-plugin</artifactId>
-						<version>0.8.12</version>
+						<version>0.8.13</version>
 						<executions>
 							<execution>
 								<id>prepare-agent</id>
