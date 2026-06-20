@@ -185,4 +185,3 @@ jobs:
             echo "::error::Plumber compliance ${SCORE}% < 90%% (security gate)"
             exit 1
           fi
-          retention-days: 30
