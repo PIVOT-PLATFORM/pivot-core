@@ -336,16 +336,7 @@ jobs:
             -Dmaven.compiler.release=24 \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.token="${SONAR_TOKEN}" \
-            -Dsonar.projectKey=PIVOT-PLATFORM_PIVOT \
-            -Dsonar.organization=pivot-platform \
-            -Dsonar.java.binaries=target/classes \
-            -Dsonar.java.source=24 \
-            -Dsonar.sources=src/main/java,../frontend/src \
-            -Dsonar.tests=src/test/java \
-            -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-            -Dsonar.javascript.lcov.reportPaths=../frontend/coverage/lcov.info \
-            "-Dsonar.exclusions=**/generated/**,**/*.spec.ts,**/node_modules/**,src/main/resources/**,../frontend/dist/**" \
-            -Dsonar.sourceEncoding=UTF-8
+            -Dproject.settings="${{ github.workspace }}/.github/workflows/configuration/sonar-project.properties"
 
   # -----------------------------------------
   # 7. SCA - AUDIT DEPENDANCES (Trivy)
