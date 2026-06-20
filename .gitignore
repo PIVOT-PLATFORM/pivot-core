@@ -50,6 +50,7 @@ docker-compose.override.yml
 .classpath
 *.swp
 *.swo
+.vscode/
 
 # ===== Claude Code =====
 .claude/settings.local.json
