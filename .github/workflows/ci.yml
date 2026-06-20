@@ -339,7 +339,6 @@ jobs:
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.token="${SONAR_TOKEN}" \
             -Dsonar.java.binaries=target/classes \
-            -Dsonar.java.libraries=target/dependency \
             -Dsonar.javascript.lcov.reportPaths=../frontend/coverage/lcov.info \
             -Dsonar.sources=src/main/java \
             -Dsonar.tests=src/test/java \

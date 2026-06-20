@@ -121,20 +121,9 @@ jobs:
             frontend/src || SEMGREP_EXIT=$?
           if [ "${SEMGREP_EXIT:-0}" -ne 0 ] && [ -f semgrep-results.sarif ]; then
             echo "=== Semgrep findings ==="
-            python3 - <<'PYEOF'
-import json
-with open('semgrep-results.sarif') as f:
-    data = json.load(f)
-for run in data.get('runs', []):
-    for result in run.get('results', []):
-        loc = result['locations'][0]['physicalLocation']
-        uri = loc['artifactLocation']['uri']
-        line = loc.get('region', {}).get('startLine', '?')
-        msg = result.get('message', {}).get('text', '')[:300]
-        print(f"[{result['ruleId']}] {uri}:{line}")
-        print(f"  {msg}")
-        print()
-PYEOF
+            jq -r '.runs[].results[] |
+              "[\(.ruleId)] \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine // "?") -- \(.message.text[0:200])"
+            ' semgrep-results.sarif 2>/dev/null || true
           fi
           exit "${SEMGREP_EXIT:-0}"
         env:
