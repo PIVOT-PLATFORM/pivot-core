@@ -182,7 +182,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: frontend-coverage
-          path: frontend/coverage/lcov.info
+          path: frontend/coverage/
+          if-no-files-found: warn
 
   # -----------------------------------------
   # 5. E2E PLAYWRIGHT
@@ -340,12 +341,15 @@ jobs:
             -Dsonar.sourceEncoding=UTF-8
 
   # -----------------------------------------
-  # 7. SCA - AUDIT DEPENDANCES
+  # 7. SCA - AUDIT DEPENDANCES (Trivy)
   # -----------------------------------------
   sca:
     name: SCA - Dependency Audit
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout
@@ -353,34 +357,35 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Java 25
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+      - name: Trivy - Backend (Maven pom.xml)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: maven
+          scan-type: fs
+          scan-ref: backend
+          scanners: vuln
+          format: sarif
+          output: trivy-backend.sarif
+          severity: HIGH,CRITICAL
+          exit-code: 1
 
-      - name: Cache NVD database
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        id: nvd-cache
+      - name: Trivy - Frontend (package-lock.json)
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          path: ~/.dependency-check/data
-          key: nvd-${{ runner.os }}-weekly-${{ hashFiles('.github/workflows/ci.yml') }}
-          restore-keys: |
-            nvd-${{ runner.os }}-weekly-
-            nvd-${{ runner.os }}-
+          scan-type: fs
+          scan-ref: frontend
+          scanners: vuln
+          format: sarif
+          output: trivy-frontend.sarif
+          severity: HIGH,CRITICAL
+          exit-code: 1
 
-      - name: Maven dependency check (OWASP)
-        working-directory: backend
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          mvn --no-transfer-progress org.owasp:dependency-check-maven:check \
-            -DfailBuildOnCVSS=7 \
-            -DnvdApiKey="${NVD_API_KEY}" \
-            -DnvdApiDelay=10000 \
-            -DnvdMaxRetryCount=20 \
-            -DnvdValidForHours=24
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        if: always() && (hashFiles('trivy-backend.sarif') != '' || hashFiles('trivy-frontend.sarif') != '')
+        with:
+          sarif_file: .
+          category: trivy-sca
 
       - name: Setup Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

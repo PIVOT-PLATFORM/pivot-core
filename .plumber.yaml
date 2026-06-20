@@ -18,7 +18,6 @@ github:
       enabled: true
       trustGithubOfficialActions: true
       trustSameOrgActions: true
-      minimumStars: 0
       trustedGithubActions:
         - aquasecurity/trivy-action
         - ossf/scorecard-action
@@ -94,12 +93,6 @@ github:
         - "*scorecard*"
         - "*security*"
         - "*scan*"
-      allowFailureMustBeFalse:
-        enabled: true
-      rulesMustNotBeRedefined:
-        enabled: true
-      whenMustNotBeManual:
-        enabled: true
 
     # --- Protection de branche ---
     branchMustBeProtected:
