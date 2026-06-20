@@ -323,20 +323,18 @@ jobs:
           path: frontend/coverage/
 
       - name: Compile backend (sonar.java.binaries)
-        working-directory: backend
-        run: mvn --no-transfer-progress compile -DskipTests -Dmaven.compiler.release=24
+        run: mvn -f backend/pom.xml --no-transfer-progress compile -DskipTests -Dmaven.compiler.release=24
 
       - name: SonarCloud Scan
-        working-directory: backend
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          mvn --no-transfer-progress sonar:sonar \
+          mvn -f backend/pom.xml --no-transfer-progress sonar:sonar \
             -Dmaven.compiler.release=24 \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.token="${SONAR_TOKEN}" \
-            -Dproject.settings="${{ github.workspace }}/.github/workflows/configuration/sonar-project.properties"
+            -Dproject.settings=".github/workflows/configuration/sonar-project.properties"
 
   # -----------------------------------------
   # 7. SCA - AUDIT DEPENDANCES (Trivy)
