@@ -334,17 +334,10 @@ jobs:
         run: |
           mvn --no-transfer-progress sonar:sonar \
             -Dmaven.compiler.release=24 \
-            -Dsonar.organization=pivot-platform \
-            -Dsonar.projectKey=pivot-platform_PIVOT \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.token="${SONAR_TOKEN}" \
             -Dsonar.projectBaseDir=.. \
-            -Dsonar.java.binaries=backend/target/classes \
-            -Dsonar.sources=backend/src/main/java,frontend/src \
-            -Dsonar.tests=backend/src/test/java \
-            -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info \
-            -Dsonar.exclusions="**/generated/**,**/*.spec.ts,**/*.test.ts,**/node_modules/**,backend/src/main/resources/**,frontend/dist/**" \
-            -Dsonar.sourceEncoding=UTF-8
+            -Dproject.settings=.github/workflows/configuration/sonar-project.properties
 
   # -----------------------------------------
   # 7. SCA - AUDIT DEPENDANCES (Trivy)
