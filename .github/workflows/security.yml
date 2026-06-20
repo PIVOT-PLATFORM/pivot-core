@@ -115,15 +115,15 @@ jobs:
             --config p/javascript \
             --config p/typescript \
             --sarif --output semgrep-results.sarif \
-            --error \
             backend/src/main/java \
             backend/src/test/java \
-            frontend/src || SEMGREP_EXIT=$?
-          if [ "${SEMGREP_EXIT:-0}" -ne 0 ] && [ -f semgrep-results.sarif ]; then
-            echo "=== Semgrep exit ${SEMGREP_EXIT} - findings count: $(jq '.runs[0].results | length' semgrep-results.sarif) ==="
+            frontend/src
+          FINDINGS=$(jq '.runs[0].results | length' semgrep-results.sarif)
+          echo "Semgrep findings (non-suppressed): $FINDINGS"
+          if [ "$FINDINGS" -gt 0 ]; then
             jq -r '.runs[0].results[] | "[\(.ruleId)] \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine // "?") -- \(.message.text[0:300])"' semgrep-results.sarif
+            exit 1
           fi
-          exit "${SEMGREP_EXIT:-0}"
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
