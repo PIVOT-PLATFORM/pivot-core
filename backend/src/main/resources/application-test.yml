@@ -1,0 +1,11 @@
+spring:
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+pivot:
+  jwt:
+    secret: ci-test-secret-key-for-pivot-application-tests-must-be-at-least-64-chars
+    expiration-ms: 3600000
