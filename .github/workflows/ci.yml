@@ -29,7 +29,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Java 21
+      - name: Setup Java 25
         uses: actions/setup-java@v4
         with:
           java-version: '25'
@@ -62,7 +62,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -120,7 +120,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Java 21
+      - name: Setup Java 25
         uses: actions/setup-java@v4
         with:
           java-version: '25'
@@ -134,7 +134,7 @@ jobs:
           SPRING_DATASOURCE_PASSWORD: pivot_test
           SPRING_REDIS_HOST: localhost
           SPRING_REDIS_PORT: 6379
-          JWT_SECRET: ci-test-secret-key-pivot-development
+          JWT_SECRET: ci-test-secret-key-for-pivot-application-tests-must-be-at-least-64-chars
         run: mvn --no-transfer-progress verify -Pcoverage
 
       - name: Upload backend coverage
@@ -145,10 +145,10 @@ jobs:
           path: backend/target/site/jacoco/jacoco.xml
 
   # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 4. TESTS FRONTEND (Jest)
+  # 4. TESTS FRONTEND (Vitest)
   # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   tests-frontend:
-    name: Tests Frontend (Jest)
+    name: Tests Frontend (Vitest)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -161,7 +161,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -172,7 +172,7 @@ jobs:
         run: npm ci
 
       - name: Run tests with coverage
-        run: npm run test -- --coverage --watchAll=false
+        run: npm run test:ci
 
       - name: Upload frontend coverage
         if: always()
@@ -217,14 +217,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Java 21
+      - name: Setup Java 25
         uses: actions/setup-java@v4
         with:
           java-version: '25'
           distribution: 'temurin'
           cache: maven
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -296,7 +296,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Setup Java 21
+      - name: Setup Java 25
         uses: actions/setup-java@v4
         with:
           java-version: '25'
@@ -338,7 +338,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Java 21
+      - name: Setup Java 25
         uses: actions/setup-java@v4
         with:
           java-version: '25'
@@ -349,7 +349,7 @@ jobs:
         working-directory: backend
         run: mvn --no-transfer-progress org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=7
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'

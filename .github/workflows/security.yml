@@ -57,7 +57,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Java 21 (Java matrix)
+      - name: Setup Java 25 (Java matrix)
         if: matrix.language == 'java'
         uses: actions/setup-java@v4
         with:

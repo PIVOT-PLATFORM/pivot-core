@@ -27,7 +27,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -36,14 +36,14 @@ jobs:
       - name: Install Semantic Release
         run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git
 
-      - name: Setup Java 21
+      - name: Setup Java 25
         uses: actions/setup-java@v4
         with:
           java-version: '25'
           distribution: 'temurin'
           cache: maven
 
-      - name: Setup Node.js 20 (frontend)
+      - name: Setup Node.js 24 (frontend)
         uses: actions/setup-node@v4
         with:
           node-version: '24'
