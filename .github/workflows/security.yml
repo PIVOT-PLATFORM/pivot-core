@@ -115,7 +115,8 @@ jobs:
             --config p/javascript \
             --config p/typescript \
             --sarif --output semgrep-results.sarif \
-            --error
+            --error \
+            backend/src frontend/src
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 

@@ -46,7 +46,7 @@ jobs:
           cache: maven
 
       - name: Compile + Checkstyle + SpotBugs
-        run: mvn --no-transfer-progress compile checkstyle:check spotbugs:check
+        run: mvn --no-transfer-progress compile checkstyle:check spotbugs:check -Dmaven.compiler.release=24
 
   # -----------------------------------------
   # 2. QUALITE CODE - FRONTEND ANGULAR
@@ -138,7 +138,7 @@ jobs:
           SPRING_REDIS_HOST: localhost
           SPRING_REDIS_PORT: 6379
           JWT_SECRET: ci-test-secret-key-for-pivot-application-tests-must-be-at-least-64-chars
-        run: mvn --no-transfer-progress verify -Pcoverage
+        run: mvn --no-transfer-progress verify -Pcoverage -Dmaven.compiler.release=24
 
       - name: Upload backend coverage
         if: always()
@@ -318,13 +318,22 @@ jobs:
           path: frontend/coverage/
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@383f7e52eae3ab0510c3cb0e7d9d150bbaeab838 # v3
-        with:
-          args: >
-            -Dproject.settings=.github/workflows/configuration/sonar-project.properties
+        working-directory: backend
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          mvn --no-transfer-progress sonar:sonar \
+            -Dmaven.compiler.release=24 \
+            -Dsonar.organization=pivot-platform \
+            -Dsonar.projectKey=pivot-platform_PIVOT \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.token="${SONAR_TOKEN}" \
+            -Dsonar.javascript.lcov.reportPaths=../frontend/coverage/lcov.info \
+            -Dsonar.sources=src/main/java,../frontend/src \
+            -Dsonar.tests=src/test/java,../frontend/src \
+            -Dsonar.exclusions="**/generated/**,**/*.spec.ts,**/node_modules/**,src/main/resources/**,../frontend/dist/**" \
+            -Dsonar.sourceEncoding=UTF-8
 
   # -----------------------------------------
   # 7. SCA - AUDIT DEPENDANCES
