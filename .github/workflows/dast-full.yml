@@ -1,0 +1,265 @@
+name: DAST â€” Full Scan (ISO prod)
+
+# ZAP Full Scan sur une instance locale ISO prod de PIVOT.
+# Auth JWT par rÃ´le (ROLE_USER + ROLE_ADMIN) depuis des seeds de test.
+# Credentials seed (donnÃ©es mock â€” jamais en production) :
+#   user  : dast-user@pivot.local  / Pivot@DastTest1!
+#   admin : dast-admin@pivot.local / Pivot@DastTest1!
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  # JOB 1 â€” Scan ROLE_USER
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  zap-full-user:
+    name: ZAP Full Scan â€” ROLE_USER
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    permissions:
+      issues: write
+      actions: write
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: pivot_dast
+          POSTGRES_USER: pivot
+          POSTGRES_PASSWORD: pivot_dast
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U pivot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build backend
+        working-directory: backend
+        run: mvn --no-transfer-progress package -DskipTests
+
+      - name: Start backend (DAST seed profile)
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pivot_dast
+          SPRING_DATASOURCE_USERNAME: pivot
+          SPRING_DATASOURCE_PASSWORD: pivot_dast
+          SPRING_REDIS_HOST: localhost
+          JWT_SECRET: dast-ci-jwt-secret-not-for-prod
+          SERVER_PORT: 8080
+          SPRING_PROFILES_ACTIVE: test,dast-seed
+        run: java -jar backend/target/*.jar &
+
+      - name: Wait for backend
+        run: curl --retry 25 --retry-delay 3 --retry-connrefused --silent --output /dev/null http://localhost:8080/actuator/health
+
+      - name: Resolve host IP for ZAP Docker
+        id: host-ip
+        run: echo "ip=$(ip route show default | awk '/default/{print $3}')" >> $GITHUB_OUTPUT
+
+      - name: Authenticate â€” ROLE_USER
+        id: auth-user
+        run: |
+          RESPONSE=$(curl -s -X POST http://localhost:8080/api/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"dast-user@pivot.local","password":"Pivot@DastTest1!"}')
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken // .token // empty')
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+          if [ -n "$TOKEN" ]; then
+            echo "âœ… ROLE_USER auth OK"
+          else
+            echo "âš ï¸ ROLE_USER auth KO â€” scan anonyme"
+            echo "DEBUG response: $RESPONSE"
+          fi
+
+      - name: Debug â€” vÃ©rifier auth ROLE_USER
+        run: |
+          TOKEN="${{ steps.auth-user.outputs.token }}"
+          [ -z "$TOKEN" ] && echo "âŒ token vide â€” scan anonyme" && exit 0
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            http://localhost:8080/api/users/me)
+          echo "GET /api/users/me â†’ HTTP $HTTP"
+          [ "$HTTP" = "200" ] && echo "âœ… auth OK" || echo "âš ï¸ auth KO (code $HTTP)"
+
+      - name: Set ZAP auth env â€” ROLE_USER
+        run: |
+          echo "ZAP_AUTH_HEADER=Authorization" >> $GITHUB_ENV
+          echo "ZAP_AUTH_HEADER_VALUE=Bearer ${{ steps.auth-user.outputs.token }}" >> $GITHUB_ENV
+          echo "ZAP_AUTH_HEADER_SITE=http://${{ steps.host-ip.outputs.ip }}:8080" >> $GITHUB_ENV
+
+      - name: Grant ZAP container write access to workspace
+        run: chmod a+w "$GITHUB_WORKSPACE"
+
+      - name: ZAP Full Scan â€” ROLE_USER
+        uses: zaproxy/action-full-scan@v0.12.0
+        with:
+          target: 'http://${{ steps.host-ip.outputs.ip }}:8080/api'
+          rules_file_name: '.github/workflows/configuration/zap-rules.tsv'
+          cmd_options: '-j -z "-config scanner.threadPerHost=2"'
+          fail_action: false
+          issue_title: '[DAST] ZAP Full Scan (ROLE_USER) â€” alertes'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          artifact_name: zap-full-user-${{ github.run_number }}
+
+      - name: Upload ZAP report â€” ROLE_USER
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report-user-${{ github.run_number }}
+          path: |
+            report_html.html
+            report_json.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  # JOB 2 â€” Scan ROLE_ADMIN
+  # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  zap-full-admin:
+    name: ZAP Full Scan â€” ROLE_ADMIN
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    continue-on-error: true
+    permissions:
+      issues: write
+      actions: write
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: pivot_dast_admin
+          POSTGRES_USER: pivot
+          POSTGRES_PASSWORD: pivot_dast_admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U pivot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build backend
+        working-directory: backend
+        run: mvn --no-transfer-progress package -DskipTests
+
+      - name: Start backend (DAST seed profile)
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pivot_dast_admin
+          SPRING_DATASOURCE_USERNAME: pivot
+          SPRING_DATASOURCE_PASSWORD: pivot_dast_admin
+          SPRING_REDIS_HOST: localhost
+          JWT_SECRET: dast-ci-jwt-secret-not-for-prod
+          SERVER_PORT: 8080
+          SPRING_PROFILES_ACTIVE: test,dast-seed
+        run: java -jar backend/target/*.jar &
+
+      - name: Wait for backend
+        run: curl --retry 25 --retry-delay 3 --retry-connrefused --silent --output /dev/null http://localhost:8080/actuator/health
+
+      - name: Resolve host IP for ZAP Docker
+        id: host-ip
+        run: echo "ip=$(ip route show default | awk '/default/{print $3}')" >> $GITHUB_OUTPUT
+
+      - name: Authenticate â€” ROLE_ADMIN
+        id: auth-admin
+        run: |
+          RESPONSE=$(curl -s -X POST http://localhost:8080/api/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"dast-admin@pivot.local","password":"Pivot@DastTest1!"}')
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.accessToken // .token // empty')
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+          if [ -n "$TOKEN" ]; then
+            echo "âœ… ROLE_ADMIN auth OK"
+          else
+            echo "âš ï¸ ROLE_ADMIN auth KO â€” scan anonyme"
+            echo "DEBUG response: $RESPONSE"
+          fi
+
+      - name: Debug â€” vÃ©rifier auth ROLE_ADMIN
+        run: |
+          TOKEN="${{ steps.auth-admin.outputs.token }}"
+          [ -z "$TOKEN" ] && echo "âŒ token vide â€” scan anonyme" && exit 0
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $TOKEN" \
+            http://localhost:8080/api/admin/users)
+          echo "GET /api/admin/users â†’ HTTP $HTTP"
+          [ "$HTTP" = "200" ] && echo "âœ… auth admin OK" || echo "âš ï¸ auth admin KO (code $HTTP)"
+
+      - name: Set ZAP auth env â€” ROLE_ADMIN
+        run: |
+          echo "ZAP_AUTH_HEADER=Authorization" >> $GITHUB_ENV
+          echo "ZAP_AUTH_HEADER_VALUE=Bearer ${{ steps.auth-admin.outputs.token }}" >> $GITHUB_ENV
+          echo "ZAP_AUTH_HEADER_SITE=http://${{ steps.host-ip.outputs.ip }}:8080" >> $GITHUB_ENV
+
+      - name: Grant ZAP container write access to workspace
+        run: chmod a+w "$GITHUB_WORKSPACE"
+
+      - name: ZAP Full Scan â€” ROLE_ADMIN
+        uses: zaproxy/action-full-scan@v0.12.0
+        with:
+          target: 'http://${{ steps.host-ip.outputs.ip }}:8080/api'
+          rules_file_name: '.github/workflows/configuration/zap-rules.tsv'
+          cmd_options: '-j -z "-config scanner.threadPerHost=2"'
+          fail_action: false
+          issue_title: '[DAST] ZAP Full Scan (ROLE_ADMIN) â€” alertes'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          artifact_name: zap-full-admin-${{ github.run_number }}
+
+      - name: Upload ZAP report â€” ROLE_ADMIN
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report-admin-${{ github.run_number }}
+          path: |
+            report_html.html
+            report_json.json
+          if-no-files-found: warn
+          retention-days: 30

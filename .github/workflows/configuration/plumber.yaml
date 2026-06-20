@@ -1,0 +1,45 @@
+# Plumber — CI/CD Compliance Configuration
+# https://github.com/getplumber/plumber
+
+version: "1"
+
+policies:
+  # Workflows doivent avoir permissions: read-all par défaut
+  - id: default-permissions-read-all
+    severity: high
+    description: "Tous les workflows doivent avoir permissions: read-all par défaut"
+
+  # Actions non épinglées par SHA
+  - id: pin-actions-to-sha
+    severity: medium
+    description: "Les actions tiers doivent être épinglées par SHA commit, pas par tag"
+
+  # Secrets exposés dans les logs
+  - id: no-secrets-in-run
+    severity: critical
+    description: "Les secrets ne doivent pas être interpolés directement dans les commandes run"
+
+  # Workflow avec trop de permissions
+  - id: no-write-all-permissions
+    severity: high
+    description: "Éviter permissions: write-all — utiliser les permissions minimales"
+
+  # Injection via github.event inputs
+  - id: no-untrusted-input-injection
+    severity: critical
+    description: "Les inputs github.event.* ne doivent pas être interpolés dans les commandes run sans sanitisation"
+
+  # Jobs sans timeout
+  - id: require-job-timeout
+    severity: low
+    description: "Chaque job doit avoir un timeout-minutes défini"
+
+  # Checkout sans persist-credentials: false
+  - id: checkout-no-persist-credentials
+    severity: medium
+    description: "actions/checkout doit avoir persist-credentials: false sauf si push est requis"
+
+exclude:
+  # Release workflow : Semantic Release a besoin de persist-credentials pour git push
+  - workflow: release.yml
+    policy: checkout-no-persist-credentials
