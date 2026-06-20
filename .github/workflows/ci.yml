@@ -28,9 +28,6 @@ jobs:
     name: Code Quality - Java
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - name: Checkout
@@ -49,48 +46,12 @@ jobs:
         run: mvn --no-transfer-progress compile checkstyle:check spotbugs:check -Dmaven.compiler.release=24
 
   # -----------------------------------------
-  # 2. QUALITE CODE - FRONTEND ANGULAR
-  # -----------------------------------------
-  quality-frontend:
-    name: Code Quality - Angular
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: TypeScript check
-        run: npx tsc --noEmit
-
-      - name: ESLint
-        run: npm run lint
-
-  # -----------------------------------------
-  # 3. TESTS BACKEND (TU + TI)
+  # 2. TESTS BACKEND (TU + TI)
   # -----------------------------------------
   tests-backend:
     name: Tests Backend (TU + TI)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: backend
 
     services:
       postgres:
@@ -145,154 +106,15 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: backend-coverage
-          path: backend/target/site/jacoco/jacoco.xml
+          path: target/site/jacoco/jacoco.xml
 
   # -----------------------------------------
-  # 4. TESTS FRONTEND (Vitest)
-  # -----------------------------------------
-  tests-frontend:
-    name: Tests Frontend (Vitest)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests with coverage
-        run: npm run test:ci
-
-      - name: Upload frontend coverage
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/
-          if-no-files-found: warn
-
-  # -----------------------------------------
-  # 5. E2E PLAYWRIGHT
-  # -----------------------------------------
-  e2e:
-    name: E2E - Playwright
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    needs: [tests-backend, tests-frontend]
-
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: pivot_e2e
-          POSTGRES_USER: pivot
-          POSTGRES_PASSWORD: pivot_e2e
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U pivot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Java 25
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: maven
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Build backend
-        working-directory: backend
-        env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pivot_e2e
-          SPRING_DATASOURCE_USERNAME: pivot
-          SPRING_DATASOURCE_PASSWORD: pivot_e2e
-        run: mvn --no-transfer-progress package -DskipTests
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium
-
-      - name: Build frontend
-        working-directory: frontend
-        env:
-          PIVOT_API_URL: http://localhost:8080
-        run: npm run build -- --configuration production
-
-      - name: Serve frontend
-        working-directory: frontend
-        run: npx --yes serve dist/frontend/browser -p 4200 --single &
-
-      - name: Start backend
-        env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pivot_e2e
-          SPRING_DATASOURCE_USERNAME: pivot
-          SPRING_DATASOURCE_PASSWORD: pivot_e2e
-          SPRING_REDIS_HOST: localhost
-          JWT_SECRET: ci-e2e-secret-key-for-pivot-application-end-to-end-tests-must-be-at-least-64-chars
-        run: java -jar backend/target/*.jar &
-
-      - name: Wait for backend
-        run: curl --retry 20 --retry-delay 3 --retry-connrefused --silent --output /dev/null http://localhost:8080/actuator/health
-
-      - name: Run Playwright
-        working-directory: frontend
-        env:
-          PIVOT_API_URL: http://localhost:8080
-        run: npx playwright test --project=chromium
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: playwright-report
-          path: frontend/playwright-report/
-          retention-days: 7
-
-  # -----------------------------------------
-  # 6. SONARCLOUD
+  # 3. SONARCLOUD
   # -----------------------------------------
   sonar:
     name: SonarCloud Analysis
     runs-on: ubuntu-latest
-    needs: [tests-backend, tests-frontend]
+    needs: [tests-backend]
     timeout-minutes: 15
     if: github.actor != 'dependabot[bot]'
 
@@ -314,29 +136,23 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: backend-coverage
-          path: backend/target/site/jacoco/
+          path: target/site/jacoco/
 
-      - name: Download frontend coverage
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/
-
-      - name: Compile backend (sonar.java.binaries)
-        run: mvn -f backend/pom.xml --no-transfer-progress compile -DskipTests -Dmaven.compiler.release=24
+      - name: Compile (sonar.java.binaries)
+        run: mvn --no-transfer-progress compile -DskipTests -Dmaven.compiler.release=24
 
       - name: SonarCloud Scan
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          mvn -f backend/pom.xml --no-transfer-progress sonar:sonar \
+          mvn --no-transfer-progress sonar:sonar \
             -Dmaven.compiler.release=24 \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.token="${SONAR_TOKEN}"
 
   # -----------------------------------------
-  # 7. SCA - AUDIT DEPENDANCES (Trivy)
+  # 4. SCA - AUDIT DEPENDANCES (Trivy)
   # -----------------------------------------
   sca:
     name: SCA - Dependency Audit
@@ -352,50 +168,20 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Trivy - Backend (Maven pom.xml)
+      - name: Trivy - Maven pom.xml
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
-          scan-ref: backend
+          scan-ref: .
           scanners: vuln
           format: sarif
           output: trivy-backend.sarif
           severity: HIGH,CRITICAL
           exit-code: 1
 
-      - name: Trivy - Frontend (package-lock.json)
-        if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: frontend
-          scanners: vuln
-          format: sarif
-          output: trivy-frontend.sarif
-          severity: HIGH,CRITICAL
-          exit-code: 1
-
-      - name: Upload Trivy SARIF - Backend
+      - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         if: always() && hashFiles('trivy-backend.sarif') != ''
         with:
           sarif_file: trivy-backend.sarif
           category: trivy-sca-backend
-
-      - name: Upload Trivy SARIF - Frontend
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
-        if: always() && hashFiles('trivy-frontend.sarif') != ''
-        with:
-          sarif_file: trivy-frontend.sarif
-          category: trivy-sca-frontend
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: npm audit (production deps)
-        working-directory: frontend
-        run: npm audit --audit-level=high --omit=dev

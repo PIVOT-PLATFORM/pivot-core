@@ -10,9 +10,9 @@ on:
 permissions: read-all
 
 jobs:
-  # 
-  # SECRETS  Gitleaks
-  # 
+  # -----------------------------------------
+  # SECRETS — Gitleaks
+  # -----------------------------------------
   gitleaks:
     name: Gitleaks - Secret Scan
     runs-on: ubuntu-latest
@@ -35,8 +35,8 @@ jobs:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENCE_KEY }}
           GITLEAKS_CONFIG: .github/workflows/configuration/.gitleaks.toml
 
-  # 
-  # SAST  CodeQL (Java + Angular)
+  # -----------------------------------------
+  # SAST — CodeQL (Java)
   # -----------------------------------------
   codeql:
     name: CodeQL - SAST
@@ -47,18 +47,13 @@ jobs:
       actions: read
       contents: read
 
-    strategy:
-      matrix:
-        language: [java, javascript]
-
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
 
-      - name: Setup Java 25 (Java matrix)
-        if: matrix.language == 'java'
+      - name: Setup Java 25
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           java-version: '25'
@@ -68,19 +63,17 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         with:
-          languages: ${{ matrix.language }}
+          languages: java
           config-file: .github/codeql/config.yml
 
-      - name: Build backend (Java matrix)
-        if: matrix.language == 'java'
-        working-directory: backend
+      - name: Build
         run: mvn --no-transfer-progress compile -DskipTests
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
 
   # -----------------------------------------
-  # SAST - Semgrep (OWASP + Java + Angular)
+  # SAST — Semgrep (OWASP + Java + Spring)
   # -----------------------------------------
   semgrep:
     name: Semgrep - SAST
@@ -110,15 +103,11 @@ jobs:
             --config p/security-audit \
             --config p/jwt \
             --config p/sql-injection \
-            --config p/xss \
             --config p/command-injection \
             --config p/secrets \
-            --config p/javascript \
-            --config p/typescript \
             --sarif --output semgrep-results.sarif \
-            backend/src/main/java \
-            backend/src/test/java \
-            frontend/src || true
+            src/main/java \
+            src/test/java || true
           FINDINGS=$(jq '.runs[0].results | length' semgrep-results.sarif)
           echo "Semgrep findings (non-suppressed): $FINDINGS"
           if [ "$FINDINGS" -gt 0 ]; then
@@ -136,7 +125,7 @@ jobs:
           category: semgrep-sast
 
   # -----------------------------------------
-  # CI/CD CONFORMITE - Plumber
+  # CI/CD CONFORMITE — Plumber
   # -----------------------------------------
   plumber:
     name: Plumber - CI/CD Compliance
