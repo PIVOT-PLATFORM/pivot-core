@@ -259,7 +259,7 @@ jobs:
           SPRING_DATASOURCE_USERNAME: pivot
           SPRING_DATASOURCE_PASSWORD: pivot_e2e
           SPRING_REDIS_HOST: localhost
-          JWT_SECRET: ci-e2e-secret-key-pivot
+          JWT_SECRET: ci-e2e-secret-key-for-pivot-application-end-to-end-tests-must-be-at-least-64-chars
         run: java -jar backend/target/*.jar &
 
       - name: Wait for backend

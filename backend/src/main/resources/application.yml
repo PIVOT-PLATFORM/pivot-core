@@ -14,7 +14,6 @@ spring:
     open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         default_schema: public
 
   flyway:
@@ -38,12 +37,6 @@ spring:
           auth: false
           starttls:
             enable: false
-
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${OIDC_ISSUER_URI:}
 
 server:
   port: ${SERVER_PORT:8080}
