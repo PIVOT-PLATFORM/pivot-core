@@ -45,7 +45,7 @@ Concise et directe. Techniquement précise. Pas de récapitulatifs inutiles.
 | BDD | PostgreSQL 18 · Spring Data JPA · Flyway |
 | Cache / Temps réel | Redis · Spring WebSocket (STOMP) |
 | Auth | Spring Security · JWT · OIDC (compatible tout IdP : Keycloak, Azure AD, Okta…) |
-| Tests | JUnit 5 · Mockito · Testcontainers (TI) · Jest (Angular) · Playwright (E2E) |
+| Tests | JUnit 5 · Mockito · Testcontainers (TI) · Vitest (Angular) · Playwright (E2E) |
 | Observabilité | Spring Actuator · Micrometer · Prometheus |
 | CI/CD | GitHub Actions · SonarCloud · Semantic Release · Plumber |
 | Déploiement | Docker · Docker Compose |
@@ -220,22 +220,24 @@ Tout PR avec :
 
 ---
 
-## Workflow — Vérifications avant push
+## Workflow — Vérifications avant push autonome
+
+**Condition absolue avant tout push autonome : 0 erreur, 0 warning.**
 
 Claude exécute ces commandes **sans attendre d'instruction** :
 
 ```bash
 # Backend
-cd backend
-mvn verify -q
+cd backend && mvn verify -q        # compile + tests + Checkstyle + SpotBugs
 
 # Frontend
 cd frontend
-npm run lint
+npm run lint                        # ESLint + TypeCheck strict (0 warning)
+npm run test:ci                     # Vitest coverage
 npm run build -- --configuration production
 ```
 
-Rapporter ✅ ou erreurs complètes. Si tout est vert → attendre **"go push"**.
+Rapporter ✅ ou stderr complet. Toute erreur ou warning non justifié = **stop, corriger avant push**.
 
 ---
 
@@ -259,7 +261,7 @@ Rapporter ✅ ou erreurs complètes. Si tout est vert → attendre **"go push"**
 
 ## Workflow — Commits
 
-Format Conventional Commits (`type(scope): message`) :
+Format **Conventional Commits** (`type(scope): message`) — alimente Semantic Release pour le versioning automatique (`feat` → minor, `fix` → patch, `feat!` / `BREAKING CHANGE` → major).
 
 | Commit | Contenu typique |
 |--------|----------------|
@@ -280,72 +282,31 @@ Co-author sur chaque commit : `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthro
 
 ## Gates ACDD — Confidence Gates
 
-Inspiré du modèle FLAIR-Security. Chaque gate produit un artifact YAML dans `docs/gates/us-{id}/`.
+Chaque gate produit un artifact YAML dans `docs/gates/us-{id}/`. Score 0–100, jamais booléen.
 
-### Gate 1 — READINESS (avant implémentation)
+| Gate | Moment | Seuils |
+|------|--------|--------|
+| **1 — READINESS** | Avant implémentation | ≥ 70 → Breaking Point 1 · < 70 → clarification PO |
+| **2 — COVERAGE** | Par commit | ≥ 85 → continuer · 70–84 → compléter tests · < 70 → stop |
+| **3 — QUALITY** | Après CI verte | Hard blocks : secret Gitleaks, label `security`/`breaking-change`, modif contrat module/OIDC |
+| **4 — MERGE CONFIDENCE** | Avant merge | ≥ 85 → merge autonome · 60–84 → merge documenté · < 60 → Breaking Point 2 |
 
-| Check | Poids |
-|-------|-------|
-| AC présents, spécifiques, testables | 40 |
-| Pas de dépendance bloquante non résolue | 20 |
-| Impact sur le contrat de module évalué | 15 |
-| AC sécurité présent (≥ 1 par US) | 15 |
-| Pas de dépendance circulaire | 10 |
+**Checks Gate 1 :** AC testables (40) · dépendances résolues (20) · impact contrat module (15) · AC sécurité ≥ 1 (15) · pas de cycle (10)
 
-- Score ≥ 70 → **Breaking Point 1** : présenter à Alexandre pour validation
-- Score < 70 → clarification PO avant tout
+**Checks Gate 2 :** AC couverts (50) · pas de code non testé (30) · tests non triviaux (20)
 
-### Gate 2 — COVERAGE (continu, par commit)
+**Checks Gate 3 :** SonarCloud ≥ 80 % (25) · zéro finding critique/high (25) · linters clean (20) · Gitleaks clean (20) · build Docker (10)
 
-| Check | Poids |
-|-------|-------|
-| AC couvert par au moins un test | 50 |
-| Pas de nouveau code sans test | 30 |
-| Tests significatifs (non triviaux) | 20 |
-
-- ≥ 85 → continuer
-- 70–84 → écrire les tests manquants avant de continuer
-- < 70 → stop, consulter stratégie QA
-
-### Gate 3 — QUALITY (après CI verte)
-
-| Check | Poids |
-|-------|-------|
-| SonarCloud coverage ≥ 80 % code nouveau | 25 |
-| Zéro finding critique/high sécurité | 25 |
-| Linter clean (Checkstyle + ESLint) | 20 |
-| Gitleaks : aucun secret | 20 |
-| Build Docker OK | 10 |
-
-**Hard blocks (score = 0, review humaine immédiate) :**
-- Gitleaks : tout secret détecté
-- Label `security` ou `breaking-change`
-- Modification contrat de module sans PRs coordonnées
-- Modification OIDC / Spring Security / rôles
-
-### Gate 4 — MERGE CONFIDENCE
-
-| Score | Action |
-|-------|--------|
-| ≥ 85 | Merge autonome — commentaire PR + merge |
-| 60–84 | Merge avec doutes documentés dans le commentaire PR |
-| < 60 | `needs-human-review` — **Breaking Point 2**, attendre Alexandre |
-
-**Artifact** `docs/gates/us-{id}/gate-{n}.yaml` :
+**Format artifact** `docs/gates/us-{id}/gate-{n}.yaml` :
 ```yaml
-gate: READINESS
+gate: READINESS          # READINESS | COVERAGE | QUALITY | MERGE_CONFIDENCE
 us_id: 42
 score: 87
 decision: VALIDATE_WITH_PO
 executed_by: Claude
 timestamp: 2026-06-19T10:00Z
-breakdown:
-  ac_quality: 35/40
-  dependencies: 20/20
-  module_contract: 10/15
-  security_ac: 12/15
-  no_circular: 10/10
-notes: "AC sécurité complété : vérification rôle admin avant activation module"
+breakdown: { ... }
+notes: ""
 ```
 
 ---
@@ -354,7 +315,7 @@ notes: "AC sécurité complété : vérification rôle admin avant activation mo
 
 ### Philosophie
 
-Modèle **ACDD (Acceptance Criteria Driven Development)** avec gates de confiance continues.
+**ACDD (Acceptance Criteria Driven Development)** — gates de confiance continues.
 
 - Gates → score (0–100), jamais booléen pass/fail
 - Chaque gate → artifact YAML committé dans `docs/gates/` — pas réponse chat
@@ -400,63 +361,11 @@ AC ambigu à l'implémentation → **stopper et demander au PO Agent** — jamai
 
 ### Artifacts gates
 
-Tous committés dans `docs/gates/us-{id}/`.
-
-```
-docs/gates/
-└── us-42/
-    ├── gate-1.yaml           # Readiness — avant implémentation
-    ├── gate-2-{commit}.yaml  # Coverage — après chaque commit
-    ├── gate-3.yaml           # Quality — après CI verte
-    └── gate-4.yaml           # Merge confidence — décision finale
-```
-
-**Gate 2 — COVERAGE**
-```yaml
-gate: COVERAGE
-us_id: 42
-commit: a3f9c12
-score: 91
-decision: CONTINUE
-executed_by: Claude
-breakdown:
-  ac_covered: 7/8
-  no_untested_code: 28/30
-  test_quality: 18/20
-pending_ac:
-  - "Error case: token expiré retourne 401"
-```
-
-**Gate 3 — QUALITY**
-```yaml
-gate: QUALITY
-us_id: 42
-score: 88
-decision: PASS
-executed_by: Claude
-breakdown:
-  sonarcloud_coverage: 22/25
-  security_findings: 25/25
-  linter: 18/20
-  secrets: 20/20
-  docker_build: 10/10
-```
-
-**Gate 4 — MERGE CONFIDENCE**
-```yaml
-gate: MERGE_CONFIDENCE
-us_id: 42
-score: 91
-decision: AUTO_APPROVED
-executed_by: Claude
-breakdown:
-  gate2_score: 23/25
-  gate3_score: 22/25
-  ac_traceability: 25/25
-  diff_coherence: 14/15
-  commits: 10/10
-merge_commit: feat/us-42 → main
-```
+Structure dans `docs/gates/us-{id}/` :
+- `gate-1.yaml` — Readiness (avant implémentation)
+- `gate-2-{commit}.yaml` — Coverage (après chaque commit)
+- `gate-3.yaml` — Quality (après CI verte)
+- `gate-4.yaml` — Merge confidence (décision finale)
 
 ### Labels PR
 
@@ -480,17 +389,6 @@ merge_commit: feat/us-42 → main
 # 3. Nettoyer la branche
 git push origin --delete feat/us-{id}-{slug}
 ```
-
-### Comparaison PIVOT / BMAD / FLAIR
-
-| Dimension | BMAD | FLAIR | PIVOT |
-|-----------|------|-------|-------|
-| Rôles agents | ✅ | ✅ | ✅ |
-| Gates scorées | ❌ (checklists) | ✅ | ✅ |
-| Artifacts persistants | Partiel | ✅ | ✅ |
-| Breaking Points humains | Fréquents | Gate 4 < 60 + hard blocks | Gate 1 (PO) + Gate 4 < 60 + hard blocks |
-| Merge autonome | ❌ | ✅ (≥ 85) | ✅ (≥ 85) |
-| Backlog | Externe | GitHub Projects | GitHub Issues + Projects |
 
 ---
 
