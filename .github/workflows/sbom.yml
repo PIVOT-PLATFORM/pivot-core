@@ -9,7 +9,7 @@ permissions: read-all
 
 jobs:
   sbom:
-    name: SBOM â€” CycloneDX (Maven + npm)
+    name: SBOM - CycloneDX (Maven + npm)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -28,7 +28,7 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Generate SBOM â€” Backend (Maven CycloneDX)
+      - name: Generate SBOM - Backend (Maven CycloneDX)
         working-directory: backend
         run: |
           mvn --no-transfer-progress org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom \
@@ -47,7 +47,7 @@ jobs:
         working-directory: frontend
         run: npm ci --ignore-scripts
 
-      - name: Generate SBOM â€” Frontend (npm)
+      - name: Generate SBOM - Frontend (npm)
         working-directory: frontend
         run: |
           npm sbom \
@@ -82,7 +82,7 @@ jobs:
             echo "prev_frontend=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Diff SBOMs vs release prÃ©cÃ©dente
+      - name: Diff SBOMs vs release precedente
         env:
           PREV_BACKEND: ${{ steps.prev.outputs.prev_backend }}
           PREV_FRONTEND: ${{ steps.prev.outputs.prev_frontend }}
@@ -110,14 +110,14 @@ jobs:
               tag = os.environ.get("PREV_TAG", "previous release")
               out.write(f'## {label} SBOM diff (vs {tag})\n\n')
               if not (added or removed or changed):
-                  out.write('Aucun changement de dÃ©pendances.\n\n')
+                  out.write('Aucun changement de dependances.\n\n')
                   return
               for k, v in sorted(added.items()):
                   out.write(f'+ {k}  {v}\n')
               for k, v in sorted(removed.items()):
                   out.write(f'- {k}  {v}\n')
               for k, (o, n) in sorted(changed.items()):
-                  out.write(f'~ {k}  {o} â†’ {n}\n')
+                  out.write(f'~ {k}  {o} -> {n}\n')
               out.write('\n')
 
           summary_path = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')

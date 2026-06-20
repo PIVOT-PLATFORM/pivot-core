@@ -1,7 +1,7 @@
-name: DAST â€” Baseline Scan (prod)
+name: DAST - Baseline Scan (prod)
 
-# Scan ZAP sur l'URL de production PIVOT dÃ©ployÃ©e.
-# Non bloquant â€” crÃ©e une issue GitHub si des alertes sont trouvÃ©es.
+# Scan ZAP sur l'URL de production PIVOT deployee.
+# Non bloquant - cree une issue GitHub si des alertes sont trouvees.
 
 on:
   schedule:
@@ -12,7 +12,7 @@ permissions: read-all
 
 jobs:
   zap-baseline:
-    name: ZAP Baseline â€” prod PIVOT
+    name: ZAP Baseline - prod PIVOT
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -33,6 +33,6 @@ jobs:
           target: ${{ secrets.PIVOT_PROD_URL }}
           rules_file_name: '.github/workflows/configuration/zap-rules.tsv'
           fail_action: false
-          issue_title: '[DAST] ZAP Baseline â€” alertes de sÃ©curitÃ© PIVOT'
+          issue_title: '[DAST] ZAP Baseline - alertes de securite PIVOT'
           token: ${{ secrets.GITHUB_TOKEN }}
           artifact_name: zap-baseline-${{ github.run_number }}

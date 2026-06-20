@@ -3,7 +3,15 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
 
 permissions: read-all
 
@@ -12,11 +20,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 1. QUALITÃ‰ CODE â€” BACKEND JAVA
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
+  # 1. QUALITE CODE - BACKEND JAVA
+  # -----------------------------------------
   quality-backend:
-    name: Code Quality â€” Java
+    name: Code Quality - Java
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -36,20 +44,14 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Checkstyle
-        run: mvn --no-transfer-progress checkstyle:check
+      - name: Compile + Checkstyle + SpotBugs
+        run: mvn --no-transfer-progress compile checkstyle:check spotbugs:check
 
-      - name: SpotBugs
-        run: mvn --no-transfer-progress spotbugs:check
-
-      - name: Compile (typecheck)
-        run: mvn --no-transfer-progress compile
-
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 2. QUALITÃ‰ CODE â€” FRONTEND ANGULAR
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
+  # 2. QUALITE CODE - FRONTEND ANGULAR
+  # -----------------------------------------
   quality-frontend:
-    name: Code Quality â€” Angular
+    name: Code Quality - Angular
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -78,9 +80,9 @@ jobs:
       - name: ESLint
         run: npm run lint
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
   # 3. TESTS BACKEND (TU + TI)
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
   tests-backend:
     name: Tests Backend (TU + TI)
     runs-on: ubuntu-latest
@@ -144,9 +146,9 @@ jobs:
           name: backend-coverage
           path: backend/target/site/jacoco/jacoco.xml
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
   # 4. TESTS FRONTEND (Vitest)
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
   tests-frontend:
     name: Tests Frontend (Vitest)
     runs-on: ubuntu-latest
@@ -181,11 +183,11 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage/lcov.info
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
   # 5. E2E PLAYWRIGHT
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
   e2e:
-    name: E2E â€” Playwright
+    name: E2E - Playwright
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: [tests-backend, tests-frontend]
@@ -278,13 +280,13 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 7
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
   # 6. SONARCLOUD
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
   sonar:
     name: SonarCloud Analysis
     runs-on: ubuntu-latest
-    needs: [tests-backend, tests-frontend, e2e]
+    needs: [tests-backend, tests-frontend]
     timeout-minutes: 15
     if: github.actor != 'dependabot[bot]'
 
@@ -323,11 +325,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # 7. SCA â€” AUDIT DÃ‰PENDANCES
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
+  # 7. SCA - AUDIT DEPENDANCES
+  # -----------------------------------------
   sca:
-    name: SCA â€” Dependency Audit
+    name: SCA - Dependency Audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -343,6 +345,13 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
           cache: maven
+
+      - name: Cache NVD database
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.dependency-check/data
+          key: nvd-${{ runner.os }}-${{ hashFiles('backend/pom.xml') }}
+          restore-keys: nvd-${{ runner.os }}-
 
       - name: Maven dependency check (OWASP)
         working-directory: backend

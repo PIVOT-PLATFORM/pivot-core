@@ -1,7 +1,7 @@
 name: E2E
 
 on:
-  workflow_dispatch:  # relance manuelle uniquement â€” E2E automatique gÃ©rÃ© par ci.yml
+  workflow_dispatch:  # relance manuelle uniquement - E2E automatique gere par ci.yml
 
 permissions: read-all
 
@@ -76,7 +76,7 @@ jobs:
           SPRING_DATASOURCE_USERNAME: pivot
           SPRING_DATASOURCE_PASSWORD: pivot_e2e
           SPRING_REDIS_HOST: localhost
-          JWT_SECRET: ci-e2e-secret-key-pivot
+          JWT_SECRET: ci-e2e-standalone-secret-key-for-pivot-application-must-be-at-least-64-chars-xxxxx
         run: java -jar backend/target/*.jar &
 
       - name: Wait for backend

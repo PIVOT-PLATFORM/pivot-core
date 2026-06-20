@@ -60,6 +60,9 @@ jobs:
           npm ci
           npm run build -- --configuration production
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
@@ -67,18 +70,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push Docker images
+      - name: Build & push Docker images (amd64 + arm64)
         run: |
-          docker build -t ghcr.io/${{ github.repository }}/pivot-backend:${{ github.sha }} \
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -t ghcr.io/${{ github.repository }}/pivot-backend:${{ github.sha }} \
             -t ghcr.io/${{ github.repository }}/pivot-backend:latest \
-            backend/
-          docker build -t ghcr.io/${{ github.repository }}/pivot-frontend:${{ github.sha }} \
+            --push backend/
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -t ghcr.io/${{ github.repository }}/pivot-frontend:${{ github.sha }} \
             -t ghcr.io/${{ github.repository }}/pivot-frontend:latest \
-            frontend/
-          docker push ghcr.io/${{ github.repository }}/pivot-backend:${{ github.sha }}
-          docker push ghcr.io/${{ github.repository }}/pivot-backend:latest
-          docker push ghcr.io/${{ github.repository }}/pivot-frontend:${{ github.sha }}
-          docker push ghcr.io/${{ github.repository }}/pivot-frontend:latest
+            --push frontend/
 
       - name: Semantic Release
         env:
@@ -89,12 +90,12 @@ jobs:
         run: |
           find backend/target -name "*.jar" -not -name "*-sources.jar" \
             -exec sha256sum {} \; > build-checksums.txt
-          find frontend/dist -type f -name "*.js" -o -name "*.css" \
+          find frontend/dist -type f \( -name "*.js" -o -name "*.css" \) \
             | sort | xargs sha256sum >> build-checksums.txt
           echo "Checksums generated:"
           cat build-checksums.txt
 
-      - name: Scan Docker images â€” Trivy
+      - name: Scan Docker images - Trivy
         uses: aquasecurity/trivy-action@b2933f565dbc598b29947660e66259e3c7bc8561 # v0.20.0
         with:
           image-ref: ghcr.io/${{ github.repository }}/pivot-backend:${{ github.sha }}
@@ -102,7 +103,6 @@ jobs:
           output: trivy-backend.sarif
           severity: CRITICAL,HIGH
           exit-code: '1'
-        continue-on-error: true
 
       - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3

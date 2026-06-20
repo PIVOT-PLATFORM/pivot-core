@@ -10,11 +10,11 @@ on:
 permissions: read-all
 
 jobs:
-  # ─────────────────────────────────────────
-  # SECRETS — Gitleaks
-  # ─────────────────────────────────────────
+  # 
+  # SECRETS  Gitleaks
+  # 
   gitleaks:
-    name: Gitleaks — Secret Scan
+    name: Gitleaks  Secret Scan
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -35,11 +35,11 @@ jobs:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENCE_KEY }}
           GITLEAKS_CONFIG: .github/workflows/configuration/.gitleaks.toml
 
-  # ─────────────────────────────────────────
-  # SAST — CodeQL (Java + Angular)
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # 
+  # SAST  CodeQL (Java + Angular)
+  # -----------------------------------------
   codeql:
-    name: CodeQL â€” SAST
+    name: CodeQL - SAST
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -78,11 +78,11 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # SAST â€” Semgrep (OWASP + Java + Angular)
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
+  # SAST - Semgrep (OWASP + Java + Angular)
+  # -----------------------------------------
   semgrep:
-    name: Semgrep â€” SAST
+    name: Semgrep - SAST
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -108,11 +108,11 @@ jobs:
             p/javascript
             p/typescript
 
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  # CI/CD CONFORMITÃ‰ â€” Plumber
-  # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  # -----------------------------------------
+  # CI/CD CONFORMITE - Plumber
+  # -----------------------------------------
   plumber:
-    name: Plumber â€” CI/CD Compliance
+    name: Plumber - CI/CD Compliance
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

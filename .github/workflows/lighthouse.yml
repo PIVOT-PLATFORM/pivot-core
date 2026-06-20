@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   lighthouse:
-    name: Lighthouse CI â€” Perf & AccessibilitÃ©
+    name: Lighthouse CI - Perf & Accessibilite
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true
@@ -63,7 +63,7 @@ jobs:
           SPRING_DATASOURCE_USERNAME: pivot
           SPRING_DATASOURCE_PASSWORD: pivot_lighthouse
           SPRING_REDIS_HOST: localhost
-          JWT_SECRET: ci-lighthouse-secret-key
+          JWT_SECRET: ci-lighthouse-audit-secret-key-for-pivot-application-perf-testing-must-be-64-chars-x
           SERVER_PORT: 8080
         run: java -jar backend/target/*.jar &
 
@@ -104,10 +104,10 @@ jobs:
           npx lhci autorun
           npx lhci upload --target=filesystem --outputDir=./lighthouse-reports || true
 
-      - name: Lighthouse â€” rÃ©sumÃ© agrÃ©gÃ©
+      - name: Lighthouse - resume agrege
         if: always()
         run: |
-          echo "## Lighthouse CI â€” RÃ©sultats PIVOT" >> $GITHUB_STEP_SUMMARY
+          echo "## Lighthouse CI - Resultats PIVOT" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Page | Perf | A11y | Bonnes pratiques | SEO |" >> $GITHUB_STEP_SUMMARY
           echo "|------|------|------|------------------|-----|" >> $GITHUB_STEP_SUMMARY
