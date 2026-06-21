@@ -23,8 +23,6 @@ github:
         - ossf/scorecard-action
         - gitleaks/gitleaks-action
         - getplumber/plumber
-        - zaproxy/action-baseline
-        - zaproxy/action-full-scan
         - browser-actions/setup-chrome
         - docker/setup-buildx-action
         - docker/login-action

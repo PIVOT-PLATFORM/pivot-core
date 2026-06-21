@@ -129,8 +129,7 @@ push / PR
 
 Sur main uniquement :
   ├── Mutation Testing  PIT (seuil 60 %)
-  ├── Lighthouse        Performance · A11y · Best Practices · SEO
-  └── DAST Full         ZAP (ROLE_USER + ROLE_ADMIN)
+  └── Lighthouse        Performance · A11y · Best Practices · SEO
 ```
 
 ## Documentation

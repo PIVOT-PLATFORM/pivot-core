@@ -399,8 +399,8 @@ git push origin --delete feat/us-{id}-{slug}
 
 - Pas de secrets dans le code — variables d'environnement
 - Toute action state-changing → log structuré JSON (backend)
-- `// NOSONAR — <justification courte>` (SonarCloud faux positif — justification obligatoire)
-- `// nosemgrep: <rule-id>` (Semgrep faux positif)
+- **`// NOSONAR` : zéro, jamais.** Tout faux positif Sonar se marque côté SonarCloud (UI "Won't fix" / "False positive", ou exclusion centralisée) — aucune exception.
+- **`// nosemgrep` : interdit par défaut**, autorisé **uniquement avec la validation explicite d'Alexandre**. Sans validation, exclusion côté config Semgrep (`.semgrepignore` / `--exclude-rule`), jamais en commentaire inline.
 
 ---
 

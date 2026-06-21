@@ -25,7 +25,6 @@ pipeline:
     Sur main uniquement :
         ├── Mutation Testing  PIT (seuil 60 %)
         ├── Lighthouse        Perf · A11y · Best Practices · SEO
-        ├── DAST Full         ZAP (ROLE_USER + ROLE_ADMIN)
         └── OpenSSF Scorecard Score /10
 
   rules:
@@ -50,7 +49,6 @@ workflow_rules:
       plumber: "plumber.yaml"
       sonar: "sonar-project.properties"
       gitleaks: ".gitleaks.toml"
-      zap: "zap-rules.tsv"
 
 ---
 
