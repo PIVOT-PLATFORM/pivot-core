@@ -264,8 +264,8 @@ DROP TABLE IF EXISTS refresh_tokens CASCADE;
 -- TABLE: access_tokens
 -- ================================================================
 -- Opaque session tokens replacing JWT HS512 (US-AUTH-002).
--- One token per session: UUID hashed SHA-256, admin-configurable TTL,
--- automatic renewal via Spring Security filter.
+-- One token per session: 256-bit SecureRandom value (hex-encoded), stored as its
+-- SHA-256 hash. Admin-configurable TTL, automatic renewal via Spring Security filter.
 CREATE TABLE IF NOT EXISTS access_tokens (
     id                 BIGSERIAL   NOT NULL,
     -- Owner account — cascade delete if account deleted
@@ -293,6 +293,11 @@ CREATE TABLE IF NOT EXISTS access_tokens (
     expires_at         TIMESTAMPTZ NOT NULL,
     -- Revocation timestamp (audit). NULL = not revoked.
     revoked_at         TIMESTAMPTZ,
+    -- Set when the token has been rotated. The row stays 'active' for a short grace
+    -- window (SESSION_ROTATION_GRACE_SECONDS) so in-flight concurrent requests holding
+    -- the old token still authenticate, then it expires naturally. Prevents the
+    -- re-rotation storm + intermittent 401s under concurrency.
+    rotated_at         TIMESTAMPTZ,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT pk_access_tokens PRIMARY KEY (id),
@@ -331,8 +336,10 @@ VALUES
      'Email OTP requis lors de la connexion depuis un nouvel appareil'),
     ('MFA_30DAY_REAUTH_OTP', false, 'false', 'bool',
      'Email OTP requis si dernier appareil de confiance date de plus de 30 jours'),
-    ('SESSION_REFRESH_THRESHOLD', true, '0.5', 'float',
-     'Ratio TTL restant déclenchant le renouvellement automatique de session (ex: 0.5 = 50%)'),
+    ('SESSION_REFRESH_THRESHOLD', true, '0.15', 'float',
+     'Ratio TTL restant déclenchant le renouvellement automatique de session (ex: 0.15 = derniers 15%)'),
+    ('SESSION_ROTATION_GRACE_SECONDS', true, '30', 'int',
+     'Fenêtre de grâce (s) pendant laquelle l''ancien token reste valide après rotation (requêtes concurrentes en vol)'),
     ('SESSION_TTL_SECONDS', true, '86400', 'int',
      'Durée de vie d''une session standard en secondes (86400 = 24h)'),
     ('SESSION_TTL_REMEMBER_ME_SECONDS', true, '2592000', 'int',
@@ -343,6 +350,7 @@ ON CONFLICT (flag_key) DO NOTHING;
 
 -- Update labels for typed flags
 UPDATE feature_flags SET label = 'Seuil renouvellement session'    WHERE flag_key = 'SESSION_REFRESH_THRESHOLD';
+UPDATE feature_flags SET label = 'Fenêtre de grâce rotation (s)'   WHERE flag_key = 'SESSION_ROTATION_GRACE_SECONDS';
 UPDATE feature_flags SET label = 'TTL session standard (s)'        WHERE flag_key = 'SESSION_TTL_SECONDS';
 UPDATE feature_flags SET label = 'TTL session longue durée (s)'    WHERE flag_key = 'SESSION_TTL_REMEMBER_ME_SECONDS';
 UPDATE feature_flags SET label = 'Sessions max par utilisateur'    WHERE flag_key = 'MAX_SESSIONS_PER_USER';

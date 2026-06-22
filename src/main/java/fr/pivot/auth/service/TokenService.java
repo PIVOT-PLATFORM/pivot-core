@@ -44,7 +44,8 @@ public class TokenService {
 
     private static final int DEFAULT_TTL_SECONDS = 86_400;
     private static final int DEFAULT_TTL_REMEMBER_ME_SECONDS = 2_592_000;
-    private static final double DEFAULT_REFRESH_THRESHOLD = 0.5;
+    private static final double DEFAULT_REFRESH_THRESHOLD = 0.15;
+    private static final int DEFAULT_ROTATION_GRACE_SECONDS = 30;
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final HexFormat HEX = HexFormat.of();
@@ -207,9 +208,19 @@ public class TokenService {
      *
      * @return threshold ratio (0.0–1.0) from {@code SESSION_REFRESH_THRESHOLD} flag
      */
-    @Cacheable("feature-flags")
+    @Cacheable(cacheNames = "feature-flags", key = "'session-refresh-threshold'")
     public double getRefreshThreshold() {
         return flagRepo.getFloat("SESSION_REFRESH_THRESHOLD", DEFAULT_REFRESH_THRESHOLD);
+    }
+
+    /**
+     * Returns the grace window during which a rotated token remains valid.
+     *
+     * @return grace window in seconds from {@code SESSION_ROTATION_GRACE_SECONDS} flag
+     */
+    @Cacheable(cacheNames = "feature-flags", key = "'session-rotation-grace-seconds'")
+    public int getRotationGraceSeconds() {
+        return flagRepo.getInt("SESSION_ROTATION_GRACE_SECONDS", DEFAULT_ROTATION_GRACE_SECONDS);
     }
 
     /**
@@ -236,13 +247,20 @@ public class TokenService {
     }
 
     /**
-     * Rotates a token: revokes the existing one and issues a fresh token with the same metadata.
+     * Rotates a token: issues a fresh token with the same metadata and lets the old one
+     * expire after a short grace window.
      *
      * <p>Called by {@code TokenAuthenticationFilter} when the refresh threshold is crossed.
-     * Uses a pessimistic write lock to prevent concurrent rotation on the same token.
-     * Returns empty if the token was already revoked by a concurrent request (race condition
-     * handling) — the caller should treat empty as a no-op; authentication was already
-     * established before rotation was attempted.
+     * A pessimistic write lock serializes concurrent rotation attempts on the same token.
+     *
+     * <p>Rather than revoking the old token immediately (which would 401 in-flight parallel
+     * requests still carrying it), the old token is stamped {@code rotated_at} and its expiry
+     * is shortened to {@code now + SESSION_ROTATION_GRACE_SECONDS}, staying {@code ACTIVE}
+     * during the grace window. {@link AccessToken#needsRefresh(double)} returns {@code false}
+     * once {@code rotated_at} is set, so the old token is never re-rotated.
+     *
+     * <p>Returns empty if the token was already rotated or revoked by a concurrent request —
+     * the caller treats empty as a no-op; authentication was already established beforehand.
      *
      * @param existing the token to replace
      * @return {@link Optional} wrapping the new {@link TokenIssueResult}, or empty if already rotated
@@ -257,20 +275,33 @@ public class TokenService {
                 existing.getUser() != null ? existing.getUser().getId() : "?");
             return Optional.empty();
         }
-        final AccessToken fresh = locked.get();
-        fresh.setStatus(TokenStatus.REVOKED);
-        fresh.setRevokedAt(Instant.now());
-        tokenRepo.save(fresh);
-        LOG.info("event=TOKEN_ROTATED userId={} authMethod={}",
-            fresh.getUser() != null ? fresh.getUser().getId() : "?", fresh.getAuthMethod());
+        final AccessToken old = locked.get();
+        // A concurrent request already rotated this token while we waited on the lock.
+        if (old.getRotatedAt() != null) {
+            LOG.debug("event=TOKEN_ROTATE_SKIPPED reason=already_rotated userId={}",
+                old.getUser() != null ? old.getUser().getId() : "?");
+            return Optional.empty();
+        }
+
+        final Instant now = Instant.now();
+        final Instant graceExpiry = now.plusSeconds(getRotationGraceSeconds());
+        old.setRotatedAt(now);
+        // Keep ACTIVE but shorten expiry to the grace deadline (never extend it).
+        if (old.getExpiresAt().isAfter(graceExpiry)) {
+            old.setExpiresAt(graceExpiry);
+        }
+        tokenRepo.save(old);
+        LOG.info("event=TOKEN_ROTATED userId={} authMethod={} graceSeconds={}",
+            old.getUser() != null ? old.getUser().getId() : "?", old.getAuthMethod(),
+            getRotationGraceSeconds());
         return Optional.of(doIssue(
-            fresh.getUser(),
-            fresh.getDeviceFingerprint(),
-            fresh.getDeviceName(),
-            fresh.getUserAgent(),
-            fresh.getIpAddress(),
-            fresh.getAuthMethod(),
-            fresh.isRememberMe()
+            old.getUser(),
+            old.getDeviceFingerprint(),
+            old.getDeviceName(),
+            old.getUserAgent(),
+            old.getIpAddress(),
+            old.getAuthMethod(),
+            old.isRememberMe()
         ));
     }
 

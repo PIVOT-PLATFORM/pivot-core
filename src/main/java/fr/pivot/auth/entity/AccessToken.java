@@ -19,13 +19,14 @@ import java.time.Instant;
  * One {@code AccessToken} per active session — it acts as both the bearer credential
  * (validated on every API request) and the session persistence mechanism (via httpOnly cookie).
  *
- * <p>The raw token (UUID) is never persisted — only its SHA-256 hash ({@code token_hash}).
+ * <p>The raw token (256 bits of {@link java.security.SecureRandom}, hex-encoded to 64 chars)
+ * is never persisted — only its SHA-256 hash ({@code token_hash}).
  *
  * <p>TTL and auto-refresh threshold are admin-configurable via {@code feature_flags}:
  * <ul>
  *   <li>{@code SESSION_TTL_SECONDS} — default 86400 (24 h)</li>
  *   <li>{@code SESSION_TTL_REMEMBER_ME_SECONDS} — default 2592000 (30 days)</li>
- *   <li>{@code SESSION_REFRESH_THRESHOLD} — default 0.5 (50% remaining TTL)</li>
+ *   <li>{@code SESSION_REFRESH_THRESHOLD} — default 0.15 (refresh in final 15% of TTL)</li>
  * </ul>
  */
 @Entity
@@ -105,6 +106,15 @@ public class AccessToken {
     @Column(name = "revoked_at")
     private Instant revokedAt;
 
+    /**
+     * Timestamp when this token was rotated — null until rotation. A rotated token stays
+     * {@code ACTIVE} for a short grace window so in-flight concurrent requests still
+     * authenticate; {@link #needsRefresh(double)} returns {@code false} once set to prevent
+     * repeated re-rotation.
+     */
+    @Column(name = "rotated_at")
+    private Instant rotatedAt;
+
     // ----------------------------------------------------------------
     // Domain logic
     // ----------------------------------------------------------------
@@ -128,6 +138,11 @@ public class AccessToken {
      * @return {@code true} when the remaining TTL fraction is less than {@code threshold}
      */
     public boolean needsRefresh(final double threshold) {
+        // Already rotated: an in-flight request is using the old token within its grace
+        // window — do not trigger another rotation (prevents the re-rotation storm).
+        if (rotatedAt != null) {
+            return false;
+        }
         final long remainingSeconds = java.time.Duration.between(Instant.now(), expiresAt).getSeconds();
         if (remainingSeconds < 0) {
             return false;
@@ -184,6 +199,9 @@ public class AccessToken {
     /** @return timestamp when the token was revoked, or null if not revoked */
     public Instant getRevokedAt() { return revokedAt; }
 
+    /** @return timestamp when the token was rotated, or null if not yet rotated */
+    public Instant getRotatedAt() { return rotatedAt; }
+
     public void setUser(final User user) { this.user = user; }
     public void setTokenHash(final String tokenHash) { this.tokenHash = tokenHash; }
     public void setDeviceFingerprint(final String deviceFingerprint) { this.deviceFingerprint = deviceFingerprint; }
@@ -197,4 +215,5 @@ public class AccessToken {
     public void setLastUsedAt(final Instant lastUsedAt) { this.lastUsedAt = lastUsedAt; }
     public void setExpiresAt(final Instant expiresAt) { this.expiresAt = expiresAt; }
     public void setRevokedAt(final Instant revokedAt) { this.revokedAt = revokedAt; }
+    public void setRotatedAt(final Instant rotatedAt) { this.rotatedAt = rotatedAt; }
 }

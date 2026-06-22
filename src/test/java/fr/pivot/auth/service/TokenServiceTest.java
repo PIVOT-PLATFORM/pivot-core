@@ -236,7 +236,27 @@ class TokenServiceTest {
 
         assertThat(result).isPresent();
         assertThat(result.get().rawToken()).isNotEqualTo(raw);
-        assertThat(existing.getStatus()).isEqualTo(TokenStatus.REVOKED);
+        // Grace window: the old token stays ACTIVE but is stamped rotated_at and its expiry is
+        // shortened so in-flight concurrent requests still authenticate, then it dies shortly.
+        assertThat(existing.getStatus()).isEqualTo(TokenStatus.ACTIVE);
+        assertThat(existing.getRotatedAt()).isNotNull();
+        assertThat(existing.getExpiresAt()).isBeforeOrEqualTo(Instant.now().plusSeconds(31));
+    }
+
+    @Test
+    void rotate_returnsEmpty_whenAlreadyRotated() {
+        final String raw = "rotated-raw";
+        final AccessToken existing = validToken(raw, 3600);
+        existing.setUser(user);
+        existing.setRotatedAt(Instant.now());
+
+        when(tokenRepo.findByTokenHashAndStatusForUpdate(existing.getTokenHash(), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(existing));
+
+        final Optional<TokenService.TokenIssueResult> result = tokenService.rotate(existing);
+
+        assertThat(result).isEmpty();
+        verify(tokenRepo, never()).save(any());
     }
 
     @Test
