@@ -87,6 +87,18 @@ public interface AccessTokenRepository extends JpaRepository<AccessToken, Long> 
         @Param("revoked") TokenStatus revoked);
 
     /**
+     * Updates {@code last_used_at} for a single token by id — used by the asynchronous,
+     * throttled activity touch so a read-only validate() never opens a write transaction
+     * on the request thread.
+     *
+     * @param id  the token primary key
+     * @param now the timestamp to store
+     */
+    @Modifying
+    @Query("UPDATE AccessToken t SET t.lastUsedAt = :now WHERE t.id = :id")
+    void updateLastUsedAt(@Param("id") Long id, @Param("now") Instant now);
+
+    /**
      * Counts active sessions for a user — used to enforce MAX_SESSIONS_PER_USER.
      */
     long countByUserIdAndStatus(Long userId, TokenStatus status);

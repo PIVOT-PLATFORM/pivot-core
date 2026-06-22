@@ -57,12 +57,13 @@ class TokenServiceTest {
     @Mock private MeterRegistry meterRegistry;
     @Mock private Counter meterCounter;
     @Mock private User user;
+    @Mock private TokenService self;
 
     private TokenService tokenService;
 
     @BeforeEach
     void setUp() {
-        tokenService = new TokenService(tokenRepo, flagRepo, meterRegistry);
+        tokenService = new TokenService(tokenRepo, flagRepo, meterRegistry, self, 60L);
         Mockito.lenient().when(user.getId()).thenReturn(42L);
         Mockito.lenient().when(user.getEmail()).thenReturn("test@pivot.app");
         // Mockito 5 does NOT delegate to default interface methods — wire them explicitly.
@@ -144,25 +145,25 @@ class TokenServiceTest {
         final AccessToken stored = validToken(raw, 3600);
         when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
             .thenReturn(Optional.of(stored));
-        when(tokenRepo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         final Optional<AccessToken> result = tokenService.validate(raw);
 
         assertThat(result).isPresent();
-        verify(tokenRepo).save(stored);
+        // last_used_at is no longer written synchronously on the validate path.
+        verify(tokenRepo, never()).save(stored);
     }
 
     @Test
-    void validate_updatesLastUsedAt_whenValid() {
+    void validate_dispatchesAsyncLastUsedTouch_whenValid() {
         final String raw = "track-me";
         final AccessToken stored = validToken(raw, 3600);
         when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
             .thenReturn(Optional.of(stored));
-        when(tokenRepo.save(any())).thenAnswer(i -> i.getArgument(0));
 
         tokenService.validate(raw);
 
-        assertThat(stored.getLastUsedAt()).isNotNull();
+        // Activity update is dispatched asynchronously via the self proxy (UPDATE by id).
+        verify(self).touchLastUsed(any(), any());
     }
 
     @Test

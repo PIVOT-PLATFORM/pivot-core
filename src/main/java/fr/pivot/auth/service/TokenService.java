@@ -10,9 +10,13 @@ import fr.pivot.auth.util.CryptoUtils;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
@@ -55,19 +59,33 @@ public class TokenService {
     private final MeterRegistry meterRegistry;
 
     /**
+     * Self-reference (proxied) used to invoke the {@code @Async} activity touch through the
+     * Spring proxy — a direct call would bypass it and run synchronously.
+     */
+    private final TokenService self;
+
+    private final long lastUsedThrottleSeconds;
+
+    /**
      * Constructs the service with its required repositories and metrics registry.
      *
-     * @param tokenRepo     JPA repository for {@link AccessToken}
-     * @param flagRepo      JPA repository for {@link fr.pivot.auth.entity.FeatureFlag}
-     * @param meterRegistry Micrometer registry for operational metrics
+     * @param tokenRepo               JPA repository for {@link AccessToken}
+     * @param flagRepo                JPA repository for {@link fr.pivot.auth.entity.FeatureFlag}
+     * @param meterRegistry           Micrometer registry for operational metrics
+     * @param self                    self proxy for async dispatch
+     * @param lastUsedThrottleSeconds minimum seconds between two {@code last_used_at} writes
      */
     public TokenService(
             final AccessTokenRepository tokenRepo,
             final FeatureFlagRepository flagRepo,
-            final MeterRegistry meterRegistry) {
+            final MeterRegistry meterRegistry,
+            final @Lazy TokenService self,
+            @Value("${pivot.auth.last-used-throttle-seconds:60}") final long lastUsedThrottleSeconds) {
         this.tokenRepo = tokenRepo;
         this.flagRepo = flagRepo;
         this.meterRegistry = meterRegistry;
+        this.self = self;
+        this.lastUsedThrottleSeconds = lastUsedThrottleSeconds;
     }
 
     /**
@@ -190,17 +208,30 @@ public class TokenService {
             return Optional.empty();
         }
 
-        // Throttle last_used_at updates — only write if null or > 60s since last update
+        // Throttle last_used_at updates — only write if null or beyond the throttle window.
+        // Dispatched asynchronously (REQUIRES_NEW UPDATE-by-id) so this validation path never
+        // opens a write transaction on the request thread (no per-request write amplification).
         final Instant now = Instant.now();
-        final boolean shouldUpdate = token.getLastUsedAt() == null ||
-            java.time.Duration.between(token.getLastUsedAt(), now).getSeconds() > 60;
+        final boolean shouldUpdate = token.getLastUsedAt() == null
+            || java.time.Duration.between(token.getLastUsedAt(), now).getSeconds() > lastUsedThrottleSeconds;
         if (shouldUpdate) {
-            token.setLastUsedAt(now);
-            tokenRepo.save(token);
+            self.touchLastUsed(token.getId(), now);
         }
 
         LOG.debug("event=TOKEN_VALID userId={}", token.getUser() != null ? token.getUser().getId() : "?");
         return Optional.of(token);
+    }
+
+    /**
+     * Asynchronously records a token's last activity timestamp in its own transaction.
+     *
+     * @param tokenId the token primary key
+     * @param when    the activity timestamp
+     */
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void touchLastUsed(final Long tokenId, final Instant when) {
+        tokenRepo.updateLastUsedAt(tokenId, when);
     }
 
     /**
