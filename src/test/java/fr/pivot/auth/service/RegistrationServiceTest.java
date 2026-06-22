@@ -88,15 +88,19 @@ class RegistrationServiceTest {
     }
 
     @Test
-    void register_throws409_whenEmailAlreadyExists() {
+    void register_isNeutral_whenEmailAlreadyExists() {
+        // Anti-enumeration: no 409. The existing owner is notified, no new account is created,
+        // and the BCrypt decoy work still runs to equalize response time.
         when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);
-        when(userRepo.existsByTenantIdAndEmailAndDeletedAtIsNull(1L, "user@x.com")).thenReturn(true);
+        when(userRepo.findByTenantIdAndEmailAndDeletedAtIsNull(1L, "user@x.com"))
+            .thenReturn(Optional.of(realUser()));
 
-        final RegisterRequest r = req();
-        assertThatThrownBy(() -> service.register(r, "ip", "ua"))
-            .isInstanceOf(ResponseStatusException.class)
-            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
-            .isEqualTo(HttpStatus.CONFLICT);
+        service.register(req(), "ip", "ua");
+
+        verify(emailService).sendAccountExistsEmail(eq("user@x.com"), eq("Alice"));
+        verify(passwordEncoder).encode(anyString());
+        verify(userRepo, never()).save(any(User.class));
+        verify(emailService, never()).sendVerificationEmail(anyString(), anyString(), anyString());
     }
 
     @Test

@@ -53,6 +53,8 @@ public class SessionService {
     private static final Duration LOGIN_WINDOW = Duration.ofMinutes(15);
     private static final int DEVICE_OTP_MAX = 5;
     private static final Duration DEVICE_OTP_WINDOW = Duration.ofMinutes(15);
+    /** Hard cap on wrong OTP submissions for a single pending device-verification token. */
+    private static final int DEVICE_OTP_MAX_ATTEMPTS = 5;
     private static final int SESSION_RESTORE_MAX = 30;
     private static final Duration SESSION_RESTORE_WINDOW = Duration.ofMinutes(5);
 
@@ -70,6 +72,12 @@ public class SessionService {
     private final long deviceVerifyTtlMinutes;
 
     private final SecureRandom secureRandom = new SecureRandom();
+
+    /**
+     * Pre-computed BCrypt hash used as a decoy when the email is unknown, so the response
+     * time of a failed login is the same whether or not the account exists (no timing oracle).
+     */
+    private final String dummyPasswordHash;
 
     /**
      * Constructs the service with its required collaborators.
@@ -109,6 +117,7 @@ public class SessionService {
         this.trustedDeviceService = trustedDeviceService;
         this.auditService = auditService;
         this.deviceVerifyTtlMinutes = deviceVerifyTtlMinutes;
+        this.dummyPasswordHash = passwordEncoder.encode("pivot-timing-equalizer-decoy");
     }
 
     /**
@@ -137,7 +146,13 @@ public class SessionService {
         final User user = userRepo.findByTenantIdAndEmailAndDeletedAtIsNull(tenant.getId(), req.email().toLowerCase())
             .orElse(null);
 
-        if (user == null || !passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+        // Always run BCrypt — against the real hash, or a decoy when the email is unknown —
+        // so the response time does not reveal whether the account exists (no enumeration oracle).
+        final boolean credentialsValid = user != null
+            ? passwordEncoder.matches(req.password(), user.getPasswordHash())
+            : runDecoyPasswordCheck(req.password());
+
+        if (!credentialsValid) {
             rateLimiter.recordAttempt(rateLimiter.loginIpBucket(ip), LOGIN_WINDOW);
             rateLimiter.recordAttempt(rateLimiter.loginEmailBucket(req.email()), LOGIN_WINDOW);
             auditService.log(user, AuditService.LOGIN_FAILED, ip, userAgent);
@@ -207,6 +222,13 @@ public class SessionService {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
         }
 
+        // Hard per-token guard: once the wrong-OTP cap is hit, this token is burned even if
+        // the Redis IP/user limiter window has rolled over (defence in depth).
+        if (dvt.getAttempts() >= DEVICE_OTP_MAX_ATTEMPTS) {
+            LOG.warn("event=DEVICE_OTP_LOCKED userId={} attempts={}", dvt.getUser().getId(), dvt.getAttempts());
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Trop de tentatives OTP");
+        }
+
         if (!dvt.getOtpHash().equals(fr.pivot.auth.util.CryptoUtils.sha256(req.otp()))) {
             dvt.setAttempts(dvt.getAttempts() + 1);
             deviceVerifyRepo.save(dvt);
@@ -255,10 +277,11 @@ public class SessionService {
      */
     @Transactional
     public LoginResult restoreSession(final String rawCookieToken, final String ip, final String userAgent) {
-        if (!rateLimiter.isAllowed(rateLimiter.loginIpBucket(ip), SESSION_RESTORE_MAX, SESSION_RESTORE_WINDOW)) {
+        if (!rateLimiter.isAllowed(rateLimiter.sessionRestoreBucket(ip), SESSION_RESTORE_MAX, SESSION_RESTORE_WINDOW)) {
             LOG.warn("event=SESSION_RESTORE_RATE_LIMITED ip={}", ip);
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
         }
+        rateLimiter.recordAttempt(rateLimiter.sessionRestoreBucket(ip), SESSION_RESTORE_WINDOW);
         final fr.pivot.auth.entity.AccessToken token = tokenService.validate(rawCookieToken)
             .orElseThrow(() -> {
                 LOG.warn("event=SESSION_RESTORE_FAILED reason=invalid_token ip={}", ip);
@@ -313,6 +336,18 @@ public class SessionService {
         deviceVerifyRepo.save(dvt);
         emailService.sendDeviceVerifyEmail(user.getEmail(), user.getFirstName(), otp, deviceName);
         auditService.log(user, AuditService.DEVICE_OTP_SENT, ip, userAgent);
+    }
+
+    /**
+     * Runs a BCrypt comparison against a decoy hash to burn the same CPU time as a real
+     * password check. Always returns {@code false} — used when the email is unknown.
+     *
+     * @param rawPassword the submitted password (compared against the decoy hash)
+     * @return always {@code false}
+     */
+    private boolean runDecoyPasswordCheck(final String rawPassword) {
+        passwordEncoder.matches(rawPassword, dummyPasswordHash);
+        return false;
     }
 
     private Tenant saasDefaultTenant() {

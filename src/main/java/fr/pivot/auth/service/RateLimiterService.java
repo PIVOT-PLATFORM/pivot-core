@@ -68,6 +68,7 @@ public class RateLimiterService {
 
     /** Buckets used across the auth flow */
     public String loginIpBucket(String ip) { return "login:ip:" + ip; }
+    public String sessionRestoreBucket(String ip) { return "session-restore:ip:" + ip; }
     public String loginEmailBucket(String email) { return "login:email:" + email; }
     public String registerIpBucket(String ip) { return "register:ip:" + ip; }
     public String forgotPasswordBucket(String ip) { return "forgot:ip:" + ip; }

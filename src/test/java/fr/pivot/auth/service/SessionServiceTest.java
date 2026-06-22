@@ -67,6 +67,7 @@ class SessionServiceTest {
         when(rateLimiter.loginIpBucket(anyString())).thenReturn("login:ip");
         when(rateLimiter.loginEmailBucket(anyString())).thenReturn("login:email");
         when(rateLimiter.deviceOtpBucket(anyString())).thenReturn("device-otp");
+        when(rateLimiter.sessionRestoreBucket(anyString())).thenReturn("session-restore:ip");
         when(rateLimiter.isAllowed(anyString(), anyInt(), any())).thenReturn(true);
         when(tenantRepo.findBySlug("pivot-saas")).thenReturn(Optional.of(tenant));
         when(tenant.getId()).thenReturn(1L);

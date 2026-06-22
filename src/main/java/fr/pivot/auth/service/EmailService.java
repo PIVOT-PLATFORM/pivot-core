@@ -60,6 +60,22 @@ public class EmailService {
                    "deviceName", deviceName != null ? deviceName : "appareil inconnu"));
     }
 
+    /**
+     * Notifies an address that a registration was attempted but an account already exists.
+     * Sent instead of returning a 409 to the client, to avoid email enumeration (RGPD).
+     *
+     * @param to        the existing account's email address
+     * @param firstName the account holder's first name (may be {@code null})
+     */
+    @Async
+    public void sendAccountExistsEmail(String to, String firstName) {
+        send(to, "Vous avez déjà un compte — PIVOT",
+            "email/account-exists",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : "là",
+                   "loginUrl", appUrl + "/auth/login",
+                   "resetUrl", appUrl + "/auth/forgot-password"));
+    }
+
     @Async
     public void sendWelcomeEmail(String to, String firstName) {
         send(to, "Bienvenue sur PIVOT !",

@@ -81,13 +81,15 @@ public class RegistrationService {
     /**
      * Registers a new user account on the default SaaS tenant.
      *
-     * <p>Sends a verification email. Returns 409 on duplicate email (email enumeration
-     * mitigated: caller should return the same "check your inbox" message to the client).
+     * <p>Always responds the same way ("check your inbox") regardless of whether the email is
+     * already taken — no 409 — to avoid email enumeration (RGPD Art. 5.1c). On a duplicate the
+     * existing owner is notified by email instead, and the same BCrypt work is performed so the
+     * response time does not leak account existence.
      *
      * @param req       registration payload (email, password, first/last name)
      * @param ip        client IP for rate limiting and audit
      * @param userAgent browser user-agent for audit
-     * @throws ResponseStatusException 409 on duplicate email, 429 on rate limit
+     * @throws ResponseStatusException 429 on rate limit
      */
     @Transactional
     public void register(final RegisterRequest req, final String ip, final String userAgent) {
@@ -96,14 +98,22 @@ public class RegistrationService {
         }
 
         final Tenant tenant = saasDefaultTenant();
+        final String email = req.email().toLowerCase();
 
-        if (userRepo.existsByTenantIdAndEmailAndDeletedAtIsNull(tenant.getId(), req.email().toLowerCase())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already registered");
+        final User existing = userRepo
+            .findByTenantIdAndEmailAndDeletedAtIsNull(tenant.getId(), email)
+            .orElse(null);
+        if (existing != null) {
+            // Neutral response: burn the same BCrypt time as a real signup, notify the real
+            // owner, and return as if the account had just been created — no enumeration.
+            passwordEncoder.encode(req.password());
+            emailService.sendAccountExistsEmail(email, existing.getFirstName());
+            return;
         }
 
         User user = new User();
         user.setTenant(tenant);
-        user.setEmail(req.email().toLowerCase());
+        user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(req.password()));
         user.setFirstName(req.firstName());
         user.setLastName(req.lastName());
