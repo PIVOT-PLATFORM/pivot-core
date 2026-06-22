@@ -119,10 +119,17 @@ public class SessionService {
         this.trustedDeviceService = trustedDeviceService;
         this.auditService = auditService;
         this.deviceVerifyTtlMinutes = deviceVerifyTtlMinutes;
-        // Falls back to a dev-only key when unset; override via PIVOT_AUTH_OTP_SECRET in prod.
-        this.otpSecret = (otpSecret == null || otpSecret.isBlank())
-            ? "pivot-dev-otp-secret-change-me" : otpSecret;
-        this.dummyPasswordHash = passwordEncoder.encode("pivot-timing-equalizer-decoy");
+        if (otpSecret == null || otpSecret.isBlank()) {
+            // No hardcoded fallback secret: generate an ephemeral per-boot key. OTPs hashed with
+            // it stop verifying after a restart (acceptable in dev — 15 min TTL). Set
+            // PIVOT_AUTH_OTP_SECRET in production for a stable key across instances/restarts.
+            this.otpSecret = fr.pivot.auth.util.CryptoUtils.generateSecureToken();
+            LOG.warn("event=OTP_SECRET_EPHEMERAL reason=pivot.auth.otp-secret_unset");
+        } else {
+            this.otpSecret = otpSecret;
+        }
+        // Decoy hash for the unknown-email timing path — random content (value is irrelevant).
+        this.dummyPasswordHash = passwordEncoder.encode(fr.pivot.auth.util.CryptoUtils.generateSecureToken());
     }
 
     /**

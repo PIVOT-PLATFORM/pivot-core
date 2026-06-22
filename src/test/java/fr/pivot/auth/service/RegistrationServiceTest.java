@@ -97,7 +97,7 @@ class RegistrationServiceTest {
 
         service.register(req(), "ip", "ua");
 
-        verify(emailService).sendAccountExistsEmail(eq("user@x.com"), eq("Alice"));
+        verify(emailService).sendAccountExistsEmail("user@x.com", "Alice");
         verify(passwordEncoder).encode(anyString());
         verify(userRepo, never()).save(any(User.class));
         verify(emailService, never()).sendVerificationEmail(anyString(), anyString(), anyString());

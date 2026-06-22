@@ -13,10 +13,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * Integration tests for {@link TokenService} against a real PostgreSQL instance (US-AUTH-002).
@@ -100,7 +102,7 @@ class TokenServiceIntegrationTest extends AbstractIntegrationTest {
     // ----------------------------------------------------------------
 
     @Test
-    void validate_returnsToken_andUpdatesLastUsedAt_asynchronously() throws InterruptedException {
+    void validate_returnsToken_andUpdatesLastUsedAt_asynchronously() {
         final TokenService.TokenIssueResult issued = tokenService.issue(
             testUser, null, null, "ua", "127.0.0.1", AuthMethod.PASSWORD, false);
 
@@ -108,15 +110,10 @@ class TokenServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(validated).isPresent();
         final Long tokenId = validated.get().getId();
 
-        // last_used_at is written asynchronously (UPDATE by id, REQUIRES_NEW) — poll the DB.
-        Instant lastUsed = null;
-        for (int i = 0; i < 50 && lastUsed == null; i++) {
-            lastUsed = tokenRepo.findById(tokenId).orElseThrow().getLastUsedAt();
-            if (lastUsed == null) {
-                Thread.sleep(100);
-            }
-        }
-        assertThat(lastUsed).as("last_used_at written by async touch").isNotNull();
+        // last_used_at is written asynchronously (UPDATE by id, REQUIRES_NEW) — await the DB.
+        await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(100))
+            .untilAsserted(() -> assertThat(
+                tokenRepo.findById(tokenId).orElseThrow().getLastUsedAt()).isNotNull());
     }
 
     @Test

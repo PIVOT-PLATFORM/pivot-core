@@ -315,7 +315,9 @@ public class TokenService {
         }
 
         final Instant now = Instant.now();
-        final Instant graceExpiry = now.plusSeconds(getRotationGraceSeconds());
+        // Via the proxy so the @Cacheable flag value is read from the cache, not recomputed.
+        final int graceSeconds = self.getRotationGraceSeconds();
+        final Instant graceExpiry = now.plusSeconds(graceSeconds);
         old.setRotatedAt(now);
         // Keep ACTIVE but shorten expiry to the grace deadline (never extend it).
         if (old.getExpiresAt().isAfter(graceExpiry)) {
@@ -324,7 +326,7 @@ public class TokenService {
         tokenRepo.save(old);
         LOG.info("event=TOKEN_ROTATED userId={} authMethod={} graceSeconds={}",
             old.getUser() != null ? old.getUser().getId() : "?", old.getAuthMethod(),
-            getRotationGraceSeconds());
+            graceSeconds);
         return Optional.of(doIssue(
             old.getUser(),
             old.getDeviceFingerprint(),
