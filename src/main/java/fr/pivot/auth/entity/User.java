@@ -1,7 +1,16 @@
 package fr.pivot.auth.entity;
 
 import fr.pivot.tenant.entity.Tenant;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 import java.time.Instant;
 
 @Entity
@@ -40,6 +49,14 @@ public class User {
     @Column(name = "oidc_subject", length = 500)
     private String oidcSubject;
 
+    /** Preferred UI language (i18n). Defaults to French. */
+    @Column(nullable = false, length = 10)
+    private String locale = "fr";
+
+    /** Profile photo URL provided by Google OAuth / OIDC ({@code picture} claim). */
+    @Column(name = "avatar_url", columnDefinition = "TEXT")
+    private String avatarUrl;
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
@@ -77,9 +94,12 @@ public class User {
     public boolean isEmailVerified() { return emailVerified; }
     public String getGoogleId() { return googleId; }
     public String getOidcSubject() { return oidcSubject; }
+    public String getLocale() { return locale; }
+    public String getAvatarUrl() { return avatarUrl; }
     public boolean isActive() { return active; }
     public boolean isBlocked() { return blocked; }
     public Instant getLastLoginAt() { return lastLoginAt; }
+    public Instant getInactivityWarningSentAt() { return inactivityWarningSentAt; }
     public Instant getDeletedAt() { return deletedAt; }
     public Instant getScheduledDeletionAt() { return scheduledDeletionAt; }
     public Instant getCreatedAt() { return createdAt; }
@@ -94,6 +114,8 @@ public class User {
     public void setEmailVerified(boolean emailVerified) { this.emailVerified = emailVerified; }
     public void setGoogleId(String googleId) { this.googleId = googleId; }
     public void setOidcSubject(String oidcSubject) { this.oidcSubject = oidcSubject; }
+    public void setLocale(String locale) { this.locale = locale; }
+    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
     public void setActive(boolean active) { this.active = active; }
     public void setBlocked(boolean blocked) { this.blocked = blocked; }
     public void setLastLoginAt(Instant lastLoginAt) { this.lastLoginAt = lastLoginAt; }

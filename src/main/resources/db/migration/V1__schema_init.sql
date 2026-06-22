@@ -94,9 +94,9 @@ CREATE TABLE IF NOT EXISTS users (
     locale                      VARCHAR(10)  NOT NULL DEFAULT 'fr',
     -- Profile photo URL (provided by Google OAuth / OIDC)
     avatar_url                  TEXT,
-    -- Brute-force protection: consecutive failure count + temporary lock.
-    -- Redis rate-limiter manages sliding window; these columns persist
-    -- state for audit and admin unblocking.
+    -- Brute-force protection. Lockout is currently enforced solely by the Redis
+    -- sliding-window rate limiter (RateLimiterService); these columns are RESERVED
+    -- for a future durable audit / admin-unblock feature and are not yet written.
     failed_login_attempts       INT          NOT NULL DEFAULT 0,
     locked_until                TIMESTAMPTZ,
     last_login_at               TIMESTAMPTZ,
