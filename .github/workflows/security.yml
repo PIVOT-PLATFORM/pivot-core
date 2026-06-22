@@ -1,17 +1,13 @@
 name: Security
 
 on:
+  # No paths-ignore here: workflows that upload code-scanning SARIF (CodeQL, Semgrep,
+  # Plumber) must run on every push/PR. Skipping on doc-only changes leaves a configuration
+  # without results, which makes code scanning report "configuration not found" and prevents
+  # it from diffing alerts introduced by a pull request.
   push:
     branches: [main, develop]
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - '.github/ISSUE_TEMPLATE/**'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - '.github/ISSUE_TEMPLATE/**'
   schedule:
     - cron: '0 6 * * 1'   # Lundi 6h UTC
 
