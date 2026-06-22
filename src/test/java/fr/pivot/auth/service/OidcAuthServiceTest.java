@@ -93,6 +93,19 @@ class OidcAuthServiceTest {
     }
 
     @Test
+    void exchange_throws403_whenOidcConfigInactive() {
+        when(tenantRepo.findBySlug("acme")).thenReturn(Optional.of(tenant));
+        when(oidcConfigRepo.findByTenantId(1L)).thenReturn(Optional.of(oidcConfig));
+        when(oidcConfig.isActive()).thenReturn(false);
+
+        final OidcExchangeRequest r = req();
+        assertThatThrownBy(() -> service.exchange(r, "ip", "ua"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void getClientConfig_returnsConfig_whenFound() {
         when(tenantRepo.findBySlug("acme")).thenReturn(Optional.of(tenant));
         when(oidcConfigRepo.findByTenantId(1L)).thenReturn(Optional.of(oidcConfig));

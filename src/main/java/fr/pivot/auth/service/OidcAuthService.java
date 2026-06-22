@@ -13,14 +13,23 @@ import fr.pivot.tenant.repository.TenantRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtDecoders;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Handles enterprise OIDC (OpenID Connect) authentication via the PKCE flow.
@@ -46,6 +55,14 @@ public class OidcAuthService {
     private final AuditService auditService;
     private final TrustedDeviceService trustedDeviceService;
     private final RateLimiterService rateLimiter;
+
+    /**
+     * Per-IdP {@link JwtDecoder} cache. OIDC discovery ({@code .well-known} + JWKS fetch)
+     * is a network round-trip — caching avoids performing it on every {@link #exchange}
+     * call (notably inside the surrounding {@code @Transactional}). Keyed by
+     * issuer + client + Azure tenant so distinct tenants never share a validator chain.
+     */
+    private final Map<String, JwtDecoder> decoderCache = new ConcurrentHashMap<>();
 
     /**
      * Constructs the service with its required collaborators.
@@ -101,10 +118,14 @@ public class OidcAuthService {
         final TenantOidcConfig config = oidcConfigRepo.findByTenantId(tenant.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "OIDC non configuré pour ce tenant"));
 
+        if (!config.isActive()) {
+            LOG.warn("event=OIDC_CONFIG_INACTIVE tenant={}", req.tenantSlug());
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Fournisseur OIDC désactivé pour ce tenant");
+        }
+
         final Jwt jwt;
         try {
-            final JwtDecoder decoder = JwtDecoders.fromIssuerLocation(config.getIssuerUri());
-            jwt = decoder.decode(req.accessToken());
+            jwt = decoderFor(config).decode(req.accessToken());
         } catch (final Exception e) {
             LOG.warn("event=OIDC_TOKEN_INVALID tenant={} reason={}", req.tenantSlug(), e.getMessage());
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token OIDC invalide");
@@ -171,6 +192,40 @@ public class OidcAuthService {
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
+
+    /**
+     * Returns a cached {@link JwtDecoder} for the tenant's IdP, building it on first use.
+     *
+     * <p>The validator chain enforces, beyond the default signature + issuer + expiry checks:
+     * <ul>
+     *   <li><b>audience</b> — the {@code aud} claim must contain the tenant's {@code client_id},
+     *       rejecting tokens minted by the same IdP for a different client (cross-client bypass);</li>
+     *   <li><b>Azure {@code tid}</b> — when {@code azure_tenant_id} is configured, the token's
+     *       {@code tid} claim must match it, blocking tokens from other Azure AD tenants.</li>
+     * </ul>
+     *
+     * @param config the tenant's OIDC configuration
+     * @return a validating decoder, cached per issuer + client + Azure tenant
+     */
+    private JwtDecoder decoderFor(final TenantOidcConfig config) {
+        final String cacheKey = config.getIssuerUri() + '|' + config.getClientId()
+            + '|' + config.getAzureTenantId();
+        return decoderCache.computeIfAbsent(cacheKey, key -> {
+            final NimbusJwtDecoder decoder =
+                (NimbusJwtDecoder) JwtDecoders.fromIssuerLocation(config.getIssuerUri());
+
+            final List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
+            validators.add(JwtValidators.createDefaultWithIssuer(config.getIssuerUri()));
+            validators.add(new JwtClaimValidator<List<String>>(
+                "aud", aud -> aud != null && aud.contains(config.getClientId())));
+            if (config.getAzureTenantId() != null && !config.getAzureTenantId().isBlank()) {
+                validators.add(new JwtClaimValidator<String>(
+                    "tid", tid -> config.getAzureTenantId().equals(tid)));
+            }
+            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
+            return decoder;
+        });
+    }
 
     private User createOidcUser(final Tenant tenant, final String subject,
                                  final String email, final String firstName, final String lastName) {
