@@ -128,7 +128,10 @@ jobs:
   # -----------------------------------------
   # CI/CD CONFORMITE — Plumber
   # -----------------------------------------
-  plumber-compliance:
+  # Job id MUST stay "plumber": GitHub code scanning derives the analysis configuration
+  # from "<workflow>:<job_id>" (security.yml:plumber). Renaming it breaks the diff against
+  # the baseline on main and triggers "1 configuration not found".
+  plumber:
     name: Plumber - CI/CD Compliance
     runs-on: ubuntu-latest
     timeout-minutes: 10
