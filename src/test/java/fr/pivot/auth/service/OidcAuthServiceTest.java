@@ -13,13 +13,27 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.jwt.JwtValidationException;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.security.KeyPairGenerator;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
+import java.time.Instant;
+import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -49,7 +63,8 @@ class OidcAuthServiceTest {
     @BeforeEach
     void setUp() {
         service = new OidcAuthService(tenantRepo, oidcConfigRepo, userRepo, tokenService,
-            auditService, trustedDeviceService, rateLimiter);
+            auditService, trustedDeviceService, rateLimiter,
+            tools.jackson.databind.json.JsonMapper.builder().build());
         when(rateLimiter.checkAndRecord(anyString(), anyInt(), any())).thenReturn(true);
         when(tenant.getId()).thenReturn(1L);
     }
@@ -139,5 +154,66 @@ class OidcAuthServiceTest {
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    // ----------------------------------------------------------------
+    // Audience validation (Red Team merge condition) — exercises the exact
+    // validator chain built by OidcAuthService.oidcValidator against a locally
+    // signed token, with no network discovery.
+    // ----------------------------------------------------------------
+
+    private static final String ISSUER = "https://idp.example.com";
+    private static final String CLIENT_ID = "pivot-client";
+
+    @Test
+    void oidcValidator_rejectsToken_withWrongAudience() throws Exception {
+        final var kp = rsaKeyPair();
+        final NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey((RSAPublicKey) kp.getPublic()).build();
+        when(oidcConfig.getIssuerUri()).thenReturn(ISSUER);
+        when(oidcConfig.getClientId()).thenReturn(CLIENT_ID);
+        when(oidcConfig.getAzureTenantId()).thenReturn(null);
+        decoder.setJwtValidator(service.oidcValidator(oidcConfig));
+
+        final String token = signToken((RSAPrivateKey) kp.getPrivate(), List.of("some-other-client"));
+
+        assertThatThrownBy(() -> decoder.decode(token))
+            .isInstanceOf(JwtValidationException.class)
+            .hasMessageContaining("aud");
+    }
+
+    @Test
+    void oidcValidator_acceptsToken_withCorrectAudience() throws Exception {
+        final var kp = rsaKeyPair();
+        final NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey((RSAPublicKey) kp.getPublic()).build();
+        when(oidcConfig.getIssuerUri()).thenReturn(ISSUER);
+        when(oidcConfig.getClientId()).thenReturn(CLIENT_ID);
+        when(oidcConfig.getAzureTenantId()).thenReturn(null);
+        decoder.setJwtValidator(service.oidcValidator(oidcConfig));
+
+        final String token = signToken((RSAPrivateKey) kp.getPrivate(), List.of(CLIENT_ID));
+
+        assertThatCode(() -> {
+            final var jwt = decoder.decode(token);
+            assertThat(jwt.getSubject()).isEqualTo("user-1");
+        }).doesNotThrowAnyException();
+    }
+
+    private static java.security.KeyPair rsaKeyPair() throws Exception {
+        final KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
+        kpg.initialize(2048);
+        return kpg.generateKeyPair();
+    }
+
+    private static String signToken(final RSAPrivateKey priv, final List<String> audience) throws Exception {
+        final JWTClaimsSet claims = new JWTClaimsSet.Builder()
+            .issuer(ISSUER)
+            .subject("user-1")
+            .audience(audience)
+            .issueTime(new Date())
+            .expirationTime(Date.from(Instant.now().plusSeconds(300)))
+            .build();
+        final SignedJWT jwt = new SignedJWT(new JWSHeader(JWSAlgorithm.RS256), claims);
+        jwt.sign(new RSASSASigner(priv));
+        return jwt.serialize();
     }
 }
