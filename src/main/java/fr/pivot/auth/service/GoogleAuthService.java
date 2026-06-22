@@ -41,7 +41,12 @@ public class GoogleAuthService {
     private final AuditService auditService;
     private final TrustedDeviceService trustedDeviceService;
     private final RateLimiterService rateLimiter;
-    private final String googleClientId;
+
+    /**
+     * Reused across requests — building a new verifier per login defeats the Google public-key
+     * cache (re-fetching certs every time). Thread-safe once built.
+     */
+    private final GoogleIdTokenVerifier verifier;
 
     /**
      * Constructs the service with its required collaborators.
@@ -68,7 +73,10 @@ public class GoogleAuthService {
         this.auditService = auditService;
         this.trustedDeviceService = trustedDeviceService;
         this.rateLimiter = rateLimiter;
-        this.googleClientId = googleClientId;
+        this.verifier = new GoogleIdTokenVerifier.Builder(
+                new NetHttpTransport(), GsonFactory.getDefaultInstance())
+            .setAudience(Collections.singletonList(googleClientId))
+            .build();
     }
 
     /**
@@ -148,10 +156,6 @@ public class GoogleAuthService {
 
     private GoogleIdToken.Payload verifyGoogleToken(final String idTokenStr) {
         try {
-            final GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(
-                new NetHttpTransport(), GsonFactory.getDefaultInstance())
-                .setAudience(Collections.singletonList(googleClientId))
-                .build();
             final GoogleIdToken token = verifier.verify(idTokenStr);
             if (token == null) {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token Google invalide");

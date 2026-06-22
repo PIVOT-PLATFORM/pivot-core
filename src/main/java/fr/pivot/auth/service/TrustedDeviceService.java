@@ -11,12 +11,22 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
+/**
+ * Manages trusted-device records used to skip new-device OTP on subsequent logins.
+ *
+ * <p>A device is identified by a browser fingerprint scoped to a user. Records use a sliding
+ * TTL ({@code pivot.auth.device-ttl-days}) renewed on each successful trusted login.
+ */
 @Service
 public class TrustedDeviceService {
 
     private final TrustedDeviceRepository repo;
     private final int deviceTtlDays;
 
+    /**
+     * @param repo          JPA repository for trusted devices
+     * @param deviceTtlDays sliding TTL in days before a trusted device must re-verify
+     */
     public TrustedDeviceService(
             TrustedDeviceRepository repo,
             @Value("${pivot.auth.device-ttl-days:90}") int deviceTtlDays) {
@@ -54,11 +64,5 @@ public class TrustedDeviceService {
         td.setLastSeenAt(Instant.now());
         td.setExpiresAt(Instant.now().plus(deviceTtlDays, ChronoUnit.DAYS));
         repo.save(td);
-    }
-
-    /** True if the user has no trusted devices (first-ever login). */
-    public boolean hasNoTrustedDevices(User user) {
-        return !repo.findByUserIdAndDeviceFingerprint(user.getId(), "").isPresent()
-            && repo.findAll().stream().noneMatch(d -> d.getUser().getId().equals(user.getId()));
     }
 }
