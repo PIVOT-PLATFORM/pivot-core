@@ -5,9 +5,13 @@
                     https://raw.githubusercontent.com/spotbugs/spotbugs/3.1.0/spotbugs/etc/findbugsfilter.xsd">
 
     <!--
-        EI_EXPOSE_REP / EI_EXPOSE_REP2: JPA entities require mutable getters/setters
-        for the persistence provider (Hibernate). Defensive copies would break JPA dirty-
-        checking. These are intentional design decisions, not bugs.
+        EI_EXPOSE_REP / EI_EXPOSE_REP2:
+          - JPA entities require mutable getters/setters for the persistence provider
+            (Hibernate); defensive copies would break dirty-checking.
+          - Spring components (services, controllers, filters, config) store
+            constructor-injected singleton beans (e.g. CookieHelper). These are container-
+            managed, not externally-mutable state — copying them is meaningless.
+        Intentional design decisions, not bugs.
     -->
     <Match>
         <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
@@ -15,6 +19,7 @@
             <Package name="fr.pivot.auth.entity"/>
             <Package name="fr.pivot.tenant.entity"/>
             <Package name="fr.pivot.auth.service"/>
+            <Package name="fr.pivot.auth.controller"/>
             <Package name="fr.pivot.auth.config"/>
             <Package name="fr.pivot.config"/>
             <Package name="fr.pivot.auth.filter"/>

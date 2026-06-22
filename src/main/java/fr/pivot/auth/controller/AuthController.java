@@ -10,11 +10,10 @@ import fr.pivot.auth.dto.ResetPasswordRequest;
 import fr.pivot.auth.service.PasswordService;
 import fr.pivot.auth.service.RegistrationService;
 import fr.pivot.auth.service.SessionService;
-import jakarta.servlet.http.Cookie;
+import fr.pivot.config.CookieHelper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Arrays;
 import java.util.Map;
 
 /**
@@ -54,9 +52,7 @@ public class AuthController {
     private final RegistrationService registrationService;
     private final SessionService sessionService;
     private final PasswordService passwordService;
-
-    private final String sessionCookieName;
-    private final boolean secureCookie;
+    private final CookieHelper cookieHelper;
 
     /**
      * Constructs the controller with its required service collaborators.
@@ -64,20 +60,17 @@ public class AuthController {
      * @param registrationService manages account creation and email verification
      * @param sessionService      manages login, device OTP, session restore and logout
      * @param passwordService     manages forgot-password and reset-password flows
-     * @param sessionCookieName   name of the HTTP-only session persistence cookie
-     * @param secureCookie        whether to set the {@code Secure} flag on the session cookie
+     * @param cookieHelper        shared session-cookie + client-IP helper
      */
     public AuthController(
             final RegistrationService registrationService,
             final SessionService sessionService,
             final PasswordService passwordService,
-            @Value("${pivot.auth.session-cookie-name:pivot_session}") final String sessionCookieName,
-            @Value("${pivot.auth.secure-cookie:true}") final boolean secureCookie) {
+            final CookieHelper cookieHelper) {
         this.registrationService = registrationService;
         this.sessionService = sessionService;
         this.passwordService = passwordService;
-        this.sessionCookieName = sessionCookieName;
-        this.secureCookie = secureCookie;
+        this.cookieHelper = cookieHelper;
     }
 
     /**
@@ -91,7 +84,7 @@ public class AuthController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public Map<String, String> register(@Valid @RequestBody final RegisterRequest req,
                                         final HttpServletRequest http) {
-        registrationService.register(req, getIp(http), http.getHeader(HEADER_USER_AGENT));
+        registrationService.register(req, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
         return Map.of(KEY_MESSAGE, "Vérifiez votre boîte email pour confirmer votre inscription.");
     }
 
@@ -105,7 +98,7 @@ public class AuthController {
     @PostMapping("/verify-email")
     public ResponseEntity<Map<String, String>> verifyEmail(@RequestParam final String token,
                                                            final HttpServletRequest http) {
-        registrationService.verifyEmail(token, getIp(http), http.getHeader(HEADER_USER_AGENT));
+        registrationService.verifyEmail(token, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
         return ResponseEntity.ok(Map.of(KEY_MESSAGE, "Email vérifié avec succès."));
     }
 
@@ -121,7 +114,7 @@ public class AuthController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public Map<String, String> resendVerification(@RequestParam final String email,
                                                   final HttpServletRequest http) {
-        registrationService.resendVerification(email, getIp(http), http.getHeader(HEADER_USER_AGENT));
+        registrationService.resendVerification(email, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
         return Map.of(KEY_MESSAGE, "Si cet email est enregistré et non vérifié, un lien vous a été envoyé.");
     }
 
@@ -141,7 +134,7 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody final LoginRequest req,
                                               final HttpServletRequest http,
                                               final HttpServletResponse res) {
-        final LoginResult result = sessionService.login(req, getIp(http), http.getHeader(HEADER_USER_AGENT));
+        final LoginResult result = sessionService.login(req, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
 
         if (result.requiresDeviceVerification()) {
             return ResponseEntity.status(HttpStatus.ACCEPTED)
@@ -149,7 +142,7 @@ public class AuthController {
                 .build();
         }
 
-        setSessionCookie(res, result.sessionToken(), (int) result.sessionTtlSeconds());
+        cookieHelper.setSessionCookie(res, result.sessionToken(), (int) result.sessionTtlSeconds());
         return ResponseEntity.ok(new AuthResponse(result.sessionToken(), result.expiresAt(), result.user()));
     }
 
@@ -165,8 +158,8 @@ public class AuthController {
     public ResponseEntity<AuthResponse> verifyDevice(@Valid @RequestBody final DeviceOtpRequest req,
                                                      final HttpServletRequest http,
                                                      final HttpServletResponse res) {
-        final LoginResult result = sessionService.verifyDeviceOtp(req, getIp(http), http.getHeader(HEADER_USER_AGENT));
-        setSessionCookie(res, result.sessionToken(), (int) result.sessionTtlSeconds());
+        final LoginResult result = sessionService.verifyDeviceOtp(req, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
+        cookieHelper.setSessionCookie(res, result.sessionToken(), (int) result.sessionTtlSeconds());
         return ResponseEntity.ok(new AuthResponse(result.sessionToken(), result.expiresAt(), result.user()));
     }
 
@@ -187,12 +180,12 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(final HttpServletRequest http,
                                                 final HttpServletResponse res) {
-        final String rawCookieToken = extractSessionCookie(http);
+        final String rawCookieToken = cookieHelper.extractSessionCookie(http);
         if (rawCookieToken == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         final LoginResult result = sessionService.restoreSession(
-            rawCookieToken, getIp(http), http.getHeader(HEADER_USER_AGENT));
+            rawCookieToken, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
         return ResponseEntity.ok(new AuthResponse(result.sessionToken(), result.expiresAt(), result.user()));
     }
 
@@ -205,8 +198,8 @@ public class AuthController {
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(final HttpServletRequest http, final HttpServletResponse res) {
-        sessionService.logout(extractSessionCookie(http));
-        clearSessionCookie(res);
+        sessionService.logout(cookieHelper.extractSessionCookie(http));
+        cookieHelper.clearSessionCookie(res);
     }
 
     /**
@@ -220,7 +213,7 @@ public class AuthController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public Map<String, String> forgotPassword(@Valid @RequestBody final ForgotPasswordRequest req,
                                               final HttpServletRequest http) {
-        passwordService.forgotPassword(req, getIp(http), http.getHeader(HEADER_USER_AGENT));
+        passwordService.forgotPassword(req, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
         return Map.of(KEY_MESSAGE, "Si cet email est enregistré, vous recevrez un lien de réinitialisation.");
     }
 
@@ -234,49 +227,7 @@ public class AuthController {
     @PostMapping("/reset-password")
     public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody final ResetPasswordRequest req,
                                                              final HttpServletRequest http) {
-        passwordService.resetPassword(req, getIp(http), http.getHeader(HEADER_USER_AGENT));
+        passwordService.resetPassword(req, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
         return ResponseEntity.ok(Map.of(KEY_MESSAGE, "Mot de passe réinitialisé. Vous pouvez maintenant vous connecter."));
-    }
-
-    // ----------------------------------------------------------------
-    // HTTP-level helpers (cookie + IP) — no business logic
-    // ----------------------------------------------------------------
-
-    private void setSessionCookie(final HttpServletResponse res, final String rawToken, final int ttlSeconds) {
-        final Cookie cookie = new Cookie(sessionCookieName, rawToken);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(secureCookie);
-        cookie.setPath("/api/auth");
-        cookie.setMaxAge(ttlSeconds);
-        cookie.setAttribute("SameSite", "Strict");
-        res.addCookie(cookie);
-    }
-
-    private void clearSessionCookie(final HttpServletResponse res) {
-        final Cookie cookie = new Cookie(sessionCookieName, "");
-        cookie.setHttpOnly(true);
-        cookie.setSecure(secureCookie);
-        cookie.setPath("/api/auth");
-        cookie.setMaxAge(0);
-        res.addCookie(cookie);
-    }
-
-    private String extractSessionCookie(final HttpServletRequest req) {
-        if (req.getCookies() == null) {
-            return null;
-        }
-        return Arrays.stream(req.getCookies())
-            .filter(c -> sessionCookieName.equals(c.getName()))
-            .map(Cookie::getValue)
-            .findFirst()
-            .orElse(null);
-    }
-
-    private String getIp(final HttpServletRequest req) {
-        final String forwarded = req.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return req.getRemoteAddr();
     }
 }

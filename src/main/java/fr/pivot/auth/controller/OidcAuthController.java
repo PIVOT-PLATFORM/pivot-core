@@ -3,11 +3,10 @@ package fr.pivot.auth.controller;
 import fr.pivot.auth.dto.AuthResponse;
 import fr.pivot.auth.dto.OidcExchangeRequest;
 import fr.pivot.auth.service.OidcAuthService;
-import jakarta.servlet.http.Cookie;
+import fr.pivot.config.CookieHelper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,23 +33,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class OidcAuthController {
 
     private final OidcAuthService oidcAuthService;
-    private final String sessionCookieName;
-    private final boolean secureCookie;
+    private final CookieHelper cookieHelper;
 
     /**
      * Constructs the controller with its required collaborators.
      *
-     * @param oidcAuthService   enterprise OIDC token exchange service
-     * @param sessionCookieName name of the HTTP-only session persistence cookie
-     * @param secureCookie      whether to set the {@code Secure} flag on the session cookie
+     * @param oidcAuthService enterprise OIDC token exchange service
+     * @param cookieHelper    shared session-cookie + client-IP helper
      */
     public OidcAuthController(
             final OidcAuthService oidcAuthService,
-            @Value("${pivot.auth.session-cookie-name:pivot_session}") final String sessionCookieName,
-            @Value("${pivot.auth.secure-cookie:true}") final boolean secureCookie) {
+            final CookieHelper cookieHelper) {
         this.oidcAuthService = oidcAuthService;
-        this.sessionCookieName = sessionCookieName;
-        this.secureCookie = secureCookie;
+        this.cookieHelper = cookieHelper;
     }
 
     /**
@@ -80,31 +75,9 @@ public class OidcAuthController {
                                                   final HttpServletRequest http,
                                                   final HttpServletResponse res) {
         final OidcAuthService.OidcLoginResult result =
-            oidcAuthService.exchange(req, getIp(http), http.getHeader("User-Agent"));
+            oidcAuthService.exchange(req, cookieHelper.clientIp(http), http.getHeader("User-Agent"));
 
-        setSessionCookie(res, result.sessionToken(), result.ttlSeconds());
+        cookieHelper.setSessionCookie(res, result.sessionToken(), result.ttlSeconds());
         return ResponseEntity.ok(new AuthResponse(result.sessionToken(), result.expiresAt(), result.user()));
-    }
-
-    // ----------------------------------------------------------------
-    // HTTP-level helpers (cookie + IP) — no business logic
-    // ----------------------------------------------------------------
-
-    private void setSessionCookie(final HttpServletResponse res, final String rawToken, final int ttlSeconds) {
-        final Cookie cookie = new Cookie(sessionCookieName, rawToken);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(secureCookie);
-        cookie.setPath("/api/auth");
-        cookie.setMaxAge(ttlSeconds);
-        cookie.setAttribute("SameSite", "Strict");
-        res.addCookie(cookie);
-    }
-
-    private String getIp(final HttpServletRequest req) {
-        final String forwarded = req.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return req.getRemoteAddr();
     }
 }

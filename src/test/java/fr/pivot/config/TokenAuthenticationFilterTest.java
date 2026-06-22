@@ -47,7 +47,7 @@ class TokenAuthenticationFilterTest {
 
     @BeforeEach
     void setUp() {
-        filter = new TokenAuthenticationFilter(tokenService, "pivot_session", false);
+        filter = new TokenAuthenticationFilter(tokenService, new CookieHelper("pivot_session", false));
         SecurityContextHolder.clearContext();
         when(user.getEmail()).thenReturn("alice@pivot.app");
         when(user.getRole()).thenReturn("ROLE_USER");

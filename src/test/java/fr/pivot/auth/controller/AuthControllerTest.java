@@ -48,7 +48,7 @@ class AuthControllerTest {
     @BeforeEach
     void setUp() {
         controller = new AuthController(registrationService, sessionService, passwordService,
-            "pivot_session", true);
+            new fr.pivot.config.CookieHelper("pivot_session", true));
         req = new MockHttpServletRequest();
         req.setRemoteAddr("9.9.9.9");
         req.addHeader("User-Agent", "JUnit");
@@ -69,12 +69,15 @@ class AuthControllerTest {
     }
 
     @Test
-    void register_usesXForwardedFor_whenPresent() {
+    void register_ignoresXForwardedFor_usesRemoteAddr() {
+        // Security fix: X-Forwarded-For is no longer trusted in application code. The real
+        // client IP is resolved by Tomcat's RemoteIpValve (trusted-proxy aware), so a spoofed
+        // header must not influence the IP seen by the rate limiter / audit trail.
         req.addHeader("X-Forwarded-For", "1.1.1.1, 2.2.2.2");
 
         controller.register(new RegisterRequest("u@x.com", "password1", "A", "B"), req);
 
-        verify(registrationService).register(any(), eq("1.1.1.1"), anyString());
+        verify(registrationService).register(any(), eq("9.9.9.9"), anyString());
     }
 
     @Test

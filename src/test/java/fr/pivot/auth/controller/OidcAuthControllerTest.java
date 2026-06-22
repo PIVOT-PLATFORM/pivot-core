@@ -33,7 +33,7 @@ class OidcAuthControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new OidcAuthController(oidcAuthService, "pivot_session", true);
+        controller = new OidcAuthController(oidcAuthService, new fr.pivot.config.CookieHelper("pivot_session", true));
         req = new MockHttpServletRequest();
         req.setRemoteAddr("9.9.9.9");
         req.addHeader("User-Agent", "JUnit");

@@ -3,11 +3,10 @@ package fr.pivot.auth.controller;
 import fr.pivot.auth.dto.AuthResponse;
 import fr.pivot.auth.dto.GoogleAuthRequest;
 import fr.pivot.auth.service.GoogleAuthService;
-import jakarta.servlet.http.Cookie;
+import fr.pivot.config.CookieHelper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,23 +28,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class GoogleAuthController {
 
     private final GoogleAuthService googleAuthService;
-    private final String sessionCookieName;
-    private final boolean secureCookie;
+    private final CookieHelper cookieHelper;
 
     /**
      * Constructs the controller with its required collaborators.
      *
      * @param googleAuthService Google ID token verifier and session issuer
-     * @param sessionCookieName name of the HTTP-only session persistence cookie
-     * @param secureCookie      whether to set the {@code Secure} flag on the session cookie
+     * @param cookieHelper      shared session-cookie + client-IP helper
      */
     public GoogleAuthController(
             final GoogleAuthService googleAuthService,
-            @Value("${pivot.auth.session-cookie-name:pivot_session}") final String sessionCookieName,
-            @Value("${pivot.auth.secure-cookie:true}") final boolean secureCookie) {
+            final CookieHelper cookieHelper) {
         this.googleAuthService = googleAuthService;
-        this.sessionCookieName = sessionCookieName;
-        this.secureCookie = secureCookie;
+        this.cookieHelper = cookieHelper;
     }
 
     /**
@@ -61,31 +56,9 @@ public class GoogleAuthController {
                                                       final HttpServletRequest http,
                                                       final HttpServletResponse res) {
         final GoogleAuthService.GoogleLoginResult result =
-            googleAuthService.authenticate(req, getIp(http), http.getHeader("User-Agent"));
+            googleAuthService.authenticate(req, cookieHelper.clientIp(http), http.getHeader("User-Agent"));
 
-        setSessionCookie(res, result.sessionToken(), result.ttlSeconds());
+        cookieHelper.setSessionCookie(res, result.sessionToken(), result.ttlSeconds());
         return ResponseEntity.ok(new AuthResponse(result.sessionToken(), result.expiresAt(), result.user()));
-    }
-
-    // ----------------------------------------------------------------
-    // HTTP-level helpers (cookie + IP) — no business logic
-    // ----------------------------------------------------------------
-
-    private void setSessionCookie(final HttpServletResponse res, final String rawToken, final int ttlSeconds) {
-        final Cookie cookie = new Cookie(sessionCookieName, rawToken);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(secureCookie);
-        cookie.setPath("/api/auth");
-        cookie.setMaxAge(ttlSeconds);
-        cookie.setAttribute("SameSite", "Strict");
-        res.addCookie(cookie);
-    }
-
-    private String getIp(final HttpServletRequest req) {
-        final String forwarded = req.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return req.getRemoteAddr();
     }
 }

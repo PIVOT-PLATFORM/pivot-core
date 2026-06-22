@@ -34,7 +34,7 @@ class GoogleAuthControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new GoogleAuthController(googleAuthService, "pivot_session", true);
+        controller = new GoogleAuthController(googleAuthService, new fr.pivot.config.CookieHelper("pivot_session", true));
         req = new MockHttpServletRequest();
         req.setRemoteAddr("9.9.9.9");
         req.addHeader("User-Agent", "JUnit");
@@ -59,10 +59,12 @@ class GoogleAuthControllerTest {
     }
 
     @Test
-    void authenticate_usesXForwardedFor() {
+    void authenticate_ignoresXForwardedFor_usesRemoteAddr() {
+        // X-Forwarded-For is no longer trusted in app code (RemoteIpValve handles it at the
+        // container, trusted-proxy aware). A spoofed header must not change the resolved IP.
         req.addHeader("X-Forwarded-For", "1.1.1.1, 2.2.2.2");
         final AuthResponse.UserInfo ui = new AuthResponse.UserInfo(1L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "s");
-        when(googleAuthService.authenticate(any(), eq("1.1.1.1"), anyString()))
+        when(googleAuthService.authenticate(any(), eq("9.9.9.9"), anyString()))
             .thenReturn(new GoogleAuthService.GoogleLoginResult("g-tok", 1L, 60, ui, false));
 
         final ResponseEntity<AuthResponse> resp = controller.authenticate(
