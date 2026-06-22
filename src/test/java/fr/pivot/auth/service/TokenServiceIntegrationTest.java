@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -99,14 +100,23 @@ class TokenServiceIntegrationTest extends AbstractIntegrationTest {
     // ----------------------------------------------------------------
 
     @Test
-    void validate_returnsToken_andUpdatesLastUsedAt() {
+    void validate_returnsToken_andUpdatesLastUsedAt_asynchronously() throws InterruptedException {
         final TokenService.TokenIssueResult issued = tokenService.issue(
             testUser, null, null, "ua", "127.0.0.1", AuthMethod.PASSWORD, false);
 
         final Optional<AccessToken> validated = tokenService.validate(issued.rawToken());
-
         assertThat(validated).isPresent();
-        assertThat(validated.get().getLastUsedAt()).isNotNull();
+        final Long tokenId = validated.get().getId();
+
+        // last_used_at is written asynchronously (UPDATE by id, REQUIRES_NEW) — poll the DB.
+        Instant lastUsed = null;
+        for (int i = 0; i < 50 && lastUsed == null; i++) {
+            lastUsed = tokenRepo.findById(tokenId).orElseThrow().getLastUsedAt();
+            if (lastUsed == null) {
+                Thread.sleep(100);
+            }
+        }
+        assertThat(lastUsed).as("last_used_at written by async touch").isNotNull();
     }
 
     @Test
@@ -155,7 +165,7 @@ class TokenServiceIntegrationTest extends AbstractIntegrationTest {
     // ----------------------------------------------------------------
 
     @Test
-    void rotate_revokesOldAndIssuesNew_inDb() {
+    void rotate_keepsOldInGraceAndIssuesNew_inDb() {
         final TokenService.TokenIssueResult first = tokenService.issue(
             testUser, "fp-1", "Chrome", "ua", "127.0.0.1", AuthMethod.PASSWORD, false);
 
@@ -168,10 +178,12 @@ class TokenServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(rotated).isPresent();
         assertThat(rotated.get().rawToken()).isNotEqualTo(first.rawToken());
 
-        // Old token must be REVOKED in DB
+        // Old token stays ACTIVE during the grace window but is stamped rotated_at and its
+        // expiry is shortened — so in-flight requests still authenticate, then it expires.
         final AccessToken old = tokenRepo.findById(firstToken.getId()).orElseThrow();
-        assertThat(old.getStatus()).isEqualTo(TokenStatus.REVOKED);
-        assertThat(old.getRevokedAt()).isNotNull();
+        assertThat(old.getStatus()).isEqualTo(TokenStatus.ACTIVE);
+        assertThat(old.getRotatedAt()).isNotNull();
+        assertThat(old.getExpiresAt()).isBeforeOrEqualTo(Instant.now().plusSeconds(31));
 
         // New token must be ACTIVE in DB
         final Optional<AccessToken> newToken = tokenRepo
