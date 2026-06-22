@@ -56,13 +56,15 @@ class SessionServiceTest {
     @Mock private User user;
     @Mock private Tenant tenant;
 
+    private static final String OTP_SECRET = "test-otp-secret";
+
     private SessionService service;
 
     @BeforeEach
     void setUp() {
         service = new SessionService(userRepo, tenantRepo, featureFlagRepo, deviceVerifyRepo,
             passwordEncoder, tokenService, emailService, rateLimiter, trustedDeviceService,
-            auditService, 15L);
+            auditService, 15L, OTP_SECRET);
 
         when(rateLimiter.loginIpBucket(anyString())).thenReturn("login:ip");
         when(rateLimiter.loginEmailBucket(anyString())).thenReturn("login:email");
@@ -224,7 +226,7 @@ class SessionServiceTest {
     @Test
     void verifyDeviceOtp_throws429_whenRateLimited() {
         when(deviceVerifyRepo.findPendingByFingerprint(eq("fp"), any(Instant.class)))
-            .thenReturn(Optional.of(pendingToken(CryptoUtils.sha256("123456"))));
+            .thenReturn(Optional.of(pendingToken(CryptoUtils.hmacSha256("123456", OTP_SECRET))));
         when(rateLimiter.checkAndRecord(anyString(), anyInt(), any())).thenReturn(false);
 
         final DeviceOtpRequest otpReq = new DeviceOtpRequest("fp", "123456", "Chrome", false);
@@ -236,7 +238,7 @@ class SessionServiceTest {
 
     @Test
     void verifyDeviceOtp_throws401_andIncrementsAttempts_whenOtpWrong() {
-        final DeviceVerifyToken dvt = pendingToken(CryptoUtils.sha256("000000"));
+        final DeviceVerifyToken dvt = pendingToken(CryptoUtils.hmacSha256("000000", OTP_SECRET));
         when(deviceVerifyRepo.findPendingByFingerprint(eq("fp"), any(Instant.class))).thenReturn(Optional.of(dvt));
         when(rateLimiter.checkAndRecord(anyString(), anyInt(), any())).thenReturn(true);
 
@@ -251,7 +253,7 @@ class SessionServiceTest {
 
     @Test
     void verifyDeviceOtp_returnsSuccess_whenOtpValid() {
-        final DeviceVerifyToken dvt = pendingToken(CryptoUtils.sha256("123456"));
+        final DeviceVerifyToken dvt = pendingToken(CryptoUtils.hmacSha256("123456", OTP_SECRET));
         when(deviceVerifyRepo.findPendingByFingerprint(eq("fp"), any(Instant.class))).thenReturn(Optional.of(dvt));
         when(rateLimiter.checkAndRecord(anyString(), anyInt(), any())).thenReturn(true);
 

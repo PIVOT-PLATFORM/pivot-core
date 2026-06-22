@@ -1,11 +1,14 @@
 package fr.pivot.auth.util;
 
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 /**
  * Stateless crypto primitives shared across auth services.
@@ -33,6 +36,27 @@ public final class CryptoUtils {
             return HexFormat.of().formatHex(md.digest(input.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    /**
+     * Returns the lowercase hex-encoded HMAC-SHA256 of {@code message} keyed by {@code secretKey}.
+     *
+     * <p>Used for short low-entropy secrets (e.g. 6-digit OTP): unlike a bare SHA-256, an
+     * attacker who exfiltrates the database cannot brute-force the value offline without also
+     * knowing the server-side {@code secretKey}.
+     *
+     * @param message   the value to authenticate (e.g. the OTP)
+     * @param secretKey the server-side HMAC key
+     * @return 64-character hex string
+     */
+    public static String hmacSha256(final String message, final String secretKey) {
+        try {
+            final Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(message.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new IllegalStateException("HmacSHA256 not available", e);
         }
     }
 

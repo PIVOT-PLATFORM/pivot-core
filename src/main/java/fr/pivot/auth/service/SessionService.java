@@ -70,6 +70,7 @@ public class SessionService {
     private final AuditService auditService;
 
     private final long deviceVerifyTtlMinutes;
+    private final String otpSecret;
 
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -105,7 +106,8 @@ public class SessionService {
             final RateLimiterService rateLimiter,
             final TrustedDeviceService trustedDeviceService,
             final AuditService auditService,
-            @Value("${pivot.auth.device-verify-ttl-minutes:15}") final long deviceVerifyTtlMinutes) {
+            @Value("${pivot.auth.device-verify-ttl-minutes:15}") final long deviceVerifyTtlMinutes,
+            @Value("${pivot.auth.otp-secret:}") final String otpSecret) {
         this.userRepo = userRepo;
         this.tenantRepo = tenantRepo;
         this.featureFlagRepo = featureFlagRepo;
@@ -117,6 +119,9 @@ public class SessionService {
         this.trustedDeviceService = trustedDeviceService;
         this.auditService = auditService;
         this.deviceVerifyTtlMinutes = deviceVerifyTtlMinutes;
+        // Falls back to a dev-only key when unset; override via PIVOT_AUTH_OTP_SECRET in prod.
+        this.otpSecret = (otpSecret == null || otpSecret.isBlank())
+            ? "pivot-dev-otp-secret-change-me" : otpSecret;
         this.dummyPasswordHash = passwordEncoder.encode("pivot-timing-equalizer-decoy");
     }
 
@@ -229,7 +234,7 @@ public class SessionService {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Trop de tentatives OTP");
         }
 
-        if (!dvt.getOtpHash().equals(fr.pivot.auth.util.CryptoUtils.sha256(req.otp()))) {
+        if (!dvt.getOtpHash().equals(fr.pivot.auth.util.CryptoUtils.hmacSha256(req.otp(), otpSecret))) {
             dvt.setAttempts(dvt.getAttempts() + 1);
             deviceVerifyRepo.save(dvt);
             auditService.log(dvt.getUser(), AuditService.DEVICE_OTP_FAILED, ip, userAgent);
@@ -331,7 +336,7 @@ public class SessionService {
         dvt.setUser(user);
         dvt.setDeviceFingerprint(fingerprint);
         dvt.setDeviceName(deviceName);
-        dvt.setOtpHash(fr.pivot.auth.util.CryptoUtils.sha256(otp));
+        dvt.setOtpHash(fr.pivot.auth.util.CryptoUtils.hmacSha256(otp, otpSecret));
         dvt.setExpiresAt(Instant.now().plus(deviceVerifyTtlMinutes, ChronoUnit.MINUTES));
         deviceVerifyRepo.save(dvt);
         emailService.sendDeviceVerifyEmail(user.getEmail(), user.getFirstName(), otp, deviceName);
