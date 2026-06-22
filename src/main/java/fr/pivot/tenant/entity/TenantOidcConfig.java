@@ -33,6 +33,19 @@ public class TenantOidcConfig {
     @Column(name = "auto_provision_users", nullable = false)
     private boolean autoProvisionUsers = true;
 
+    /** Role assigned to JIT-provisioned accounts (e.g. {@code ROLE_USER}). */
+    @Column(name = "default_role", nullable = false, length = 50)
+    private String defaultRole = "ROLE_USER";
+
+    /**
+     * JSON mapping of PIVOT fields to IdP claim names, e.g.
+     * {@code {"email":"email","first_name":"given_name","last_name":"family_name"}}.
+     * Stored as JSONB; parsed by {@code OidcAuthService}.
+     */
+    @Column(name = "claims_mapping", nullable = false, columnDefinition = "jsonb")
+    private String claimsMapping =
+        "{\"email\":\"email\",\"first_name\":\"given_name\",\"last_name\":\"family_name\"}";
+
     /** Azure AD only: expected {@code tid} claim. {@code null} for non-Azure IdPs (no check). */
     @Column(name = "azure_tenant_id", length = 36)
     private String azureTenantId;
@@ -52,6 +65,8 @@ public class TenantOidcConfig {
     public String getScopes() { return scopes; }
     public String getJwksUri() { return jwksUri; }
     public boolean isAutoProvisionUsers() { return autoProvisionUsers; }
+    public String getDefaultRole() { return defaultRole; }
+    public String getClaimsMapping() { return claimsMapping; }
     public String getAzureTenantId() { return azureTenantId; }
     public boolean isActive() { return active; }
     public Instant getCreatedAt() { return createdAt; }
@@ -63,6 +78,8 @@ public class TenantOidcConfig {
     public void setScopes(String scopes) { this.scopes = scopes; }
     public void setJwksUri(String jwksUri) { this.jwksUri = jwksUri; }
     public void setAutoProvisionUsers(boolean autoProvisionUsers) { this.autoProvisionUsers = autoProvisionUsers; }
+    public void setDefaultRole(String defaultRole) { this.defaultRole = defaultRole; }
+    public void setClaimsMapping(String claimsMapping) { this.claimsMapping = claimsMapping; }
     public void setAzureTenantId(String azureTenantId) { this.azureTenantId = azureTenantId; }
     public void setActive(boolean active) { this.active = active; }
 }

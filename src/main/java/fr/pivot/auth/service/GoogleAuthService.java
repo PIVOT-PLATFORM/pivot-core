@@ -103,6 +103,7 @@ public class GoogleAuthService {
         final String email = payload.getEmail().toLowerCase();
         final String firstName = (String) payload.get("given_name");
         final String lastName = (String) payload.get("family_name");
+        final String avatarUrl = (String) payload.get("picture");
 
         final Tenant tenant = tenantRepo.findBySlug("pivot-saas")
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR));
@@ -122,6 +123,7 @@ public class GoogleAuthService {
                 user.setGoogleId(googleId);
                 user.setFirstName(firstName);
                 user.setLastName(lastName);
+                user.setAvatarUrl(avatarUrl);
                 user.setEmailVerified(true);
                 user = userRepo.save(user);
             }

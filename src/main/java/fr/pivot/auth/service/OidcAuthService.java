@@ -12,6 +12,8 @@ import fr.pivot.tenant.repository.TenantOidcConfigRepository;
 import fr.pivot.tenant.repository.TenantRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -55,6 +57,10 @@ public class OidcAuthService {
     private final AuditService auditService;
     private final TrustedDeviceService trustedDeviceService;
     private final RateLimiterService rateLimiter;
+    private final ObjectMapper objectMapper;
+
+    private static final TypeReference<Map<String, String>> MAP_TYPE = new TypeReference<>() {};
+    private static final ClaimNames DEFAULT_CLAIMS = new ClaimNames("email", "given_name", "family_name");
 
     /**
      * Per-IdP {@link JwtDecoder} cache. OIDC discovery ({@code .well-known} + JWKS fetch)
@@ -74,6 +80,7 @@ public class OidcAuthService {
      * @param auditService        async audit event logger
      * @param trustedDeviceService manages trusted device records
      * @param rateLimiter         sliding-window rate limiter backed by Redis
+     * @param objectMapper        JSON mapper used to parse the per-tenant claims mapping
      */
     public OidcAuthService(
             final TenantRepository tenantRepo,
@@ -82,7 +89,8 @@ public class OidcAuthService {
             final TokenService tokenService,
             final AuditService auditService,
             final TrustedDeviceService trustedDeviceService,
-            final RateLimiterService rateLimiter) {
+            final RateLimiterService rateLimiter,
+            final ObjectMapper objectMapper) {
         this.tenantRepo = tenantRepo;
         this.oidcConfigRepo = oidcConfigRepo;
         this.userRepo = userRepo;
@@ -90,6 +98,7 @@ public class OidcAuthService {
         this.auditService = auditService;
         this.trustedDeviceService = trustedDeviceService;
         this.rateLimiter = rateLimiter;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -131,10 +140,12 @@ public class OidcAuthService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token OIDC invalide");
         }
 
+        final ClaimNames claims = claimNames(config);
         final String subject = jwt.getSubject();
-        final String email = jwt.getClaimAsString("email");
-        final String firstName = jwt.getClaimAsString("given_name");
-        final String lastName = jwt.getClaimAsString("family_name");
+        final String email = jwt.getClaimAsString(claims.email());
+        final String firstName = jwt.getClaimAsString(claims.firstName());
+        final String lastName = jwt.getClaimAsString(claims.lastName());
+        final String avatarUrl = jwt.getClaimAsString("picture");
 
         if (email == null || email.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email absent du token OIDC");
@@ -146,7 +157,8 @@ public class OidcAuthService {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Provisionnement automatique désactivé pour ce tenant");
                 }
-                return createOidcUser(tenant, subject, email.toLowerCase(), firstName, lastName);
+                return createOidcUser(tenant, subject, email.toLowerCase(), firstName, lastName,
+                    config.getDefaultRole(), avatarUrl);
             });
 
         if (!user.isActive() || user.isBlocked()) {
@@ -213,22 +225,62 @@ public class OidcAuthService {
         return decoderCache.computeIfAbsent(cacheKey, key -> {
             final NimbusJwtDecoder decoder =
                 (NimbusJwtDecoder) JwtDecoders.fromIssuerLocation(config.getIssuerUri());
-
-            final List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
-            validators.add(JwtValidators.createDefaultWithIssuer(config.getIssuerUri()));
-            validators.add(new JwtClaimValidator<List<String>>(
-                "aud", aud -> aud != null && aud.contains(config.getClientId())));
-            if (config.getAzureTenantId() != null && !config.getAzureTenantId().isBlank()) {
-                validators.add(new JwtClaimValidator<String>(
-                    "tid", tid -> config.getAzureTenantId().equals(tid)));
-            }
-            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
+            decoder.setJwtValidator(oidcValidator(config));
             return decoder;
         });
     }
 
-    private User createOidcUser(final Tenant tenant, final String subject,
-                                 final String email, final String firstName, final String lastName) {
+    /**
+     * Builds the validator chain applied to every OIDC token: default signature/issuer/expiry,
+     * plus audience ({@code aud} contains {@code client_id}) and, for Azure, {@code tid} match.
+     *
+     * <p>Package-private so the security property (notably audience rejection) can be exercised
+     * by unit tests against a locally-signed token without network discovery.
+     *
+     * @param config the tenant's OIDC configuration
+     * @return the composed token validator
+     */
+    OAuth2TokenValidator<Jwt> oidcValidator(final TenantOidcConfig config) {
+        final List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
+        validators.add(JwtValidators.createDefaultWithIssuer(config.getIssuerUri()));
+        validators.add(new JwtClaimValidator<List<String>>(
+            "aud", aud -> aud != null && aud.contains(config.getClientId())));
+        if (config.getAzureTenantId() != null && !config.getAzureTenantId().isBlank()) {
+            validators.add(new JwtClaimValidator<String>(
+                "tid", tid -> config.getAzureTenantId().equals(tid)));
+        }
+        return new DelegatingOAuth2TokenValidator<>(validators);
+    }
+
+    /**
+     * Resolves which IdP claims carry email / first name / last name for this tenant,
+     * from the {@code claims_mapping} JSON. Falls back to the OIDC standard claims when the
+     * mapping is absent, malformed or missing a key.
+     *
+     * @param config the tenant's OIDC configuration
+     * @return the resolved claim names
+     */
+    private ClaimNames claimNames(final TenantOidcConfig config) {
+        final String json = config.getClaimsMapping();
+        if (json == null || json.isBlank()) {
+            return DEFAULT_CLAIMS;
+        }
+        try {
+            final Map<String, String> m = objectMapper.readValue(json, MAP_TYPE);
+            return new ClaimNames(
+                m.getOrDefault("email", DEFAULT_CLAIMS.email()),
+                m.getOrDefault("first_name", DEFAULT_CLAIMS.firstName()),
+                m.getOrDefault("last_name", DEFAULT_CLAIMS.lastName()));
+        } catch (final Exception e) {
+            LOG.warn("event=OIDC_CLAIMS_MAPPING_INVALID tenant={} reason={}",
+                config.getTenant() != null ? config.getTenant().getId() : "?", e.getMessage());
+            return DEFAULT_CLAIMS;
+        }
+    }
+
+    private User createOidcUser(final Tenant tenant, final String subject, final String email,
+                                 final String firstName, final String lastName,
+                                 final String role, final String avatarUrl) {
         final User u = new User();
         u.setTenant(tenant);
         u.setOidcSubject(subject);
@@ -236,8 +288,21 @@ public class OidcAuthService {
         u.setFirstName(firstName);
         u.setLastName(lastName);
         u.setEmailVerified(true);
+        if (role != null && !role.isBlank()) {
+            u.setRole(role);
+        }
+        u.setAvatarUrl(avatarUrl);
         return userRepo.save(u);
     }
+
+    /**
+     * IdP claim names carrying the user's email, first name and last name.
+     *
+     * @param email     claim name for the email
+     * @param firstName claim name for the first name
+     * @param lastName  claim name for the last name
+     */
+    private record ClaimNames(String email, String firstName, String lastName) {}
 
     // ----------------------------------------------------------------
     // Result records
