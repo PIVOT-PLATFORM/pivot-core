@@ -10,6 +10,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Persists security/auth audit events ({@code login}, {@code logout}, {@code register}…).
+ *
+ * <p>Writes run asynchronously in their own {@code REQUIRES_NEW} transaction so an audit
+ * failure never impacts the latency or outcome of the originating auth flow. The async
+ * dispatch requires {@code @EnableAsync} (declared on {@link fr.pivot.config.AppConfig}) and
+ * is reached through the Spring proxy via the self-injected {@link #self} reference.
+ */
 @Service
 public class AuditService {
 
@@ -27,12 +35,31 @@ public class AuditService {
         this.self = self;
     }
 
+    /**
+     * Persists an audit event asynchronously in a new transaction.
+     *
+     * @param user      the subject user (may be {@code null} for failed logins on unknown emails)
+     * @param tenant    the tenant the event belongs to (may be {@code null})
+     * @param eventType one of the {@code AuditService} event-type constants
+     * @param ip        client IP
+     * @param userAgent client user-agent
+     * @param meta      optional free-form metadata, or {@code null}
+     */
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void log(User user, Tenant tenant, String eventType, String ip, String userAgent, String meta) {
         repo.save(AuditEvent.of(user, tenant, eventType, ip, userAgent, meta));
     }
 
+    /**
+     * Convenience overload deriving the tenant from the user. Routes through the proxy
+     * ({@link #self}) so the async + {@code REQUIRES_NEW} semantics actually apply.
+     *
+     * @param user      the subject user (may be {@code null})
+     * @param eventType one of the event-type constants
+     * @param ip        client IP
+     * @param userAgent client user-agent
+     */
     public void log(User user, String eventType, String ip, String userAgent) {
         self.log(user, user != null ? user.getTenant() : null, eventType, ip, userAgent, null);
     }
