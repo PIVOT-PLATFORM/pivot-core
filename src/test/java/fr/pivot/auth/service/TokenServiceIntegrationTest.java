@@ -189,6 +189,31 @@ class TokenServiceIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void rotate_atMaxSessions_doesNotEvictHealthySession() {
+        final int max = 10; // MAX_SESSIONS_PER_USER default (V1 seed)
+        final java.util.List<String> raws = new java.util.ArrayList<>();
+        for (int i = 0; i < max; i++) {
+            raws.add(tokenService.issue(
+                testUser, "fp-" + i, "Chrome", "ua", "127.0.0.1", AuthMethod.PASSWORD, false).rawToken());
+        }
+        assertThat(tokenRepo.countByUserIdAndStatus(testUser.getId(), TokenStatus.ACTIVE)).isEqualTo(max);
+
+        final AccessToken oldest = tokenRepo
+            .findByTokenHashAndStatus(CryptoUtils.sha256(raws.get(0)), TokenStatus.ACTIVE).orElseThrow();
+        // Rotate a NON-oldest token (the 5th) while the limit is reached.
+        final AccessToken mid = tokenRepo
+            .findByTokenHashAndStatus(CryptoUtils.sha256(raws.get(4)), TokenStatus.ACTIVE).orElseThrow();
+
+        tokenService.rotate(mid);
+
+        // No eviction: old rotated token (grace) + new token both ACTIVE → max + 1.
+        assertThat(tokenRepo.countByUserIdAndStatus(testUser.getId(), TokenStatus.ACTIVE)).isEqualTo(max + 1);
+        // The oldest healthy session must be untouched (not evicted by the rotation).
+        assertThat(tokenRepo.findById(oldest.getId()).orElseThrow().getStatus())
+            .isEqualTo(TokenStatus.ACTIVE);
+    }
+
+    @Test
     void rotate_inheritsDeviceMetadata_inNewToken() {
         final TokenService.TokenIssueResult first = tokenService.issue(
             testUser, "fp-inherit", "Safari", "ua", "10.0.0.1", AuthMethod.GOOGLE, false);

@@ -245,6 +245,23 @@ class TokenServiceTest {
     }
 
     @Test
+    void rotate_doesNotEnforceMaxSessions() {
+        final String raw = "no-evict-raw";
+        final AccessToken existing = validToken(raw, 3600);
+        existing.setUser(user);
+        when(tokenRepo.findByTokenHashAndStatusForUpdate(existing.getTokenHash(), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(existing));
+        when(tokenRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        tokenService.rotate(existing);
+
+        // Rotation must not count active sessions nor evict the oldest — it replaces an existing
+        // token (which stays ACTIVE during the grace window), so it consumes no extra slot.
+        verify(tokenRepo, never()).countByUserIdAndStatus(any(), any());
+        verify(tokenRepo, never()).findOldestActiveByUserId(any(), any(), any());
+    }
+
+    @Test
     void rotate_returnsEmpty_whenAlreadyRotated() {
         final String raw = "rotated-raw";
         final AccessToken existing = validToken(raw, 3600);

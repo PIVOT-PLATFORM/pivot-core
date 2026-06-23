@@ -115,13 +115,20 @@ public class TokenService {
             final String ipAddress,
             final AuthMethod authMethod,
             final boolean rememberMe) {
-        return doIssue(user, deviceFingerprint, deviceName, userAgent, ipAddress, authMethod, rememberMe);
+        return doIssue(user, deviceFingerprint, deviceName, userAgent, ipAddress, authMethod, rememberMe, true);
     }
 
     /**
      * Token creation logic shared by {@link #issue} and {@link #rotate}. Private so that
      * {@code rotate} reuses it within its own transaction without a self-proxy call
      * (Sonar S6809) — both public entry points are already {@code @Transactional}.
+     *
+     * @param enforceMaxSessions {@code true} for a genuine new session ({@code issue}); {@code false}
+     *     on the rotation path. Rotation replaces an existing session — during the grace window the
+     *     old token stays {@code ACTIVE}, so counting it toward {@code MAX_SESSIONS_PER_USER} would
+     *     wrongly evict the oldest active token (the old token itself, cancelling the grace, or
+     *     another healthy session). The old token expires at its grace deadline and the count
+     *     self-corrects.
      */
     private TokenIssueResult doIssue(
             final User user,
@@ -130,24 +137,28 @@ public class TokenService {
             final String userAgent,
             final String ipAddress,
             final AuthMethod authMethod,
-            final boolean rememberMe) {
+            final boolean rememberMe,
+            final boolean enforceMaxSessions) {
 
         final int ttlSeconds = rememberMe
             ? flagRepo.getInt("SESSION_TTL_REMEMBER_ME_SECONDS", DEFAULT_TTL_REMEMBER_ME_SECONDS)
             : flagRepo.getInt("SESSION_TTL_SECONDS", DEFAULT_TTL_SECONDS);
 
-        // Enforce MAX_SESSIONS_PER_USER — evict oldest session if limit reached
-        final int maxSessions = flagRepo.getInt("MAX_SESSIONS_PER_USER", 10);
-        final long activeSessions = tokenRepo.countByUserIdAndStatus(user.getId(), TokenStatus.ACTIVE);
-        if (activeSessions >= maxSessions) {
-            final List<AccessToken> oldest = tokenRepo.findOldestActiveByUserId(
-                user.getId(), TokenStatus.ACTIVE, PageRequest.of(0, 1));
-            if (!oldest.isEmpty()) {
-                final AccessToken toEvict = oldest.get(0);
-                toEvict.setStatus(TokenStatus.REVOKED);
-                toEvict.setRevokedAt(Instant.now());
-                tokenRepo.save(toEvict);
-                LOG.warn("event=SESSION_EVICTED userId={} reason=max_sessions_reached limit={}", user.getId(), maxSessions);
+        // Enforce MAX_SESSIONS_PER_USER — evict oldest session if limit reached.
+        // Skipped on the rotation path so a rotation never consumes an extra logical slot.
+        if (enforceMaxSessions) {
+            final int maxSessions = flagRepo.getInt("MAX_SESSIONS_PER_USER", 10);
+            final long activeSessions = tokenRepo.countByUserIdAndStatus(user.getId(), TokenStatus.ACTIVE);
+            if (activeSessions >= maxSessions) {
+                final List<AccessToken> oldest = tokenRepo.findOldestActiveByUserId(
+                    user.getId(), TokenStatus.ACTIVE, PageRequest.of(0, 1));
+                if (!oldest.isEmpty()) {
+                    final AccessToken toEvict = oldest.get(0);
+                    toEvict.setStatus(TokenStatus.REVOKED);
+                    toEvict.setRevokedAt(Instant.now());
+                    tokenRepo.save(toEvict);
+                    LOG.warn("event=SESSION_EVICTED userId={} reason=max_sessions_reached limit={}", user.getId(), maxSessions);
+                }
             }
         }
 
@@ -334,7 +345,8 @@ public class TokenService {
             old.getUserAgent(),
             old.getIpAddress(),
             old.getAuthMethod(),
-            old.isRememberMe()
+            old.isRememberMe(),
+            false // rotation: do not enforce MAX_SESSIONS (old token still ACTIVE during grace)
         ));
     }
 
