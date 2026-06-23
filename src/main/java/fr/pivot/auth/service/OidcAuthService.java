@@ -31,6 +31,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -61,6 +62,14 @@ public class OidcAuthService {
 
     private static final TypeReference<Map<String, String>> MAP_TYPE = new TypeReference<>() {};
     private static final ClaimNames DEFAULT_CLAIMS = new ClaimNames("email", "given_name", "family_name");
+
+    /**
+     * Roles a tenant is allowed to assign to a JIT-provisioned account. Platform-scoped roles
+     * (notably {@code ROLE_SUPER_ADMIN}) and unknown values are never provisionable via OIDC
+     * config — they would otherwise grant cross-tenant/platform authority on first login.
+     */
+    private static final Set<String> PROVISIONABLE_ROLES = Set.of("ROLE_USER", "ROLE_ADMIN");
+    private static final String DEFAULT_PROVISIONED_ROLE = "ROLE_USER";
 
     /**
      * Per-IdP {@link JwtDecoder} cache. OIDC discovery ({@code .well-known} + JWKS fetch)
@@ -288,11 +297,28 @@ public class OidcAuthService {
         u.setFirstName(firstName);
         u.setLastName(lastName);
         u.setEmailVerified(true);
-        if (role != null && !role.isBlank()) {
-            u.setRole(role);
-        }
+        u.setRole(sanitizeProvisionedRole(role));
         u.setAvatarUrl(avatarUrl);
         return userRepo.save(u);
+    }
+
+    /**
+     * Restricts the tenant-configured {@code default_role} to the provisionable whitelist.
+     * Any platform-scoped or unknown value falls back to {@code ROLE_USER} (logged), preventing
+     * privilege escalation via a crafted/misconfigured {@code tenant_oidc_configs.default_role}.
+     *
+     * @param configuredRole the role from the tenant OIDC config (may be {@code null})
+     * @return a safe, provisionable role
+     */
+    String sanitizeProvisionedRole(final String configuredRole) {
+        if (configuredRole != null && PROVISIONABLE_ROLES.contains(configuredRole)) {
+            return configuredRole;
+        }
+        if (configuredRole != null && !configuredRole.isBlank()
+                && !DEFAULT_PROVISIONED_ROLE.equals(configuredRole)) {
+            LOG.warn("event=OIDC_ROLE_REJECTED role={} reason=not_provisionable", configuredRole);
+        }
+        return DEFAULT_PROVISIONED_ROLE;
     }
 
     /**

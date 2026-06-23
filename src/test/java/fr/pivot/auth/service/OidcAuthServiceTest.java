@@ -198,6 +198,18 @@ class OidcAuthServiceTest {
         }).doesNotThrowAnyException();
     }
 
+    @Test
+    void sanitizeProvisionedRole_rejectsPlatformAndUnknownRoles() {
+        // Whitelisted roles pass through.
+        assertThat(service.sanitizeProvisionedRole("ROLE_USER")).isEqualTo("ROLE_USER");
+        assertThat(service.sanitizeProvisionedRole("ROLE_ADMIN")).isEqualTo("ROLE_ADMIN");
+        // Platform-scoped, unknown and null all fall back to ROLE_USER (no privilege escalation).
+        assertThat(service.sanitizeProvisionedRole("ROLE_SUPER_ADMIN")).isEqualTo("ROLE_USER");
+        assertThat(service.sanitizeProvisionedRole("ROLE_ANYTHING")).isEqualTo("ROLE_USER");
+        assertThat(service.sanitizeProvisionedRole("")).isEqualTo("ROLE_USER");
+        assertThat(service.sanitizeProvisionedRole(null)).isEqualTo("ROLE_USER");
+    }
+
     private static java.security.KeyPair rsaKeyPair() throws Exception {
         final KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
         kpg.initialize(2048);
