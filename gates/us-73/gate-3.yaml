@@ -1,0 +1,18 @@
+gate: QUALITY
+us_id: 73
+score: 90
+decision: PASS_WITH_HARD_BLOCK
+executed_by: Claude
+timestamp: 2026-06-23T06:20Z
+breakdown:
+  sonarcloud_coverage: 25  # /25 — 81.2% >= 80%, Quality Gate vert après remédiation S6437
+  findings_critique_high: 22 # /25 — 0 vuln/bug ; smells résiduels mineurs hors nouveau code
+  linters_clean: 20        # /20 — Checkstyle 0, SpotBugs 0
+  gitleaks_clean: 20       # /20 — aucun secret (secret OTP/leurre générés, non hardcodés)
+  build_docker: 10         # /10
+hard_blocks:
+  - security                 # label sécurité présent
+  - modif_contrat_oidc_roles # validation OIDC + rôles -> review humaine obligatoire
+notes: >
+  SonarCloud Quality Gate vert après correction du BLOCKER S6437 (secret hardcodé) et des
+  smells S6809/S2925/S6068. CI : 14 checks verts. Hard blocks OIDC/sécurité -> Gate 4 humain.
