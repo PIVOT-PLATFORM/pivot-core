@@ -56,11 +56,11 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-security</artifactId>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-oauth2-jose</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -73,6 +73,16 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
+		<!--
+		  Spring Boot 4 moved FlywayAutoConfiguration out of spring-boot-autoconfigure
+		  into the dedicated spring-boot-flyway module. flyway-core alone provides the
+		  library but NOT the autoconfig that runs migrations on startup — without this
+		  module Flyway never executes (no migration, no log). Required for db/migration.
+		-->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-flyway</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.flywaydb</groupId>
@@ -87,10 +97,24 @@
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
 		</dependency>
-
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-thymeleaf</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.google.api-client</groupId>
+			<artifactId>google-api-client</artifactId>
+			<version>2.7.2</version>
+			<exclusions>
+				<exclusion>
+					<groupId>commons-logging</groupId>
+					<artifactId>commons-logging</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<!-- Test -->
@@ -159,6 +183,7 @@
 					<effort>Max</effort>
 					<threshold>Medium</threshold>
 					<failOnError>true</failOnError>
+					<excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
 				</configuration>
 				<!-- ASM 9.8 : supporte class 69 (Java 25) pour analyse JDK runtime -->
 				<dependencies>
@@ -231,6 +256,57 @@
 								</configuration>
 							</execution>
 						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+
+		<profile>
+			<id>mutation</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.pitest</groupId>
+						<artifactId>pitest-maven</artifactId>
+						<!-- 1.25.x bundles ASM 9.8 (reads class file v68 / Java 24) and runs on JDK 25.
+						     1.17.0 failed with "Unsupported class file major version 68". -->
+						<version>1.25.5</version>
+						<dependencies>
+							<dependency>
+								<groupId>org.pitest</groupId>
+								<artifactId>pitest-junit5-plugin</artifactId>
+								<version>1.2.3</version>
+							</dependency>
+						</dependencies>
+						<configuration>
+							<!-- Only mutate business logic, not JPA entities or config -->
+							<targetClasses>
+								<param>fr.pivot.auth.service.*</param>
+								<param>fr.pivot.auth.util.*</param>
+								<param>fr.pivot.auth.entity.*</param>
+								<param>fr.pivot.auth.filter.*</param>
+							</targetClasses>
+							<!-- Run only unit tests — skip Testcontainers integration tests -->
+							<targetTests>
+								<param>fr.pivot.auth.service.*Test</param>
+								<param>fr.pivot.auth.util.*Test</param>
+								<param>fr.pivot.auth.entity.*Test</param>
+								<param>fr.pivot.config.*Test</param>
+							</targetTests>
+							<excludedTestClasses>
+								<param>fr.pivot.AbstractIntegrationTest</param>
+								<param>fr.pivot.*IntegrationTest</param>
+								<param>fr.pivot.PivotBackendApplicationTests</param>
+							</excludedTestClasses>
+							<mutationThreshold>60</mutationThreshold>
+							<coverageThreshold>60</coverageThreshold>
+							<outputFormats>
+								<outputFormat>XML</outputFormat>
+								<outputFormat>HTML</outputFormat>
+							</outputFormats>
+							<timestampedReports>false</timestampedReports>
+							<withHistory>false</withHistory>
+						</configuration>
 					</plugin>
 				</plugins>
 			</build>

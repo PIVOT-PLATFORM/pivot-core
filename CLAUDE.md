@@ -159,7 +159,7 @@ Dépendances : #xxx (si applicable)
 ### Mise à jour des statuts (Claude)
 
 - Claude met le statut à **"Review"** quand une US est implémentée (Gate 2 vert)
-- Alexandre valide → statut **"Done"**
+- Le mainteneur valide → statut **"Done"**
 - US bloquée → **"Backlog"** + note explicative
 - Ne jamais laisser un statut obsolète
 
@@ -169,7 +169,7 @@ Dépendances : #xxx (si applicable)
 
 ### Breaking Point 1 : Avant toute implémentation d'US
 
-Demander explicitement la validation d'Alexandre sur **deux points** :
+Demander explicitement la validation du mainteneur sur **deux points** :
 
 **1. L'US elle-même** — confirmer que c'est la prochaine à traiter :
 > "Je m'apprête à implémenter `us-{slug}` (priorité X, estimation Y).
@@ -179,7 +179,7 @@ Demander explicitement la validation d'Alexandre sur **deux points** :
 > "Voici les critères d'acceptation : [liste Given/When/Then].
 > Tu valides, ou tu veux ajouter / modifier / retirer ?"
 
-**Pourquoi :** critères mal cadrés en amont = code à refaire. Alexandre valide **avant** que Claude écrive la moindre ligne de code de production.
+**Pourquoi :** critères mal cadrés en amont = code à refaire. Le mainteneur valide **avant** que Claude écrive la moindre ligne de code de production.
 
 **Exceptions (pas de consultation requise) :**
 - Correctifs sécurité sur vecteur exploitable immédiatement
@@ -194,7 +194,7 @@ Tout PR avec :
 - Modification du contrat de module sans PRs coordonnées
 - Modification du système OIDC / rôles
 
-→ Label `needs-human-review` + score breakdown + attendre Alexandre.
+→ Label `needs-human-review` + score breakdown + attendre le mainteneur.
 
 ---
 
@@ -335,8 +335,8 @@ PO Agent rédige Epic + US avec AC
     ├── QA Agent : testabilité de chaque AC
     └── → Gate 1 READINESS
            │
-           ├── Score ≥ 70 → Breaking Point 1 : validation Alexandre (PO)
-           │     └── Alexandre valide → Dev Agent implémente
+           ├── Score ≥ 70 → Breaking Point 1 : validation du mainteneur (PO)
+           │     └── Le mainteneur valide → Dev Agent implémente
            └── Score < 70 → clarification PO Agent avant tout
 ```
 
@@ -399,8 +399,8 @@ git push origin --delete feat/us-{id}-{slug}
 
 - Pas de secrets dans le code — variables d'environnement
 - Toute action state-changing → log structuré JSON (backend)
-- `// NOSONAR — <justification courte>` (SonarCloud faux positif — justification obligatoire)
-- `// nosemgrep: <rule-id>` (Semgrep faux positif)
+- **`// NOSONAR` : zéro, jamais.** Tout faux positif Sonar se marque côté SonarCloud (UI "Won't fix" / "False positive", ou exclusion centralisée) — aucune exception.
+- **`// nosemgrep` : interdit par défaut**, autorisé **uniquement avec la validation explicite du mainteneur**. Sans validation, exclusion côté config Semgrep (`.semgrepignore` / `--exclude-rule`), jamais en commentaire inline.
 
 ---
 
@@ -449,7 +449,7 @@ Dans **pivot-docs** — un fichier par catégorie, mis à jour en place. **Jamai
 | Interdit | Raison |
 |----------|--------|
 | `--no-verify` | Contourne les hooks qualité |
-| `git push --force` sur `main` | Jamais — Alexandre uniquement si nécessaire |
+| `git push --force` sur `main` | Jamais — le mainteneur uniquement si nécessaire |
 | `git add .` en bloc | Risque d'inclure `.env`, clés, binaires |
 | Merger avec label `security` sans revue humaine | Hard block Gate 4 |
 | Commiter `.env`, tokens, secrets, certificats | Exposition définitive |
@@ -465,10 +465,10 @@ Dans **pivot-docs** — un fichier par catégorie, mis à jour en place. **Jamai
 Après **2 tentatives** (même stratégie ou variantes proches) :
 1. **Stopper** — ne pas continuer à boucler
 2. **Committer l'artifact de gate** avec `decision: ESCALATED` et contexte complet
-3. **Signaler** à Alexandre : blocage, tentatives, raison de l'échec — label `needs-human-review`
+3. **Signaler** au mainteneur : blocage, tentatives, raison de l'échec — label `needs-human-review`
 4. **Proposer** une alternative : approche différente, outil différent, contournement
 
-Ne jamais enchaîner plus de 2 tentatives sans informer Alexandre.
+Ne jamais enchaîner plus de 2 tentatives sans informer le mainteneur.
 
 ---
 

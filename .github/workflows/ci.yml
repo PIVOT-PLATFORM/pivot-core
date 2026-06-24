@@ -35,12 +35,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Java 25
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: maven
+      - name: Setup Java + Maven
+        uses: ./.github/actions/setup-java
 
       - name: Compile + Checkstyle + SpotBugs
         run: mvn --no-transfer-progress compile checkstyle:check spotbugs:check -Dmaven.compiler.release=24
@@ -54,20 +50,8 @@ jobs:
     timeout-minutes: 30
 
     services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: pivot_test
-          POSTGRES_USER: pivot
-          POSTGRES_PASSWORD: pivot_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U pivot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
+      # PostgreSQL is supplied by Testcontainers (AbstractIntegrationTest @ServiceConnection).
+      # Only Redis remains as an external CI service.
       redis:
         image: redis:7-alpine
         ports:
@@ -84,32 +68,30 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Java 25
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: maven
+      - name: Setup Java + Maven
+        uses: ./.github/actions/setup-java
 
       - name: Run tests with coverage
         env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/pivot_test
-          SPRING_DATASOURCE_USERNAME: pivot
-          SPRING_DATASOURCE_PASSWORD: pivot_test
+          # Datasource is provided by Testcontainers (@ServiceConnection) — no static URL needed.
           SPRING_REDIS_HOST: localhost
           SPRING_REDIS_PORT: 6379
-          JWT_SECRET: ci-test-secret-key-for-pivot-application-tests-must-be-at-least-64-chars
         run: mvn --no-transfer-progress verify -Pcoverage -Dmaven.compiler.release=24
 
-      - name: Upload backend coverage
+      # Compiled classes + coverage shared with the sonar job (no recompile downstream).
+      - name: Upload backend build (classes + coverage)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: backend-coverage
-          path: target/site/jacoco/jacoco.xml
+          name: backend-build
+          path: |
+            target/classes/
+            target/test-classes/
+            target/site/jacoco/jacoco.xml
+          retention-days: 1
 
   # -----------------------------------------
-  # 3. SONARCLOUD
+  # 3. SONARCLOUD (CI analysis — Automatic Analysis désactivée côté projet)
   # -----------------------------------------
   sonar:
     name: SonarCloud Analysis
@@ -125,21 +107,14 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Setup Java 25
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: maven
+      - name: Setup Java + Maven
+        uses: ./.github/actions/setup-java
 
-      - name: Download backend coverage
+      - name: Download backend build (classes + coverage)
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: backend-coverage
-          path: target/site/jacoco/
-
-      - name: Compile (sonar.java.binaries)
-        run: mvn --no-transfer-progress compile -DskipTests -Dmaven.compiler.release=24
+          name: backend-build
+          path: target/
 
       - name: SonarCloud Scan
         env:
@@ -150,6 +125,7 @@ jobs:
             -Dmaven.compiler.release=24 \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.organization=pivot-platform \
+            -Dsonar.projectKey=PIVOT-PLATFORM_pivot-core \
             -Dsonar.token="${SONAR_TOKEN}"
 
   # -----------------------------------------
@@ -186,3 +162,38 @@ jobs:
         with:
           sarif_file: trivy-backend.sarif
           category: trivy-sca-backend
+
+  # -----------------------------------------
+  # 5. MUTATION TESTING (PITest) — PR only, quality indicator (non-blocking)
+  #    Single source of truth for mutation coverage (ex-mutation.yml supprimé).
+  #    continue-on-error: mutation score is a quality signal, not a hard merge gate
+  #    (see CLAUDE.md hard blocks). Report is always uploaded for review.
+  # -----------------------------------------
+  mutation:
+    name: Mutation Testing (PITest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'pull_request'
+    needs: [tests-backend]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Java + Maven
+        uses: ./.github/actions/setup-java
+
+      # Step-level continue-on-error so the job (and PR check) stays green:
+      # mutation score is a quality indicator, not a hard merge gate (CLAUDE.md).
+      - name: PITest — mutation coverage
+        continue-on-error: true
+        run: mvn --no-transfer-progress test-compile pitest:mutationCoverage -Pmutation -Dmaven.compiler.release=24
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mutation-report
+          path: target/pit-reports/

@@ -10,7 +10,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     open-in-view: false
     properties:
       hibernate:
@@ -19,7 +19,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    baseline-on-migrate: false
+    baseline-on-migrate: true
+    baseline-version: 0
 
   data:
     redis:
@@ -42,6 +43,16 @@ server:
   port: ${SERVER_PORT:8080}
   servlet:
     context-path: /api
+  # Honour X-Forwarded-For ONLY when the immediate peer is a trusted reverse proxy.
+  # Enables Tomcat RemoteIpValve so HttpServletRequest.getRemoteAddr() returns the real
+  # client IP behind nginx, while a directly-reachable attacker cannot spoof XFF to bypass
+  # per-IP rate limiting or poison the audit trail. internal-proxies defaults to private +
+  # loopback ranges; override PIVOT_TRUSTED_PROXIES to match the prod proxy network.
+  tomcat:
+    remoteip:
+      remote-ip-header: x-forwarded-for
+      protocol-header: x-forwarded-proto
+      internal-proxies: ${PIVOT_TRUSTED_PROXIES:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|0:0:0:0:0:0:0:1}
 
 management:
   endpoints:
@@ -52,13 +63,27 @@ management:
     health:
       show-details: when_authorized
 
+logging:
+  level:
+    fr.pivot: ${LOG_LEVEL_PIVOT:INFO}
+    org.springframework.security: ${LOG_LEVEL_SECURITY:WARN}
+    org.springframework.web: ${LOG_LEVEL_WEB:WARN}
+    org.flywaydb: ${LOG_LEVEL_FLYWAY:WARN}
+
 pivot:
-  jwt:
-    secret: ${JWT_SECRET}
-    expiration-ms: 3600000
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
   mail:
-    from: ${PIVOT_MAIL_FROM:pivot@localhost}
+    from: ${PIVOT_MAIL_FROM:noreply@pivot.app}
   app:
-    url: ${PIVOT_APP_URL:http://localhost}
+    url: ${PIVOT_APP_URL:http://localhost:4200}
+  auth:
+    session-cookie-name: pivot_session
+    device-cookie-name: pivot_device
+    device-ttl-days: 90
+    verification-ttl-hours: 24
+    password-reset-ttl-minutes: 60
+    device-verify-ttl-minutes: 15
+    secure-cookie: true
+  cleanup:
+    tokens-cron: "0 0 2 * * *"  # Nightly 02:00 — overridable via env PIVOT_CLEANUP_TOKENS_CRON

@@ -1,0 +1,15 @@
+gate: READINESS
+us_id: 73
+score: 86
+decision: VALIDATE_WITH_PO
+executed_by: Claude
+timestamp: 2026-06-23T06:00Z
+breakdown:
+  ac_testables: 38        # /40 — tous les AC mappables à un test (cf. ac-traceability.md)
+  dependances_resolues: 20 # /20 — Redis, PostgreSQL, OIDC jose présents
+  impact_contrat_module: 13 # /15 — touche le système OIDC / rôles (hard block Gate 4)
+  ac_securite: 15         # /15 — plusieurs AC sécurité explicites (aud, RBAC, énumération)
+  pas_de_cycle: 10        # /10
+notes: >
+  US de réécriture du sous-système d'authentification (JWT -> tokens opaques DB-backed,
+  Google, OIDC PKCE entreprise). Impact contrat OIDC/rôles -> Breaking Point 2 au Gate 4.

@@ -1,8 +1,0 @@
-# ZAP DAST Rules — PIVOT
-# Format : <alertId>	<action>	<comment>
-# Actions : IGNORE | WARN | FAIL
-#
-# Exemple — désactiver une alerte pour les endpoints Actuator (accès restreint en prod) :
-# 10021	IGNORE	Actuator endpoints protégés par Spring Security
-#
-# Laisser vide = comportement ZAP par défaut (WARN sur tout)

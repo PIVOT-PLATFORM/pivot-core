@@ -105,6 +105,5 @@ PIVOT est conçu avec ces propriétés de sécurité :
 | CodeQL | SAST Java + JavaScript/TypeScript |
 | Semgrep | OWASP Top 10, injection SQL, XSS, JWT, Spring |
 | OWASP Dependency-Check | SCA — dépendances Maven + npm |
-| ZAP DAST | Scan dynamique authentifié (ROLE_USER + ROLE_ADMIN) |
 | Plumber | Conformité et hardening des workflows CI/CD |
 | OpenSSF Scorecard | Score de sécurité open-source global |
