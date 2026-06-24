@@ -63,30 +63,22 @@ jobs:
       # sujet au timeout 30 min. Les serveurs cibles sont amd64. Pour réintroduire arm64 :
       # ajouter docker/setup-qemu-action ET refactorer le Dockerfile pour copier un jar
       # pré-construit (pas de compilation émulée).
-      - name: Build & push Docker image (amd64)
+      # Build SANS push : image chargée localement (--load) pour être scannée AVANT toute
+      # publication. Si Trivy (plus bas) trouve une CVE HIGH/CRITICAL, le job échoue et
+      # l'image n'est JAMAIS poussée sur GHCR — pas de :latest vulnérable à supprimer après
+      # coup. amd64 uniquement (cf. note QEMU plus haut).
+      - name: Build & load Docker image (amd64)
         run: |
           # GHCR exige un nom de dépôt en minuscules ; github.repository contient PIVOT-PLATFORM.
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/pivot-core"
           echo "IMAGE_REF=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_ENV"
-          docker buildx build --platform linux/amd64 \
+          echo "IMAGE_LATEST=${IMAGE}:latest" >> "$GITHUB_ENV"
+          docker buildx build --platform linux/amd64 --load \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:latest" \
-            --push .
+            .
 
-      - name: Semantic Release
-        id: semrel
-        env:
-          GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
-        run: npx semantic-release
-
-      - name: Compute build checksums (SLSA provenance)
-        run: |
-          find target -name "*.jar" -not -name "*-sources.jar" \
-            -exec sha256sum {} \; > build-checksums.txt
-          echo "Checksums generated:"
-          cat build-checksums.txt
-
-      - name: Scan Docker image - Trivy
+      - name: Scan Docker image - Trivy (gate avant push)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_REF }}
@@ -101,6 +93,25 @@ jobs:
         with:
           sarif_file: trivy-core.sarif
           category: trivy-container
+
+      # Atteint uniquement si Trivy a réussi (sinon l'étape précédente a fait échouer le job).
+      - name: Push Docker image (scan OK)
+        run: |
+          docker push "${IMAGE_REF}"
+          docker push "${IMAGE_LATEST}"
+
+      - name: Semantic Release
+        id: semrel
+        env:
+          GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+        run: npx semantic-release
+
+      - name: Compute build checksums (SLSA provenance)
+        run: |
+          find target -name "*.jar" -not -name "*-sources.jar" \
+            -exec sha256sum {} \; > build-checksums.txt
+          echo "Checksums generated:"
+          cat build-checksums.txt
 
       - name: Generate SLSA provenance (L2)
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
