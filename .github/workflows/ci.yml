@@ -204,6 +204,8 @@ jobs:
   #    `pr-<num>` (écrasée à chaque push de la PR), supprimée à la fermeture de la
   #    PR par pr-image-cleanup.yml. amd64 uniquement (cf. release.yml).
   #    Same-repo seulement : les PR de fork n'ont pas de token d'écriture GHCR.
+  #    Package SÉPARÉ `pivot-core-preview` (≠ image de prod `pivot-core`) : le cleanup
+  #    ne peut donc jamais supprimer une version partagée par `latest`/un SHA de prod.
   # -----------------------------------------
   docker-preview:
     name: Docker preview image (PR)
@@ -235,7 +237,8 @@ jobs:
       - name: Build & push preview image (amd64)
         run: |
           # GHCR exige un nom de dépôt en minuscules ; github.repository contient PIVOT-PLATFORM.
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/pivot-core:pr-${{ github.event.pull_request.number }}"
+          # Package dédié aux previews (jamais l'image de prod pivot-core).
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/pivot-core-preview:pr-${{ github.event.pull_request.number }}"
           echo "PREVIEW_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
           docker buildx build --platform linux/amd64 -t "${IMAGE}" --push .
 

@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.actor != 'dependabot[bot]'
+    # Version calculée par Semantic Release (vide si aucune release créée ce run).
+    outputs:
+      version: ${{ steps.semrel.outputs.version }}
     permissions:
       contents: write
       issues: write
@@ -37,7 +40,7 @@ jobs:
           # ("Dependencies lock file is not found").
 
       - name: Install Semantic Release
-        run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git
+        run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec
 
       - name: Setup Java + Maven
         uses: ./.github/actions/setup-java
@@ -71,6 +74,7 @@ jobs:
             --push .
 
       - name: Semantic Release
+        id: semrel
         env:
           GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
         run: npx semantic-release
@@ -110,6 +114,9 @@ jobs:
     name: Publish Maven artifact
     runs-on: ubuntu-latest
     needs: [release]
+    # Ne publie QUE si Semantic Release a réellement créé une release (sinon pas de
+    # déploiement répété du même 0.0.1-SNAPSHOT).
+    if: needs.release.outputs.version != ''
     timeout-minutes: 15
     permissions:
       contents: read
@@ -130,6 +137,14 @@ jobs:
           server-id: github
           server-username: GITHUB_ACTOR
           server-password: GITHUB_TOKEN
+
+      # Aligne la version Maven sur celle calculée par Semantic Release (le POM reste
+      # 0.0.1-SNAPSHOT en VCS ; on ne déploie jamais un SNAPSHOT figé comme "release").
+      - name: Set Maven version = release
+        run: |
+          mvn --no-transfer-progress -B versions:set \
+            -DnewVersion="${{ needs.release.outputs.version }}" \
+            -DgenerateBackupPoms=false
 
       - name: Deploy to GitHub Packages
         env:
