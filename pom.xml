@@ -26,6 +26,9 @@
 		<!-- JaCoCo 0.8.13 + SpotBugs ASM 9.7 support class 68 max; revert when tools add Java 25 support -->
 		<maven.compiler.release>24</maven.compiler.release>
 		<testcontainers.version>1.21.1</testcontainers.version>
+		<!-- Build reproductible : timestamp d'entrées d'archive figé → même source = même
+		     digest de JAR. Sous-tend la vérification de digest sur reprise (release.yml). -->
+		<project.build.outputTimestamp>2026-06-25T00:00:00Z</project.build.outputTimestamp>
 
 	</properties>
 
@@ -312,5 +315,21 @@
 			</build>
 		</profile>
 	</profiles>
+
+	<!-- Cible de `mvn deploy` (job "publish" de release.yml). L'id doit correspondre au
+	     server-id "github" configuré par setup-java. GitHub Packages utilise la même URL
+	     pour releases et snapshots. -->
+	<distributionManagement>
+		<repository>
+			<id>github</id>
+			<name>GitHub Packages</name>
+			<url>https://maven.pkg.github.com/PIVOT-PLATFORM/pivot-core</url>
+		</repository>
+		<snapshotRepository>
+			<id>github</id>
+			<name>GitHub Packages</name>
+			<url>https://maven.pkg.github.com/PIVOT-PLATFORM/pivot-core</url>
+		</snapshotRepository>
+	</distributionManagement>
 
 </project>

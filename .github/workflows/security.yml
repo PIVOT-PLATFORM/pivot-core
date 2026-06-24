@@ -79,6 +79,9 @@ jobs:
     name: Semgrep - SAST
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write   # requis par upload-sarif (sinon "Resource not accessible by integration")
 
     steps:
       - name: Checkout
