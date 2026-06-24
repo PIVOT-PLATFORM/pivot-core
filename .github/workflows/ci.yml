@@ -252,6 +252,10 @@ jobs:
           format: sarif
           output: trivy-preview.sarif
           severity: CRITICAL,HIGH
+          # Ne bloque que sur les CVE CORRIGEABLES : les CVE OS de l'image de base sans
+          # correctif disponible (ex. eclipse-temurin/Ubuntu) ne doivent pas bloquer chaque PR.
+          # Dès qu'un fix existe et qu'on rebuild, elles redeviennent bloquantes.
+          ignore-unfixed: true
           exit-code: '1'
 
       - name: Upload Trivy SARIF

@@ -133,6 +133,9 @@ jobs:
           format: sarif
           output: trivy-core.sarif
           severity: CRITICAL,HIGH
+          # Ne bloque que sur les CVE CORRIGEABLES (cf. job docker-preview de ci.yml) : les CVE
+          # OS de l'image de base sans correctif ne doivent pas bloquer la Release.
+          ignore-unfixed: true
           exit-code: '1'
 
       - name: Upload Trivy SARIF
