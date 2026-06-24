@@ -1,0 +1,41 @@
+name: PR image cleanup
+
+# Supprime l'image de preview `pr-<num>` (poussée par ci.yml / job docker-preview)
+# quand la PR est fermée ou mergée — pas d'accumulation d'images orphelines dans GHCR.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  packages: write
+
+jobs:
+  delete-preview-image:
+    name: Delete PR preview image
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Same-repo uniquement : une PR de fork n'a jamais poussé d'image (pas de token).
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Delete ghcr image pr-<num>
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG: ${{ github.repository_owner }}
+          PKG: pivot-core/pivot-core   # nom du package container (sans l'org)
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          PKG_ENC=$(printf '%s' "$PKG" | sed 's#/#%2F#g')
+          TAG="pr-${PR}"
+          echo "Recherche de la version container taguée ${TAG}…"
+          IDS=$(gh api --paginate "/orgs/${ORG}/packages/container/${PKG_ENC}/versions" \
+            --jq ".[] | select(.metadata.container.tags[]? == \"${TAG}\") | .id" || true)
+          if [ -z "${IDS}" ]; then
+            echo "Aucune image ${TAG} trouvée (PR sans build, fork, ou déjà supprimée). Rien à faire."
+            exit 0
+          fi
+          for id in ${IDS}; do
+            echo "Suppression de la version ${id} (tag ${TAG})"
+            gh api -X DELETE "/orgs/${ORG}/packages/container/${PKG_ENC}/versions/${id}"
+          done
