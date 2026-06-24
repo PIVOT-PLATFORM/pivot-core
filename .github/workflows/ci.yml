@@ -240,4 +240,5 @@ jobs:
           docker buildx build --platform linux/amd64 -t "${IMAGE}" --push .
 
       - name: Résumé
-        run: echo "Image preview : ${PREVIEW_IMAGE}" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "Image preview : ${PREVIEW_IMAGE}" >> "$GITHUB_STEP_SUMMARY"
