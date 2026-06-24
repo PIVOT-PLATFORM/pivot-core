@@ -7,22 +7,20 @@ on:
 permissions: read-all
 
 jobs:
-  release:
-    name: Semantic Release
+  # -----------------------------------------
+  # 1. PREPARE — calcule la version SANS créer la release (dry-run).
+  #    Permet de construire un unique JAR à la version finale en aval, et de ne créer
+  #    la release/tag qu'en toute fin (pipeline ré-exécutable si une étape échoue avant).
+  # -----------------------------------------
+  prepare:
+    name: Compute release version
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     if: github.actor != 'dependabot[bot]'
-    # Version calculée par Semantic Release (vide si aucune release créée ce run).
     outputs:
-      version: ${{ steps.semrel.outputs.version }}
+      version: ${{ steps.version.outputs.version }}
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      id-token: write
-      attestations: write
-      packages: write
-      security-events: write   # requis par "Upload Trivy SARIF" (codeql-action/upload-sarif)
+      contents: read
 
     steps:
       - name: Checkout
@@ -35,18 +33,72 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-          # Pas de "cache: npm" : aucun package-lock.json n'est versionné (semantic-release est
-          # installé à la volée). Le cache npm exigerait un lockfile et faisait échouer le job
-          # ("Dependencies lock file is not found").
 
       - name: Install Semantic Release
         run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec
 
-      - name: Setup Java + Maven
-        uses: ./.github/actions/setup-java
+      # Dry-run : @semantic-release/exec (verifyReleaseCmd) écrit `version=<x>` dans
+      # $GITHUB_OUTPUT s'il y a une release à faire ; sinon la sortie reste vide.
+      - name: Compute next version (dry-run)
+        id: version
+        env:
+          GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+        run: npx semantic-release --dry-run
 
-      - name: Build
-        run: mvn --no-transfer-progress package -DskipTests
+  # -----------------------------------------
+  # 2. RELEASE — build UNIQUE à la version finale, scan, push, publish Maven, atteste
+  #    le JAR réellement publié, PUIS crée la release/tag en dernier.
+  #    Ne tourne que si `prepare` a déterminé une version (sinon rien à publier).
+  # -----------------------------------------
+  release:
+    name: Build, scan, publish & release
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    if: needs.prepare.outputs.version != ''
+    timeout-minutes: 40
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      attestations: write
+      packages: write
+      security-events: write   # requis par "Upload Trivy SARIF" (codeql-action/upload-sarif)
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Install Semantic Release
+        run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec
+
+      # setup-java direct (pas le composite) pour configurer le serveur GitHub Packages
+      # nécessaire à `mvn deploy` (id "github" = distributionManagement du pom).
+      - name: Setup Java 25 (+ GitHub Packages)
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      # Aligne la version Maven sur la version Semantic Release AVANT tout build, pour
+      # qu'image, JAR publié et provenance partagent la même version. Le POM reste
+      # 0.0.1-SNAPSHOT en VCS (cette modif n'est pas commitée).
+      - name: Set Maven version = release
+        run: mvn --no-transfer-progress -B versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -58,15 +110,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # amd64 uniquement : le Dockerfile compile Maven DANS l'image. Un build arm64 sur
-      # runner amd64 exigerait l'émulation QEMU d'une compilation JVM complète — lent et
-      # sujet au timeout 30 min. Les serveurs cibles sont amd64. Pour réintroduire arm64 :
-      # ajouter docker/setup-qemu-action ET refactorer le Dockerfile pour copier un jar
-      # pré-construit (pas de compilation émulée).
       # Build SANS push : image chargée localement (--load) pour être scannée AVANT toute
-      # publication. Si Trivy (plus bas) trouve une CVE HIGH/CRITICAL, le job échoue et
-      # l'image n'est JAMAIS poussée sur GHCR — pas de :latest vulnérable à supprimer après
-      # coup. amd64 uniquement (cf. note QEMU plus haut).
+      # publication. CVE HIGH/CRITICAL -> job KO et image jamais poussée (pas de :latest
+      # vulnérable à supprimer). amd64 uniquement : le Dockerfile compile Maven dans l'image,
+      # un build arm64 émulé (QEMU) serait lent/timeout ; réintroductible via setup-qemu +
+      # Dockerfile copiant un jar pré-construit.
       - name: Build & load Docker image (amd64)
         run: |
           # GHCR exige un nom de dépôt en minuscules ; github.repository contient PIVOT-PLATFORM.
@@ -100,11 +148,13 @@ jobs:
           docker push "${IMAGE_REF}"
           docker push "${IMAGE_LATEST}"
 
-      - name: Semantic Release
-        id: semrel
+      # Build + deploy en une seule invocation Maven : le JAR déployé sur GitHub Packages
+      # est exactement celui dont on calcule ensuite les checksums et qu'on atteste.
+      - name: Deploy to GitHub Packages
         env:
-          GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
-        run: npx semantic-release
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mvn --no-transfer-progress deploy -DskipTests -Dmaven.compiler.release=24
 
       - name: Compute build checksums (SLSA provenance)
         run: |
@@ -113,55 +163,19 @@ jobs:
           echo "Checksums generated:"
           cat build-checksums.txt
 
+      # Atteste le JAR réellement déployé (même artefact, même version que GitHub Packages).
       - name: Generate SLSA provenance (L2)
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: 'build-checksums.txt'
 
-  # -----------------------------------------
-  # 2. PUBLISH — Maven artifact → GitHub Packages
-  # -----------------------------------------
-  publish:
-    name: Publish Maven artifact
-    runs-on: ubuntu-latest
-    needs: [release]
-    # Ne publie QUE si Semantic Release a réellement créé une release (sinon pas de
-    # déploiement répété du même 0.0.1-SNAPSHOT).
-    if: needs.release.outputs.version != ''
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Java 25 (GitHub Packages)
-        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: maven
-          server-id: github
-          server-username: GITHUB_ACTOR
-          server-password: GITHUB_TOKEN
-
-      # Aligne la version Maven sur celle calculée par Semantic Release (le POM reste
-      # 0.0.1-SNAPSHOT en VCS ; on ne déploie jamais un SNAPSHOT figé comme "release").
-      - name: Set Maven version = release
-        run: |
-          mvn --no-transfer-progress -B versions:set \
-            -DnewVersion="${{ needs.release.outputs.version }}" \
-            -DgenerateBackupPoms=false
-
-      - name: Deploy to GitHub Packages
+      # EN DERNIER : crée le tag + la GitHub Release. Si une étape précédente échoue, aucun
+      # tag n'est créé -> un rerun recalcule la version (prepare) et rejoue tout (idempotent :
+      # push d'image et deploy écrasent). Rend le pipeline récupérable.
+      - name: Semantic Release (create tag + release)
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: mvn --no-transfer-progress deploy -DskipTests -Dmaven.compiler.release=24
+          GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+        run: npx semantic-release
 
   # -----------------------------------------
   # 3. DEPLOY — placeholder (environment: production)
@@ -169,7 +183,7 @@ jobs:
   deploy:
     name: Deploy to production
     runs-on: ubuntu-latest
-    needs: [publish]
+    needs: [release]
     timeout-minutes: 15
     environment: production
     permissions:
