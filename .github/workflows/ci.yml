@@ -276,7 +276,10 @@ jobs:
   # -----------------------------------------
   # 7. MAVEN DEPLOY PREVIEW (PR only) — exerce `mvn deploy` vers GitHub Packages (le seul
   #    angle mort de la Release non couvert par PR), avec une version PR-scoped supprimée
-  #    juste après → chemin de publication validé, zéro pollution.
+  #    juste après → chemin de publication validé.
+  #    NB : si aucune release n'existe encore, la version PR est l'UNIQUE version du package
+  #    partagé fr.pivot.pivot-core → GitHub refuse de supprimer la dernière version (on ne
+  #    touche jamais le package partagé). L'orphelin disparaît dès la 1re vraie release.
   #    Same-repo seulement (les forks n'ont pas de token packages:write).
   # -----------------------------------------
   maven-deploy-preview:

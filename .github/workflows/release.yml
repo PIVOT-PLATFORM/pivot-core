@@ -100,6 +100,24 @@ jobs:
       - name: Set Maven version = release
         run: mvn --no-transfer-progress -B versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
+      # Construit le JAR UNE fois à la version finale. C'est exactement ce JAR qui est attesté
+      # (plus bas) puis déployé tel quel via deploy:deploy-file — aucun rebuild divergent.
+      - name: Build JAR (version finale)
+        run: mvn --no-transfer-progress -B package -DskipTests -Dmaven.compiler.release=24
+
+      - name: Compute build checksums
+        run: |
+          find target -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' \
+            -exec sha256sum {} \; > build-checksums.txt
+          echo "Checksums :"; cat build-checksums.txt
+
+      # Atteste les ARTEFACTS listés dans le fichier de checksums (les JAR), pas le fichier
+      # texte lui-même. `subject-checksums` lit le format `sha256sum` et atteste chaque digest.
+      - name: Generate SLSA provenance (L2)
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-checksums: build-checksums.txt
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
@@ -151,30 +169,34 @@ jobs:
           docker push "${IMAGE_REF}"
           docker push "${IMAGE_LATEST}"
 
-      # Build + deploy en une seule invocation Maven : le JAR déployé sur GitHub Packages
-      # est exactement celui dont on calcule ensuite les checksums et qu'on atteste.
-      - name: Deploy to GitHub Packages
+      # Déploie EXACTEMENT le JAR attesté (deploy:deploy-file, pas de rebuild) et tolère une
+      # version déjà publiée : un rerun (après échec d'attest/semrel) ne casse pas sur le 409
+      # "version release immuable déjà présente" → idempotent.
+      - name: Deploy to GitHub Packages (idempotent)
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: mvn --no-transfer-progress deploy -DskipTests -Dmaven.compiler.release=24
-
-      - name: Compute build checksums (SLSA provenance)
         run: |
-          find target -name "*.jar" -not -name "*-sources.jar" \
-            -exec sha256sum {} \; > build-checksums.txt
-          echo "Checksums generated:"
-          cat build-checksums.txt
-
-      # Atteste le JAR réellement déployé (même artefact, même version que GitHub Packages).
-      - name: Generate SLSA provenance (L2)
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        with:
-          subject-path: 'build-checksums.txt'
+          set +e
+          JAR=$(find target -maxdepth 1 -name 'pivot-core-*.jar' ! -name '*-sources.jar' | head -1)
+          echo "Déploiement de ${JAR} (version ${VERSION})…"
+          OUT=$(mvn --no-transfer-progress -B deploy:deploy-file \
+            -DrepositoryId=github \
+            -Durl="https://maven.pkg.github.com/${GITHUB_REPOSITORY}" \
+            -Dfile="${JAR}" -DpomFile=pom.xml -Dpackaging=jar 2>&1)
+          code=$?
+          echo "$OUT"
+          if [ "$code" -ne 0 ]; then
+            if echo "$OUT" | grep -qiE "already exist|409|Conflict"; then
+              echo "::notice::Version ${VERSION} déjà publiée — rerun idempotent, on continue."
+            else
+              exit "$code"
+            fi
+          fi
 
       # EN DERNIER : crée le tag + la GitHub Release. Si une étape précédente échoue, aucun
       # tag n'est créé -> un rerun recalcule la version (prepare) et rejoue tout (idempotent :
-      # push d'image et deploy écrasent). Rend le pipeline récupérable.
+      # image écrasée, JAR attesté à nouveau, deploy tolérant à l'existant). Récupérable.
       - name: Semantic Release (create tag + release)
         env:
           GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
