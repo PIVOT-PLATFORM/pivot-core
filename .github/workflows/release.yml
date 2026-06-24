@@ -62,9 +62,12 @@ jobs:
       # pré-construit (pas de compilation émulée).
       - name: Build & push Docker image (amd64)
         run: |
+          # GHCR exige un nom de dépôt en minuscules ; github.repository contient PIVOT-PLATFORM.
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/pivot-core"
+          echo "IMAGE_REF=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_ENV"
           docker buildx build --platform linux/amd64 \
-            -t ghcr.io/${{ github.repository }}/pivot-core:${{ github.sha }} \
-            -t ghcr.io/${{ github.repository }}/pivot-core:latest \
+            -t "${IMAGE}:${GITHUB_SHA}" \
+            -t "${IMAGE}:latest" \
             --push .
 
       - name: Semantic Release
@@ -82,7 +85,7 @@ jobs:
       - name: Scan Docker image - Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository }}/pivot-core:${{ github.sha }}
+          image-ref: ${{ env.IMAGE_REF }}
           format: sarif
           output: trivy-core.sarif
           severity: CRITICAL,HIGH

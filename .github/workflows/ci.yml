@@ -234,10 +234,10 @@ jobs:
 
       - name: Build & push preview image (amd64)
         run: |
-          docker buildx build --platform linux/amd64 \
-            -t ghcr.io/${{ github.repository }}/pivot-core:pr-${{ github.event.pull_request.number }} \
-            --push .
+          # GHCR exige un nom de dépôt en minuscules ; github.repository contient PIVOT-PLATFORM.
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/pivot-core:pr-${{ github.event.pull_request.number }}"
+          echo "PREVIEW_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+          docker buildx build --platform linux/amd64 -t "${IMAGE}" --push .
 
       - name: Résumé
-        run: |
-          echo "Image preview : ghcr.io/${{ github.repository }}/pivot-core:pr-${{ github.event.pull_request.number }}" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Image preview : ${PREVIEW_IMAGE}" >> "$GITHUB_STEP_SUMMARY"
