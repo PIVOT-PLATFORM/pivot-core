@@ -19,6 +19,7 @@ jobs:
       id-token: write
       attestations: write
       packages: write
+      security-events: write   # requis par "Upload Trivy SARIF" (codeql-action/upload-sarif)
 
     steps:
       - name: Checkout
@@ -31,7 +32,9 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-          cache: 'npm'
+          # Pas de "cache: npm" : aucun package-lock.json n'est versionné (semantic-release est
+          # installé à la volée). Le cache npm exigerait un lockfile et faisait échouer le job
+          # ("Dependencies lock file is not found").
 
       - name: Install Semantic Release
         run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git
@@ -82,7 +85,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
-        if: always()
+        if: always() && hashFiles('trivy-core.sarif') != ''
         with:
           sarif_file: trivy-core.sarif
           category: trivy-container
