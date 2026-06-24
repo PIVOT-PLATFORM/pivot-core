@@ -55,9 +55,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push Docker image (amd64 + arm64)
+      # amd64 uniquement : le Dockerfile compile Maven DANS l'image. Un build arm64 sur
+      # runner amd64 exigerait l'émulation QEMU d'une compilation JVM complète — lent et
+      # sujet au timeout 30 min. Les serveurs cibles sont amd64. Pour réintroduire arm64 :
+      # ajouter docker/setup-qemu-action ET refactorer le Dockerfile pour copier un jar
+      # pré-construit (pas de compilation émulée).
+      - name: Build & push Docker image (amd64)
         run: |
-          docker buildx build --platform linux/amd64,linux/arm64 \
+          docker buildx build --platform linux/amd64 \
             -t ghcr.io/${{ github.repository }}/pivot-core:${{ github.sha }} \
             -t ghcr.io/${{ github.repository }}/pivot-core:latest \
             --push .

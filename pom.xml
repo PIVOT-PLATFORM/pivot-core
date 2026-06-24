@@ -313,4 +313,20 @@
 		</profile>
 	</profiles>
 
+	<!-- Cible de `mvn deploy` (job "publish" de release.yml). L'id doit correspondre au
+	     server-id "github" configuré par setup-java. GitHub Packages utilise la même URL
+	     pour releases et snapshots. -->
+	<distributionManagement>
+		<repository>
+			<id>github</id>
+			<name>GitHub Packages</name>
+			<url>https://maven.pkg.github.com/PIVOT-PLATFORM/pivot-core</url>
+		</repository>
+		<snapshotRepository>
+			<id>github</id>
+			<name>GitHub Packages</name>
+			<url>https://maven.pkg.github.com/PIVOT-PLATFORM/pivot-core</url>
+		</snapshotRepository>
+	</distributionManagement>
+
 </project>
