@@ -268,3 +268,85 @@ jobs:
       - name: Résumé
         run: |
           echo "Image preview : ${PREVIEW_IMAGE}" >> "$GITHUB_STEP_SUMMARY"
+
+  # -----------------------------------------
+  # 7. MAVEN DEPLOY PREVIEW (PR only) — exerce `mvn deploy` vers GitHub Packages (le seul
+  #    angle mort de la Release non couvert par PR), avec une version PR-scoped supprimée
+  #    juste après → chemin de publication validé, zéro pollution.
+  #    Same-repo seulement (les forks n'ont pas de token packages:write).
+  # -----------------------------------------
+  maven-deploy-preview:
+    name: Maven deploy preview (PR)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # Version PR-scoped : ne peut JAMAIS entrer en collision avec une release semver (X.Y.Z).
+      PR_VERSION: 0.0.0-pr${{ github.event.pull_request.number }}-SNAPSHOT
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Java 25 (+ GitHub Packages)
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+          server-id: github
+          server-username: GITHUB_ACTOR
+          server-password: GITHUB_TOKEN
+
+      - name: Set PR-scoped Maven version
+        run: mvn --no-transfer-progress -B versions:set -DnewVersion="$PR_VERSION" -DgenerateBackupPoms=false
+
+      # Valide le chemin de publication réel (distributionManagement + auth GitHub Packages).
+      - name: Deploy preview to GitHub Packages
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mvn --no-transfer-progress deploy -DskipTests -Dmaven.compiler.release=24
+
+      # Supprime la version PR juste après (always : nettoie même si une étape a échoué).
+      # Suppression STRICTE par nom == PR_VERSION → ne touche jamais une version de release.
+      - name: Cleanup preview Maven version
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG: ${{ github.repository_owner }}
+          PKG: fr.pivot.pivot-core   # package Maven = groupId.artifactId
+        run: |
+          set -euo pipefail
+          echo "Suppression de la version Maven ${PR_VERSION} dans ${PKG}…"
+          if ! VERSIONS=$(gh api --paginate "/orgs/${ORG}/packages/maven/${PKG}/versions" 2> err.log); then
+            if grep -qi "Not Found" err.log; then
+              echo "Package ${PKG} absent — rien à nettoyer."
+              exit 0
+            fi
+            echo "Erreur non gérée :" >&2; cat err.log >&2; exit 1
+          fi
+          ID=$(printf '%s' "$VERSIONS" | jq -r ".[] | select(.name == \"${PR_VERSION}\") | .id")
+          if [ -z "${ID}" ]; then
+            echo "Version ${PR_VERSION} introuvable (deploy non abouti ?). Rien à supprimer."
+            exit 0
+          fi
+          # Suppression de la SEULE version PR (jamais le package : il est partagé avec les
+          # releases de prod). Si c'est l'unique version du package (aucune release encore),
+          # GitHub refuse la suppression → on laisse l'orphelin (inoffensif, clairement
+          # nommé) avec un warning plutôt que de risquer le package partagé.
+          if ! gh api -X DELETE "/orgs/${ORG}/packages/maven/${PKG}/versions/${ID}" 2> derr.log; then
+            if grep -qiE "last version|cannot delete the last" derr.log; then
+              echo "::warning::${PR_VERSION} est l'unique version de ${PKG} → non supprimée (on ne touche jamais le package partagé). À purger manuellement si gênant."
+              exit 0
+            fi
+            cat derr.log >&2; exit 1
+          fi
+          echo "Version ${PR_VERSION} supprimée."
