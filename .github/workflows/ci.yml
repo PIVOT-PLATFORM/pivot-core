@@ -217,6 +217,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write   # upload du SARIF Trivy (parité avec la Release)
 
     steps:
       - name: Checkout
@@ -234,13 +235,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push preview image (amd64)
+      # Mirror EXACT de la Release : build & load (pas de push) -> Trivy (gate) -> push.
+      # Une image qui casserait le gate Trivy de la Release casse la PR -> zéro surprise.
+      - name: Build & load preview image (amd64)
         run: |
           # GHCR exige un nom de dépôt en minuscules ; github.repository contient PIVOT-PLATFORM.
           # Package dédié aux previews (jamais l'image de prod pivot-core).
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/pivot-core-preview:pr-${{ github.event.pull_request.number }}"
           echo "PREVIEW_IMAGE=${IMAGE}" >> "$GITHUB_ENV"
-          docker buildx build --platform linux/amd64 -t "${IMAGE}" --push .
+          docker buildx build --platform linux/amd64 --load -t "${IMAGE}" .
+
+      - name: Scan preview image - Trivy (gate avant push)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.PREVIEW_IMAGE }}
+          format: sarif
+          output: trivy-preview.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        if: always() && hashFiles('trivy-preview.sarif') != ''
+        with:
+          sarif_file: trivy-preview.sarif
+          category: trivy-preview
+
+      # Atteint uniquement si Trivy a réussi.
+      - name: Push preview image (scan OK)
+        run: docker push "${PREVIEW_IMAGE}"
 
       - name: Résumé
         run: |
