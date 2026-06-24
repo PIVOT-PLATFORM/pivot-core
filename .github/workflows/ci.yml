@@ -315,12 +315,19 @@ jobs:
       - name: Set PR-scoped Maven version
         run: mvn --no-transfer-progress -B versions:set -DnewVersion="$PR_VERSION" -DgenerateBackupPoms=false
 
-      # Valide le chemin de publication réel (distributionManagement + auth GitHub Packages).
-      - name: Deploy preview to GitHub Packages
+      # Valide EXACTEMENT le chemin de la Release : build du JAR + deploy:deploy-file (et pas
+      # `mvn deploy`), pour exercer sur PR la même commande de publication GitHub Packages.
+      - name: Build + deploy preview (deploy:deploy-file)
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: mvn --no-transfer-progress deploy -DskipTests -Dmaven.compiler.release=24
+        run: |
+          mvn --no-transfer-progress -B package -DskipTests -Dmaven.compiler.release=24
+          JAR=$(find target -maxdepth 1 -name 'pivot-core-*.jar' ! -name '*-sources.jar' | head -1)
+          mvn --no-transfer-progress -B deploy:deploy-file \
+            -DrepositoryId=github \
+            -Durl="https://maven.pkg.github.com/${GITHUB_REPOSITORY}" \
+            -Dfile="${JAR}" -DpomFile=pom.xml -Dpackaging=jar
 
       # Supprime la version PR juste après (always : nettoie même si une étape a échoué).
       # Suppression STRICTE par nom == PR_VERSION → ne touche jamais une version de release.

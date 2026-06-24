@@ -169,10 +169,14 @@ jobs:
           docker push "${IMAGE_REF}"
           docker push "${IMAGE_LATEST}"
 
-      # Déploie EXACTEMENT le JAR attesté (deploy:deploy-file, pas de rebuild) et tolère une
-      # version déjà publiée : un rerun (après échec d'attest/semrel) ne casse pas sur le 409
-      # "version release immuable déjà présente" → idempotent.
-      - name: Deploy to GitHub Packages (idempotent)
+      # Déploie EXACTEMENT le JAR attesté (deploy:deploy-file, pas de rebuild). Sur 409
+      # "version release immuable déjà présente", on NE l'accepte PAS aveuglément : on
+      # télécharge le JAR publié et on compare son SHA-256 au JAR local attesté.
+      #  - digests identiques  → vrai rerun idempotent (le build est reproductible via
+      #    project.build.outputTimestamp) → on continue.
+      #  - digests différents  → le package publié ne correspond pas à la provenance qu'on
+      #    s'apprête à annoncer → ÉCHEC (on ne ment pas sur l'artefact).
+      - name: Deploy to GitHub Packages (idempotent, vérifié)
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -186,12 +190,27 @@ jobs:
             -Dfile="${JAR}" -DpomFile=pom.xml -Dpackaging=jar 2>&1)
           code=$?
           echo "$OUT"
-          if [ "$code" -ne 0 ]; then
-            if echo "$OUT" | grep -qiE "already exist|409|Conflict"; then
-              echo "::notice::Version ${VERSION} déjà publiée — rerun idempotent, on continue."
-            else
-              exit "$code"
-            fi
+          if [ "$code" -eq 0 ]; then
+            echo "Déployé."
+            exit 0
+          fi
+          if ! echo "$OUT" | grep -qiE "already exist|409|Conflict"; then
+            echo "::error::Échec de déploiement (autre que 409)."; exit "$code"
+          fi
+          echo "Version ${VERSION} déjà publiée → vérification du digest avant de continuer…"
+          URL="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/fr/pivot/pivot-core/${VERSION}/pivot-core-${VERSION}.jar"
+          if ! curl -fsSL -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" -o published.jar "$URL"; then
+            echo "::error::409 reçu mais impossible de télécharger le JAR publié (${URL})."; exit 1
+          fi
+          LOCAL_SHA=$(sha256sum "$JAR" | awk '{print $1}')
+          PUB_SHA=$(sha256sum published.jar | awk '{print $1}')
+          echo "local=${LOCAL_SHA}"
+          echo "publié=${PUB_SHA}"
+          if [ "$LOCAL_SHA" = "$PUB_SHA" ]; then
+            echo "::notice::JAR publié identique au JAR attesté → rerun idempotent, on continue."
+          else
+            echo "::error::Le JAR publié (${VERSION}) DIFFÈRE du JAR attesté. Provenance incohérente → échec."
+            exit 1
           fi
 
       # EN DERNIER : crée le tag + la GitHub Release. Si une étape précédente échoue, aucun
