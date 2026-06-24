@@ -5,6 +5,12 @@ name: PR Preview
 # NE PAS apparaître en "skipped" sur les runs push (main/develop).
 on:
   pull_request:
+    # Même filtre que ci.yml : une PR purement docs/markdown/templates ne doit pas déclencher
+    # les previews (build/push GHCR + deploy Maven temporaire) — parité de comportement.
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.github/ISSUE_TEMPLATE/**'
 
 permissions: read-all
 
