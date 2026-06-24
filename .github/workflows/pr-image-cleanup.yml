@@ -23,7 +23,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ORG: ${{ github.repository_owner }}
-          PKG: pivot-core-preview   # package dédié aux previews — jamais l'image de prod
+          # Nom de package REST = chemin après l'owner. L'image est poussée vers
+          # ghcr.io/<owner>/pivot-core/pivot-core-preview (github.repository = <owner>/pivot-core),
+          # donc le package est "pivot-core/pivot-core-preview". Package dédié aux previews —
+          # jamais l'image de prod "pivot-core/pivot-core".
+          PKG: pivot-core/pivot-core-preview
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
