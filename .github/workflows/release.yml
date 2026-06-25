@@ -32,6 +32,7 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
+          cache: 'npm'
 
       - name: Install Semantic Release
         run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec
@@ -240,6 +241,9 @@ jobs:
       image: ${{ needs.release.outputs.image }}
       digest: ${{ needs.release.outputs.digest }}
     secrets:
+      # registry-password = nom attendu par generator_container_slsa3.yml (slsa-framework/slsa-github-generator v2.1.0).
+      # Si la prochaine release échoue avec une erreur auth GHCR sur l'attestation OCI, vérifier
+      # les secrets déclarés dans generator_container_slsa3.yml et adapter le nom ici.
       registry-password: ${{ secrets.GITHUB_TOKEN }}
 
   # Le déploiement prod vit dans deploy.yml, déclenché `on: release: published` (après que
