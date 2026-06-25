@@ -19,8 +19,8 @@ spring:
 
   data:
     redis:
-      host: ${SPRING_REDIS_HOST:localhost}
-      port: ${SPRING_REDIS_PORT:6379}
+      host: localhost
+      port: 6379
 
   mail:
     host: ${SPRING_MAIL_HOST:localhost}
