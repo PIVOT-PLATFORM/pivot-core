@@ -239,7 +239,8 @@ jobs:
     with:
       image: ${{ needs.release.outputs.image }}
       digest: ${{ needs.release.outputs.digest }}
-    secrets: inherit
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
 
   # Le déploiement prod vit dans deploy.yml, déclenché `on: release: published` (après que
   # Semantic Release a publié la GitHub Release). Event-based → il NE s'affiche jamais en
