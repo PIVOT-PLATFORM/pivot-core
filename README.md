@@ -1,8 +1,6 @@
 # PIVOT
 
-[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=alert_status&style=for-the-badge)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PIVOT-PLATFORM/pivot-core/badge?style=for-the-badge)](https://securityscorecards.dev/viewer/?uri=github.com/PIVOT-PLATFORM/pivot-core)
-[![SLSA Level 2](https://img.shields.io/badge/SLSA-Level_2-4CAF50?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHoiLz48L3N2Zz4=)](https://slsa.dev)
+<div align="center">
 
 [![CI](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/ci.yml/badge.svg)](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/PIVOT-PLATFORM/pivot-core?label=release&color=blue)](https://github.com/PIVOT-PLATFORM/pivot-core/releases)
@@ -11,6 +9,15 @@
 [![Downloads](https://img.shields.io/github/downloads/PIVOT-PLATFORM/pivot-core/total?label=downloads)](https://github.com/PIVOT-PLATFORM/pivot-core/releases)
 [![Docker](https://img.shields.io/badge/docker-GHCR-2496ED?logo=docker&logoColor=white)](https://github.com/PIVOT-PLATFORM/pivot-core/pkgs/container/pivot-core%2Fpivot-core)
 [![License](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=coverage)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PIVOT-PLATFORM/pivot-core/badge)](https://securityscorecards.dev/viewer/?uri=github.com/PIVOT-PLATFORM/pivot-core)
+[![SLSA Level 2](https://img.shields.io/badge/SLSA-Level_2-4CAF50?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHoiLz48L3N2Zz4=)](https://slsa.dev)
+[![Plumber Score](https://img.shields.io/badge/Plumber-A-brightgreen?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyek0xMCAxN2wtNS01IDEuNDEtMS40MUwxMCAxNC4xN2w3LjU5LTcuNTlMMTkgOGwtOSA5eiIvPjwvc3ZnPg==)](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/security.yml)
+
+</div>
 
 Suite collaborative open-source — outils activables par les administrateurs, auto-hébergeable, sans lock-in SaaS.
 
