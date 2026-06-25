@@ -225,10 +225,6 @@ jobs:
       # upload-assets: false — workflow déclenché par push:branches:main,
       # github.ref n'est pas un tag → le générateur ne peut pas résoudre la Release.
       upload-assets: false
-      # GITHUB_REPOSITORY_VISIBILITY n'est pas propagé dans les reusable workflows
-      # → le générateur détecte le repo comme privé même si public. Ce flag bypass
-      # la vérification. Aucun risque : le nom du repo est déjà public dans Rekor.
-      private-repository: true
 
   # -----------------------------------------
   # 4. PROVENANCE CONTAINER — génère et signe la provenance SLSA L3 pour l'image Docker.
@@ -246,7 +242,6 @@ jobs:
     with:
       image: ${{ needs.release.outputs.image }}
       digest: ${{ needs.release.outputs.digest }}
-      private-repository: true
     secrets:
       # registry-username + registry-password : noms attendus par generator_container_slsa3.yml
       # (slsa-framework/slsa-github-generator v2.1.0, utilise docker/login-action en interne).
