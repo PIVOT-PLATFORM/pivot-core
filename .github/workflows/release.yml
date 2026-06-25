@@ -222,7 +222,11 @@ jobs:
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
     with:
       base64-subjects: ${{ needs.release.outputs.jar-subjects }}
-      upload-assets: true
+      # upload-assets: false car le workflow est déclenché par push:branches:main
+      # (github.ref = refs/heads/main, pas un tag). Le générateur ne peut pas résoudre
+      # la GitHub Release depuis ce ref → l'upload échouerait silencieusement.
+      # La provenance est quand même générée et attachée au workflow run (artifact).
+      upload-assets: false
 
   # -----------------------------------------
   # 4. PROVENANCE CONTAINER — génère et signe la provenance SLSA L3 pour l'image Docker.
@@ -241,9 +245,10 @@ jobs:
       image: ${{ needs.release.outputs.image }}
       digest: ${{ needs.release.outputs.digest }}
     secrets:
-      # registry-password = nom attendu par generator_container_slsa3.yml (slsa-framework/slsa-github-generator v2.1.0).
-      # Si la prochaine release échoue avec une erreur auth GHCR sur l'attestation OCI, vérifier
-      # les secrets déclarés dans generator_container_slsa3.yml et adapter le nom ici.
+      # registry-username + registry-password : noms attendus par generator_container_slsa3.yml
+      # (slsa-framework/slsa-github-generator v2.1.0, utilise docker/login-action en interne).
+      # registry-username = github.actor (identique au login-action dans le job `release`).
+      registry-username: ${{ github.actor }}
       registry-password: ${{ secrets.GITHUB_TOKEN }}
 
   # Le déploiement prod vit dans deploy.yml, déclenché `on: release: published` (après que
