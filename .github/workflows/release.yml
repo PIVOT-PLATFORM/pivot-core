@@ -221,18 +221,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
         run: npx semantic-release
 
-  # -----------------------------------------
-  # 3. DEPLOY — placeholder (environment: production)
-  # -----------------------------------------
-  deploy:
-    name: Deploy to production
-    runs-on: ubuntu-latest
-    needs: [release]
-    timeout-minutes: 15
-    environment: production
-    permissions:
-      contents: read
-
-    steps:
-      - name: Deploy (TODO)
-        run: echo "TODO — brancher ici le déploiement (SSH + docker compose, Kubernetes, etc.)"
+  # Le déploiement prod vit dans deploy.yml, déclenché `on: release: published` (après que
+  # Semantic Release a publié la GitHub Release). Event-based → il NE s'affiche jamais en
+  # "skipped" sur les pushs sans release, ET conserve `environment: production` (approvals,
+  # secrets d'environnement, règles de déploiement, historique des deployments).
