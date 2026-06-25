@@ -219,17 +219,17 @@ jobs:
       id-token: write
       contents: write
       actions: read
+      # metadata:read requis par slsa-github-generator pour vérifier la visibilité du repo.
+      # Sans ce droit, le générateur ne peut pas appeler l'API GitHub → assume "privé" par
+      # défaut et s'arrête. Les permissions job-level écrasent le `permissions: read-all`
+      # du workflow, donc il faut le déclarer explicitement ici.
+      metadata: read
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
     with:
       base64-subjects: ${{ needs.release.outputs.jar-subjects }}
-      # upload-assets: false car le workflow est déclenché par push:branches:main
-      # (github.ref = refs/heads/main, pas un tag). Le générateur ne peut pas résoudre
-      # la GitHub Release depuis ce ref → l'upload échouerait silencieusement.
-      # La provenance est quand même générée et attachée au workflow run (artifact).
+      # upload-assets: false — workflow déclenché par push:branches:main,
+      # github.ref n'est pas un tag → le générateur ne peut pas résoudre la Release.
       upload-assets: false
-      # Repo privé : requis pour éviter l'arrêt du générateur (nom du repo visible
-      # dans le log de transparence Rekor — risque accepté pour les repos privés).
-      private-repository: true
 
   # -----------------------------------------
   # 4. PROVENANCE CONTAINER — génère et signe la provenance SLSA L3 pour l'image Docker.
@@ -243,11 +243,11 @@ jobs:
       id-token: write
       packages: write
       actions: read
+      metadata: read
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
     with:
       image: ${{ needs.release.outputs.image }}
       digest: ${{ needs.release.outputs.digest }}
-      private-repository: true
     secrets:
       # registry-username + registry-password : noms attendus par generator_container_slsa3.yml
       # (slsa-framework/slsa-github-generator v2.1.0, utilise docker/login-action en interne).
