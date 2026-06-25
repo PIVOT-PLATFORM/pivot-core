@@ -219,7 +219,11 @@ jobs:
       id-token: write
       contents: write
       actions: read
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
+    # Réf en TAG (@v2.1.0) et NON en SHA : avec compile-generator: false le binaire est
+    # téléchargé depuis la Release au ref détecté par detect-env (via OIDC job_workflow_ref).
+    # builder-fetch.sh exige refs/tags/vX.Y.Z ; un SHA brut → exit 2 → binaire absent →
+    # exit 127 → upload-artifact sans chemin → SUCCESS=false → échec final 27.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: ${{ needs.release.outputs.jar-subjects }}
       # upload-assets: false car le workflow est déclenché par push:branches:main
@@ -240,7 +244,9 @@ jobs:
       id-token: write
       packages: write
       actions: read
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
+    # Réf en TAG (@v2.1.0) et NON en SHA : voir provenance-jar — builder-fetch.sh exige
+    # refs/tags/vX.Y.Z, un SHA brut fait échouer le téléchargement du binaire (exit 27).
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
       image: ${{ needs.release.outputs.image }}
       digest: ${{ needs.release.outputs.digest }}
