@@ -163,40 +163,6 @@ jobs:
           sarif_file: trivy-backend.sarif
           category: trivy-sca-backend
 
-  # -----------------------------------------
-  # 5. MUTATION TESTING (PITest) — PR only, quality indicator (non-blocking)
-  #    Single source of truth for mutation coverage (ex-mutation.yml supprimé).
-  #    continue-on-error: mutation score is a quality signal, not a hard merge gate
-  #    (see CLAUDE.md hard blocks). Report is always uploaded for review.
-  # -----------------------------------------
-  mutation:
-    name: Mutation Testing (PITest)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.event_name == 'pull_request'
-    needs: [tests-backend]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Java + Maven
-        uses: ./.github/actions/setup-java
-
-      # Step-level continue-on-error so the job (and PR check) stays green:
-      # mutation score is a quality indicator, not a hard merge gate (CLAUDE.md).
-      - name: PITest — mutation coverage
-        continue-on-error: true
-        run: mvn --no-transfer-progress test-compile pitest:mutationCoverage -Pmutation -Dmaven.compiler.release=24
-
-      - name: Upload mutation report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: mutation-report
-          path: target/pit-reports/
-
-  # Les jobs de preview PR (Docker + Maven deploy) vivent dans pr-preview.yml (déclenché
-  # uniquement on: pull_request) — pour ne pas apparaître en "skipped" sur les runs push.
+  # Les jobs réservés aux PR (Mutation PITest + previews Docker/Maven) vivent dans
+  # pr-preview.yml (déclenché uniquement on: pull_request) — pour ne pas apparaître en
+  # "skipped" sur les runs push (main/develop).

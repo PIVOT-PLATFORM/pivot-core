@@ -1,12 +1,12 @@
-name: PR Preview
+name: PR Checks
 
-# Jobs de preview réservés aux PR (image Docker + publication Maven), exercés en parité avec
-# la Release pour qu'aucune surprise n'apparaisse au merge sur main. Sortis de ci.yml afin de
-# NE PAS apparaître en "skipped" sur les runs push (main/develop).
+# Jobs réservés aux PR : mutation testing (PITest) + previews (image Docker + publication
+# Maven), exercés en parité avec la Release. Sortis de ci.yml afin de NE PAS apparaître en
+# "skipped" sur les runs push (main/develop).
 on:
   pull_request:
-    # Même filtre que ci.yml : une PR purement docs/markdown/templates ne doit pas déclencher
-    # les previews (build/push GHCR + deploy Maven temporaire) — parité de comportement.
+    # Même filtre que ci.yml : une PR purement docs/markdown/templates ne déclenche pas ces
+    # jobs (build/push GHCR, deploy Maven temporaire, mutation) — parité de comportement.
     paths-ignore:
       - 'docs/**'
       - '**.md'
@@ -19,6 +19,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # -----------------------------------------
+  # MUTATION TESTING (PITest) — indicateur qualité non bloquant (continue-on-error).
+  # Job autonome (pas de needs cross-workflow) : PITest recompile lui-même. Rapport uploadé.
+  # -----------------------------------------
+  mutation:
+    name: Mutation Testing (PITest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Java + Maven
+        uses: ./.github/actions/setup-java
+
+      # Step-level continue-on-error so the job (and PR check) stays green:
+      # mutation score is a quality indicator, not a hard merge gate (CLAUDE.md).
+      - name: PITest — mutation coverage
+        continue-on-error: true
+        run: mvn --no-transfer-progress test-compile pitest:mutationCoverage -Pmutation -Dmaven.compiler.release=24
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mutation-report
+          path: target/pit-reports/
+
   # -----------------------------------------
   # DOCKER PREVIEW — build + push GHCR comme la Release (zéro surprise au merge).
   # Image `pivot-core-preview:pr-<num>` (package SÉPARÉ ≠ prod), supprimée à la fermeture de
