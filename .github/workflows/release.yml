@@ -227,6 +227,9 @@ jobs:
       # la GitHub Release depuis ce ref → l'upload échouerait silencieusement.
       # La provenance est quand même générée et attachée au workflow run (artifact).
       upload-assets: false
+      # Repo privé : requis pour éviter l'arrêt du générateur (nom du repo visible
+      # dans le log de transparence Rekor — risque accepté pour les repos privés).
+      private-repository: true
 
   # -----------------------------------------
   # 4. PROVENANCE CONTAINER — génère et signe la provenance SLSA L3 pour l'image Docker.
@@ -244,6 +247,7 @@ jobs:
     with:
       image: ${{ needs.release.outputs.image }}
       digest: ${{ needs.release.outputs.digest }}
+      private-repository: true
     secrets:
       # registry-username + registry-password : noms attendus par generator_container_slsa3.yml
       # (slsa-framework/slsa-github-generator v2.1.0, utilise docker/login-action en interne).
