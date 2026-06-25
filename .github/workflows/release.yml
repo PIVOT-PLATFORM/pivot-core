@@ -210,8 +210,6 @@ jobs:
   #    propre provenance (différence clé L2 → L3).
   #    Uploads l'attestation en asset de la GitHub Release créée par semantic-release.
   #
-  #    TODO: pin to SHA — récupérer le SHA exact sur :
-  #    github.com/slsa-framework/slsa-github-generator/releases
   # -----------------------------------------
   provenance-jar:
     name: SLSA provenance — JAR (L3)
@@ -229,8 +227,6 @@ jobs:
   # 4. PROVENANCE CONTAINER — génère et signe la provenance SLSA L3 pour l'image Docker.
   #    Attache l'attestation en tant qu'artefact OCI dans GHCR via cosign.
   #
-  #    TODO: pin to SHA — récupérer le SHA exact sur :
-  #    github.com/slsa-framework/slsa-github-generator/releases
   # -----------------------------------------
   provenance-container:
     name: SLSA provenance — Docker (L3)
