@@ -222,8 +222,10 @@ jobs:
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: ${{ needs.release.outputs.jar-subjects }}
-      # upload-assets: false — workflow déclenché par push:branches:main,
-      # github.ref n'est pas un tag → le générateur ne peut pas résoudre la Release.
+      # upload-assets: false car le workflow est déclenché par push:branches:main
+      # (github.ref = refs/heads/main, pas un tag). Le générateur ne peut pas résoudre
+      # la GitHub Release depuis ce ref → l'upload échouerait silencieusement.
+      # La provenance est quand même générée et attachée au workflow run (artifact).
       upload-assets: false
 
   # -----------------------------------------
