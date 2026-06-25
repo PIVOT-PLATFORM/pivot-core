@@ -105,12 +105,16 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
 
+      # MÊME catégorie code-scanning que le scan image de la Release (release.yml). La Release
+      # ne tourne que sur push main : sans ça, la config `trivy-container` n'existerait jamais
+      # sur les PR → code scanning afficherait "1 configuration not found" (impossible de diff).
+      # Le preview (PR) fournit donc la même analyse "image container" que la Release (main).
       - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         if: always() && hashFiles('trivy-preview.sarif') != ''
         with:
           sarif_file: trivy-preview.sarif
-          category: trivy-preview
+          category: trivy-container
 
       # Atteint uniquement si Trivy a réussi.
       - name: Push preview image (scan OK)
