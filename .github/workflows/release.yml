@@ -9,8 +9,7 @@ permissions: read-all
 jobs:
   # -----------------------------------------
   # 1. PREPARE — calcule la version SANS créer la release (dry-run).
-  #    Permet de construire un unique JAR à la version finale en aval, et de ne créer
-  #    la release/tag qu'en toute fin (pipeline ré-exécutable si une étape échoue avant).
+  #    Permissions minimales (contents: read). ISO pivot-ui.
   # -----------------------------------------
   prepare:
     name: Compute release version
@@ -37,8 +36,6 @@ jobs:
       - name: Install Semantic Release
         run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec
 
-      # Dry-run : @semantic-release/exec (verifyReleaseCmd) écrit `version=<x>` dans
-      # $GITHUB_OUTPUT s'il y a une release à faire ; sinon la sortie reste vide.
       - name: Compute next version (dry-run)
         id: version
         env:
@@ -46,9 +43,13 @@ jobs:
         run: npx semantic-release --dry-run
 
   # -----------------------------------------
-  # 2. RELEASE — build UNIQUE à la version finale, scan, push, publish Maven, atteste
-  #    le JAR réellement publié, PUIS crée la release/tag en dernier.
-  #    Ne tourne que si `prepare` a déterminé une version (sinon rien à publier).
+  # 2. RELEASE — build UNIQUE à la version finale, scan, push, publish Maven,
+  #    PUIS crée la release/tag en dernier.
+  #    Ne tourne que si `prepare` a déterminé une version.
+  #
+  #    SLSA L3 : id-token et attestations sont ABSENTS de ce job (le build ne peut
+  #    pas forger sa propre provenance). Ils sont accordés uniquement aux jobs
+  #    provenance-jar et provenance-container.
   # -----------------------------------------
   release:
     name: Build, scan, publish & release
@@ -56,14 +57,17 @@ jobs:
     needs: [prepare]
     if: needs.prepare.outputs.version != ''
     timeout-minutes: 40
+    outputs:
+      image:         ${{ steps.build-docker.outputs.image_name }}
+      digest:        ${{ steps.push.outputs.digest }}
+      jar-subjects:  ${{ steps.checksums.outputs.subjects }}
     permissions:
       contents: write
       issues: write
       pull-requests: write
-      id-token: write
-      attestations: write
       packages: write
-      security-events: write   # requis par "Upload Trivy SARIF" (codeql-action/upload-sarif)
+      security-events: write
+      # id-token et attestations : accordés UNIQUEMENT aux jobs de provenance (SLSA L3).
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
 
@@ -82,8 +86,6 @@ jobs:
       - name: Install Semantic Release
         run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec
 
-      # setup-java direct (pas le composite) pour configurer le serveur GitHub Packages
-      # nécessaire à `mvn deploy` (id "github" = distributionManagement du pom).
       - name: Setup Java 25 (+ GitHub Packages)
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
@@ -94,29 +96,19 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: GITHUB_TOKEN
 
-      # Aligne la version Maven sur la version Semantic Release AVANT tout build, pour
-      # qu'image, JAR publié et provenance partagent la même version. Le POM reste
-      # 0.0.1-SNAPSHOT en VCS (cette modif n'est pas commitée).
       - name: Set Maven version = release
         run: mvn --no-transfer-progress -B versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
-      # Construit le JAR UNE fois à la version finale. C'est exactement ce JAR qui est attesté
-      # (plus bas) puis déployé tel quel via deploy:deploy-file — aucun rebuild divergent.
       - name: Build JAR (version finale)
         run: mvn --no-transfer-progress -B package -DskipTests -Dmaven.compiler.release=24
 
       - name: Compute build checksums
+        id: checksums
         run: |
           find target -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' \
             -exec sha256sum {} \; > build-checksums.txt
           echo "Checksums :"; cat build-checksums.txt
-
-      # Atteste les ARTEFACTS listés dans le fichier de checksums (les JAR), pas le fichier
-      # texte lui-même. `subject-checksums` lit le format `sha256sum` et atteste chaque digest.
-      - name: Generate SLSA provenance (L2)
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        with:
-          subject-checksums: build-checksums.txt
+          echo "subjects=$(base64 -w0 < build-checksums.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -128,17 +120,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build SANS push : image chargée localement (--load) pour être scannée AVANT toute
-      # publication. CVE HIGH/CRITICAL -> job KO et image jamais poussée (pas de :latest
-      # vulnérable à supprimer). amd64 uniquement : le Dockerfile compile Maven dans l'image,
-      # un build arm64 émulé (QEMU) serait lent/timeout ; réintroductible via setup-qemu +
-      # Dockerfile copiant un jar pré-construit.
       - name: Build & load Docker image (amd64)
+        id: build-docker
         run: |
-          # GHCR exige un nom de dépôt en minuscules ; github.repository contient PIVOT-PLATFORM.
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/pivot-core"
           echo "IMAGE_REF=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_ENV"
           echo "IMAGE_LATEST=${IMAGE}:latest" >> "$GITHUB_ENV"
+          echo "image_name=${IMAGE}" >> "$GITHUB_OUTPUT"
           docker buildx build --platform linux/amd64 --load \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:latest" \
@@ -151,8 +139,6 @@ jobs:
           format: sarif
           output: trivy-core.sarif
           severity: CRITICAL,HIGH
-          # Ne bloque que sur les CVE CORRIGEABLES (cf. job docker-preview de ci.yml) : les CVE
-          # OS de l'image de base sans correctif ne doivent pas bloquer la Release.
           ignore-unfixed: true
           exit-code: '1'
 
@@ -163,19 +149,19 @@ jobs:
           sarif_file: trivy-core.sarif
           category: trivy-container
 
-      # Atteint uniquement si Trivy a réussi (sinon l'étape précédente a fait échouer le job).
       - name: Push Docker image (scan OK)
+        id: push
         run: |
           docker push "${IMAGE_REF}"
-          docker push "${IMAGE_LATEST}"
+          PUSH_OUT=$(docker push "${IMAGE_LATEST}" 2>&1)
+          printf '%s\n' "${PUSH_OUT}"
+          DIGEST=$(printf '%s\n' "${PUSH_OUT}" | grep -oE 'sha256:[a-f0-9]{64}' | tail -1)
+          if [ -z "${DIGEST}" ]; then
+            echo "::error::Digest introuvable après push — impossible d'attester l'image (SLSA L3)."
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
-      # Déploie EXACTEMENT le JAR attesté (deploy:deploy-file, pas de rebuild). Sur 409
-      # "version release immuable déjà présente", on NE l'accepte PAS aveuglément : on
-      # télécharge le JAR publié et on compare son SHA-256 au JAR local attesté.
-      #  - digests identiques  → vrai rerun idempotent (le build est reproductible via
-      #    project.build.outputTimestamp) → on continue.
-      #  - digests différents  → le package publié ne correspond pas à la provenance qu'on
-      #    s'apprête à annoncer → ÉCHEC (on ne ment pas sur l'artefact).
       - name: Deploy to GitHub Packages (idempotent, vérifié)
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -213,15 +199,52 @@ jobs:
             exit 1
           fi
 
-      # EN DERNIER : crée le tag + la GitHub Release. Si une étape précédente échoue, aucun
-      # tag n'est créé -> un rerun recalcule la version (prepare) et rejoue tout (idempotent :
-      # image écrasée, JAR attesté à nouveau, deploy tolérant à l'existant). Récupérable.
       - name: Semantic Release (create tag + release)
         env:
           GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
         run: npx semantic-release
 
+  # -----------------------------------------
+  # 3. PROVENANCE JAR — génère et signe la provenance SLSA L3 pour le JAR Maven.
+  #    id-token: write est ici, pas dans `release` → le build ne peut pas forger sa
+  #    propre provenance (différence clé L2 → L3).
+  #    Uploads l'attestation en asset de la GitHub Release créée par semantic-release.
+  #
+  #    TODO: pin to SHA — récupérer le SHA exact sur :
+  #    github.com/slsa-framework/slsa-github-generator/releases
+  # -----------------------------------------
+  provenance-jar:
+    name: SLSA provenance — JAR (L3)
+    needs: [release]
+    permissions:
+      id-token: write
+      contents: write
+      actions: read
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: ${{ needs.release.outputs.jar-subjects }}
+      upload-assets: true
+
+  # -----------------------------------------
+  # 4. PROVENANCE CONTAINER — génère et signe la provenance SLSA L3 pour l'image Docker.
+  #    Attache l'attestation en tant qu'artefact OCI dans GHCR via cosign.
+  #
+  #    TODO: pin to SHA — récupérer le SHA exact sur :
+  #    github.com/slsa-framework/slsa-github-generator/releases
+  # -----------------------------------------
+  provenance-container:
+    name: SLSA provenance — Docker (L3)
+    needs: [release]
+    permissions:
+      id-token: write
+      packages: write
+      actions: read
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.0.0
+    with:
+      image: ${{ needs.release.outputs.image }}
+      digest: ${{ needs.release.outputs.digest }}
+    secrets: inherit
+
   # Le déploiement prod vit dans deploy.yml, déclenché `on: release: published` (après que
   # Semantic Release a publié la GitHub Release). Event-based → il NE s'affiche jamais en
-  # "skipped" sur les pushs sans release, ET conserve `environment: production` (approvals,
-  # secrets d'environnement, règles de déploiement, historique des deployments).
+  # "skipped" sur les pushs sans release, ET conserve `environment: production`.
