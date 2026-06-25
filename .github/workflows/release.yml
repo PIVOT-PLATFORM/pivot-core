@@ -6,24 +6,21 @@ on:
 
 permissions: read-all
 
-# UN SEUL job : le gating "y a-t-il une release ?" se fait au niveau des STEPS (et non en
-# jobs conditionnels distincts). Un push sans release-worthy commit => le job tourne, calcule
-# la version (dry-run), trouve vide, saute les étapes de publication et termine en SUCCESS.
-# => aucun job affiché en "skipped" sur les runs main.
 jobs:
-  release:
-    name: Release
+  # -----------------------------------------
+  # 1. PREPARE — calcule la version SANS créer la release (dry-run).
+  #    Permet de construire un unique JAR à la version finale en aval, et de ne créer
+  #    la release/tag qu'en toute fin (pipeline ré-exécutable si une étape échoue avant).
+  # -----------------------------------------
+  prepare:
+    name: Compute release version
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 15
     if: github.actor != 'dependabot[bot]'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      id-token: write
-      attestations: write
-      packages: write
-      security-events: write   # requis par "Upload Trivy SARIF" (codeql-action/upload-sarif)
+      contents: read
 
     steps:
       - name: Checkout
@@ -48,18 +45,46 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
         run: npx semantic-release --dry-run
 
-      - name: Pas de release due
-        if: steps.version.outputs.version == ''
-        run: echo "Aucun commit release-worthy depuis la dernière release — rien à publier."
+  # -----------------------------------------
+  # 2. RELEASE — build UNIQUE à la version finale, scan, push, publish Maven, atteste
+  #    le JAR réellement publié, PUIS crée la release/tag en dernier.
+  #    Ne tourne que si `prepare` a déterminé une version (sinon rien à publier).
+  # -----------------------------------------
+  release:
+    name: Build, scan, publish & release
+    runs-on: ubuntu-latest
+    needs: [prepare]
+    if: needs.prepare.outputs.version != ''
+    timeout-minutes: 40
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      attestations: write
+      packages: write
+      security-events: write   # requis par "Upload Trivy SARIF" (codeql-action/upload-sarif)
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
 
-      - name: Export VERSION
-        if: steps.version.outputs.version != ''
-        run: echo "VERSION=${{ steps.version.outputs.version }}" >> "$GITHUB_ENV"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Install Semantic Release
+        run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec
 
       # setup-java direct (pas le composite) pour configurer le serveur GitHub Packages
       # nécessaire à `mvn deploy` (id "github" = distributionManagement du pom).
       - name: Setup Java 25 (+ GitHub Packages)
-        if: steps.version.outputs.version != ''
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           java-version: '25'
@@ -69,39 +94,34 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: GITHUB_TOKEN
 
-      # Aligne la version Maven sur la version Semantic Release AVANT tout build (image, JAR
-      # publié et provenance partagent la même version). Le POM reste SNAPSHOT en VCS.
+      # Aligne la version Maven sur la version Semantic Release AVANT tout build, pour
+      # qu'image, JAR publié et provenance partagent la même version. Le POM reste
+      # 0.0.1-SNAPSHOT en VCS (cette modif n'est pas commitée).
       - name: Set Maven version = release
-        if: steps.version.outputs.version != ''
         run: mvn --no-transfer-progress -B versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 
       # Construit le JAR UNE fois à la version finale. C'est exactement ce JAR qui est attesté
-      # puis déployé tel quel via deploy:deploy-file — aucun rebuild divergent.
+      # (plus bas) puis déployé tel quel via deploy:deploy-file — aucun rebuild divergent.
       - name: Build JAR (version finale)
-        if: steps.version.outputs.version != ''
         run: mvn --no-transfer-progress -B package -DskipTests -Dmaven.compiler.release=24
 
       - name: Compute build checksums
-        if: steps.version.outputs.version != ''
         run: |
           find target -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' \
             -exec sha256sum {} \; > build-checksums.txt
           echo "Checksums :"; cat build-checksums.txt
 
       # Atteste les ARTEFACTS listés dans le fichier de checksums (les JAR), pas le fichier
-      # texte. `subject-checksums` lit le format `sha256sum` et atteste chaque digest.
+      # texte lui-même. `subject-checksums` lit le format `sha256sum` et atteste chaque digest.
       - name: Generate SLSA provenance (L2)
-        if: steps.version.outputs.version != ''
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-checksums: build-checksums.txt
 
       - name: Set up Docker Buildx
-        if: steps.version.outputs.version != ''
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Login to GitHub Container Registry
-        if: steps.version.outputs.version != ''
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
@@ -109,10 +129,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Build SANS push : image chargée localement (--load) pour être scannée AVANT toute
-      # publication. CVE HIGH/CRITICAL corrigeable -> job KO, image jamais poussée. amd64
-      # uniquement (le Dockerfile compile dans l'image ; arm64 émulé = lent/timeout).
+      # publication. CVE HIGH/CRITICAL -> job KO et image jamais poussée (pas de :latest
+      # vulnérable à supprimer). amd64 uniquement : le Dockerfile compile Maven dans l'image,
+      # un build arm64 émulé (QEMU) serait lent/timeout ; réintroductible via setup-qemu +
+      # Dockerfile copiant un jar pré-construit.
       - name: Build & load Docker image (amd64)
-        if: steps.version.outputs.version != ''
         run: |
           # GHCR exige un nom de dépôt en minuscules ; github.repository contient PIVOT-PLATFORM.
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/pivot-core"
@@ -124,37 +145,38 @@ jobs:
             .
 
       - name: Scan Docker image - Trivy (gate avant push)
-        if: steps.version.outputs.version != ''
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE_REF }}
           format: sarif
           output: trivy-core.sarif
           severity: CRITICAL,HIGH
-          # Ne bloque que sur les CVE CORRIGEABLES (CVE OS de la base sans fix n'arrêtent pas).
+          # Ne bloque que sur les CVE CORRIGEABLES (cf. job docker-preview de ci.yml) : les CVE
+          # OS de l'image de base sans correctif ne doivent pas bloquer la Release.
           ignore-unfixed: true
           exit-code: '1'
 
       - name: Upload Trivy SARIF
-        if: always() && hashFiles('trivy-core.sarif') != ''
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
+        if: always() && hashFiles('trivy-core.sarif') != ''
         with:
           sarif_file: trivy-core.sarif
           category: trivy-container
 
       # Atteint uniquement si Trivy a réussi (sinon l'étape précédente a fait échouer le job).
       - name: Push Docker image (scan OK)
-        if: steps.version.outputs.version != ''
         run: |
           docker push "${IMAGE_REF}"
           docker push "${IMAGE_LATEST}"
 
       # Déploie EXACTEMENT le JAR attesté (deploy:deploy-file, pas de rebuild). Sur 409
-      # (version immuable déjà publiée), on NE l'accepte PAS aveuglément : on télécharge le JAR
-      # publié et on compare son SHA-256 au JAR local attesté. Identiques -> rerun idempotent ;
-      # différents -> ÉCHEC (on n'annonce pas une provenance qui ne correspond pas).
+      # "version release immuable déjà présente", on NE l'accepte PAS aveuglément : on
+      # télécharge le JAR publié et on compare son SHA-256 au JAR local attesté.
+      #  - digests identiques  → vrai rerun idempotent (le build est reproductible via
+      #    project.build.outputTimestamp) → on continue.
+      #  - digests différents  → le package publié ne correspond pas à la provenance qu'on
+      #    s'apprête à annoncer → ÉCHEC (on ne ment pas sur l'artefact).
       - name: Deploy to GitHub Packages (idempotent, vérifié)
-        if: steps.version.outputs.version != ''
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -169,19 +191,21 @@ jobs:
           code=$?
           echo "$OUT"
           if [ "$code" -eq 0 ]; then
-            echo "Déployé."; exit 0
+            echo "Déployé."
+            exit 0
           fi
           if ! echo "$OUT" | grep -qiE "already exist|409|Conflict"; then
             echo "::error::Échec de déploiement (autre que 409)."; exit "$code"
           fi
-          echo "Version ${VERSION} déjà publiée → vérification du digest…"
+          echo "Version ${VERSION} déjà publiée → vérification du digest avant de continuer…"
           URL="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/fr/pivot/pivot-core/${VERSION}/pivot-core-${VERSION}.jar"
           if ! curl -fsSL -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" -o published.jar "$URL"; then
             echo "::error::409 reçu mais impossible de télécharger le JAR publié (${URL})."; exit 1
           fi
           LOCAL_SHA=$(sha256sum "$JAR" | awk '{print $1}')
           PUB_SHA=$(sha256sum published.jar | awk '{print $1}')
-          echo "local=${LOCAL_SHA}"; echo "publié=${PUB_SHA}"
+          echo "local=${LOCAL_SHA}"
+          echo "publié=${PUB_SHA}"
           if [ "$LOCAL_SHA" = "$PUB_SHA" ]; then
             echo "::notice::JAR publié identique au JAR attesté → rerun idempotent, on continue."
           else
@@ -189,17 +213,15 @@ jobs:
             exit 1
           fi
 
-      # EN DERNIER : crée le tag + la GitHub Release. Si une étape précédente échoue, aucun tag
-      # n'est créé -> un rerun recalcule la version et rejoue tout (push/deploy idempotents).
+      # EN DERNIER : crée le tag + la GitHub Release. Si une étape précédente échoue, aucun
+      # tag n'est créé -> un rerun recalcule la version (prepare) et rejoue tout (idempotent :
+      # image écrasée, JAR attesté à nouveau, deploy tolérant à l'existant). Récupérable.
       - name: Semantic Release (create tag + release)
-        if: steps.version.outputs.version != ''
         env:
           GITHUB_TOKEN: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
         run: npx semantic-release
 
-      # Déploiement prod — placeholder. Gated sur la version : ne s'exécute qu'après une vraie
-      # release. (À remplacer par un job dédié à environnement protégé quand le déploiement réel
-      # sera branché.)
-      - name: Deploy to production (TODO)
-        if: steps.version.outputs.version != ''
-        run: echo "TODO — brancher ici le déploiement (SSH + docker compose, Kubernetes, etc.)"
+  # Le déploiement prod vit dans deploy.yml, déclenché `on: release: published` (après que
+  # Semantic Release a publié la GitHub Release). Event-based → il NE s'affiche jamais en
+  # "skipped" sur les pushs sans release, ET conserve `environment: production` (approvals,
+  # secrets d'environnement, règles de déploiement, historique des deployments).
