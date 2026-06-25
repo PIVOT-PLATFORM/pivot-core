@@ -19,8 +19,10 @@ spring:
 
   data:
     redis:
-      host: ${SPRING_REDIS_HOST:localhost}
-      port: ${SPRING_REDIS_PORT:6379}
+      # Valeurs par défaut : overridées via SPRING_DATA_REDIS_HOST / SPRING_DATA_REDIS_PORT
+      # par le relaxed binding Spring Boot (Spring Boot 4.x, pas de placeholder ${...} nécessaire).
+      host: localhost
+      port: 6379
 
   mail:
     host: ${SPRING_MAIL_HOST:localhost}

@@ -26,6 +26,7 @@ github:
         - browser-actions/setup-chrome
         - docker/setup-buildx-action
         - docker/login-action
+        - slsa-framework/slsa-github-generator
 
     # --- Images : pas de tags mutables ---
     containerImageMustNotUseForbiddenTags:

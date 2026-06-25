@@ -1,39 +1,47 @@
 # PIVOT
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/ApoSkunz/PIVOT/badge)](https://securityscorecards.dev/viewer/?uri=github.com/ApoSkunz/PIVOT)
+<div align="center">
+
+[![CI](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/ci.yml/badge.svg)](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/PIVOT-PLATFORM/pivot-core?label=release&color=blue)](https://github.com/PIVOT-PLATFORM/pivot-core/releases)
+[![Java](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/25/)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.x-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Downloads](https://img.shields.io/github/downloads/PIVOT-PLATFORM/pivot-core/total?label=downloads)](https://github.com/PIVOT-PLATFORM/pivot-core/releases)
+[![Docker](https://img.shields.io/badge/docker-GHCR-2496ED?logo=docker&logoColor=white)](https://github.com/PIVOT-PLATFORM/pivot-core/pkgs/container/pivot-core%2Fpivot-core)
+[![License](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=coverage)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/PIVOT-PLATFORM/pivot-core/badge)](https://securityscorecards.dev/viewer/?uri=github.com/PIVOT-PLATFORM/pivot-core)
+[![SLSA Level 3](https://img.shields.io/badge/SLSA-Level_3-1B6B2F?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHoiLz48L3N2Zz4=)](https://slsa.dev)
+[![Plumber Score](https://img.shields.io/badge/Plumber-A-brightgreen?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyek0xMCAxN2wtNS01IDEuNDEtMS40MUwxMCAxNC4xN2w3LjU5LTcuNTlMMTkgOGwtOSA5eiIvPjwvc3ZnPg==)](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/security.yml)
+
+</div>
 
 Suite collaborative open-source — outils activables par les administrateurs, auto-hébergeable, sans lock-in SaaS.
 
 ## CI/CD
 
-[![CI](https://github.com/ApoSkunz/PIVOT/actions/workflows/ci.yml/badge.svg)](https://github.com/ApoSkunz/PIVOT/actions/workflows/ci.yml)
-[![Release](https://github.com/ApoSkunz/PIVOT/actions/workflows/release.yml/badge.svg)](https://github.com/ApoSkunz/PIVOT/actions/workflows/release.yml)
-[![Mutation Testing](https://github.com/ApoSkunz/PIVOT/actions/workflows/mutation.yml/badge.svg)](https://github.com/ApoSkunz/PIVOT/actions/workflows/mutation.yml)
-[![Lighthouse](https://github.com/ApoSkunz/PIVOT/actions/workflows/lighthouse.yml/badge.svg)](https://github.com/ApoSkunz/PIVOT/actions/workflows/lighthouse.yml)
-[![SBOM](https://github.com/ApoSkunz/PIVOT/actions/workflows/sbom.yml/badge.svg)](https://github.com/ApoSkunz/PIVOT/actions/workflows/sbom.yml)
+[![CI](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/ci.yml/badge.svg)](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/ci.yml)
+[![Release](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/release.yml/badge.svg)](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/release.yml)
+[![SBOM](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/sbom.yml/badge.svg)](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/sbom.yml)
 
 ## Sécurité
 
 **Scanning actif** (secrets, SAST, supply chain, conformité CI/CD) — `security.yml` : Gitleaks · CodeQL · Semgrep OWASP · Plumber (score CI/CD)
 
-[![Security](https://github.com/ApoSkunz/PIVOT/actions/workflows/security.yml/badge.svg)](https://github.com/ApoSkunz/PIVOT/actions/workflows/security.yml)
-[![OpenSSF Scorecard](https://github.com/ApoSkunz/PIVOT/actions/workflows/scorecard.yml/badge.svg)](https://github.com/ApoSkunz/PIVOT/actions/workflows/scorecard.yml)
-[![DAST Baseline](https://github.com/ApoSkunz/PIVOT/actions/workflows/dast-baseline.yml/badge.svg)](https://github.com/ApoSkunz/PIVOT/actions/workflows/dast-baseline.yml)
-[![DAST Full](https://github.com/ApoSkunz/PIVOT/actions/workflows/dast-full.yml/badge.svg)](https://github.com/ApoSkunz/PIVOT/actions/workflows/dast-full.yml)
+[![Security](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/security.yml/badge.svg)](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/scorecard.yml/badge.svg)](https://github.com/PIVOT-PLATFORM/pivot-core/actions/workflows/scorecard.yml)
 
 **Analyse statique** — SonarCloud : Security Rating · Vulnérabilités · Quality Gate
 
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=ApoSkunz_PIVOT&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=ApoSkunz_PIVOT)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=ApoSkunz_PIVOT&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=ApoSkunz_PIVOT)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=ApoSkunz_PIVOT&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=ApoSkunz_PIVOT)
-
-## Qualité
-
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=ApoSkunz_PIVOT&metric=bugs)](https://sonarcloud.io/summary/new_code?id=ApoSkunz_PIVOT)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=ApoSkunz_PIVOT&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=ApoSkunz_PIVOT)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=ApoSkunz_PIVOT&metric=coverage)](https://sonarcloud.io/summary/new_code?id=ApoSkunz_PIVOT)
-[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=ApoSkunz_PIVOT&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=ApoSkunz_PIVOT)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=coverage)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=bugs)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=PIVOT-PLATFORM_pivot-core&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=PIVOT-PLATFORM_pivot-core)
 
 ## Modules
 
