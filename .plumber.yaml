@@ -6,7 +6,10 @@ github:
     # --- Supply chain : SHA pinning ---
     actionsMustBePinnedByCommitSha:
       enabled: true
-      trustedOwners: []
+      # slsa-framework exempté du SHA-pin : builder-fetch.sh exige refs/tags/vX.Y.Z,
+      # un SHA brut fait échouer le téléchargement du binaire (exit 27). Réf TAG obligatoire.
+      trustedOwners:
+        - slsa-framework
 
     actionsMustNotBeArchived:
       enabled: true
