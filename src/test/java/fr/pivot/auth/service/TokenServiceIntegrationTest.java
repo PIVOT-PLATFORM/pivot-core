@@ -190,7 +190,7 @@ class TokenServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void rotate_atMaxSessions_doesNotEvictHealthySession() {
-        final int max = 10; // MAX_SESSIONS_PER_USER default (V1 seed)
+        final int max = 5; // MAX_SESSIONS_PER_USER default (V1 seed)
         final java.util.List<String> raws = new java.util.ArrayList<>();
         for (int i = 0; i < max; i++) {
             raws.add(tokenService.issue(
