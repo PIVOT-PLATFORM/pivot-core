@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v1.0.2...v1.0.3) (2026-06-27)
+
+
+### Bug Fixes
+
+* **docker:** apk upgrade --no-cache — CVE-2026-2100 p11-kit HIGH ([#88](https://github.com/PIVOT-PLATFORM/pivot-core/issues/88)) ([e22eacc](https://github.com/PIVOT-PLATFORM/pivot-core/commit/e22eacc7361a14a7f148f383e3248421db8ee978))
+
 ## [1.0.2](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v1.0.1...v1.0.2) (2026-06-25)
 
 
