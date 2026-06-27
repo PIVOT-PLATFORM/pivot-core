@@ -344,7 +344,7 @@ VALUES
      'Durée de vie d''une session standard en secondes (86400 = 24h)'),
     ('SESSION_TTL_REMEMBER_ME_SECONDS', true, '2592000', 'int',
      'Durée de vie d''une session «Se souvenir de moi» en secondes (2592000 = 30 jours)'),
-    ('MAX_SESSIONS_PER_USER', true, '10', 'int',
+    ('MAX_SESSIONS_PER_USER', true, '5', 'int',
      'Nombre maximum de sessions actives simultanées par utilisateur. La plus ancienne est révoquée si la limite est atteinte.')
 ON CONFLICT (flag_key) DO NOTHING;
 
