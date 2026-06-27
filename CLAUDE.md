@@ -63,7 +63,6 @@ pivot-core/
 │   ├── main/resources/
 │   │   └── db/migration/      # Migrations Liquibase
 │   └── test/java/
-├── gates/                     # Artifacts ACDD (us-{id}/gate-{n}.yaml)
 ├── .github/
 │   ├── workflows/
 │   └── ISSUE_TEMPLATE/
@@ -90,7 +89,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 | **Expert OIDC / IAM** | OIDC PKCE S256, Spring Security OAuth2 Resource Server, Keycloak, claims mapping, rôles |
 | **Expert QA** | Stratégie TU/TI, Testcontainers, coverage ≥ 80 %, non-régression |
 | **Expert RGPD** | Conformité RGPD/CNIL, bases légales, droits des personnes, registre Art. 30 |
-| **Product Owner** | GitHub Issues backlog, Epics, US, critères d'acceptation, priorisation |
+| **Product Owner** | Project GitHub org backlog, Epics, US, critères d'acceptation, priorisation |
 | **Scrum Master** | Coordination, sprints, impediments, backlog consistency |
 | **Architecte Modules** | Système de modules activables, registre, feature flags, isolation inter-modules |
 | **Expert PR Review** | Relecture croisée neutre : cohérence architecture, lisibilité, dette technique, respect des standards PIVOT — intervient quand les experts dev signalent "prêt pour review" |
@@ -120,50 +119,52 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 
 ---
 
-## Backlog — GitHub Issues + Projects
+## Backlog — GitHub Project (org)
 
-> Projet open-source → GitHub Issues publiques (contributions externes possibles, roadmap visible, CI peut labeler automatiquement).
+> **Source de vérité : `pivot-docs/backlog/README.md`.** Le backlog opérationnel vit dans le
+> **Project org `PIVOT-PLATFORM` (« PIVOT Platform »)**. Tant que le produit n'est pas public,
+> les items sont des **drafts** (pas d'Issues repo ; conversion à l'implémentation).
 
 ### Hiérarchie
+`EPIC → FEATURE (valeur) / ENABLER (technique) → US` · clé `E01 → F01.1 / EN01.1 → US01.1.1`.
 
-```
-Epic (issue parent, label "epic")
-└── User Stories (issues enfants, label "us", liées via "tracked by")
-```
+### Champs du Project
 
-### Template US (`.github/ISSUE_TEMPLATE/user-story.yml`)
+| Champ | Valeurs |
+|-------|---------|
+| Item Type | Epic / Feature / Enabler / US |
+| Parent | clé du parent (ex. `E01`, `F01.1`) |
+| Stage | Backlog / Ready / In progress / Review / Done |
+| Human Gate | needs-human-valid / human-validated |
+| Priority | Critical / High / Medium / Low |
+| Module | core / auth / admin / oidc / whiteboard / session / roadmap / survey / quiz (extensible) |
+| Phase | MVP / v1-enterprise / phase-3 |
+| Sprint | Sprint 1…N |
+| Size | XS / S / M / L / XL |
 
-```markdown
-En tant que [admin / utilisateur / participant anonyme]
-Je veux [action]
-Afin de [bénéfice]
+### Règles dures
+- **Human Gate** : aucune implémentation tant que `Human Gate = needs-human-valid` (posé par le **mainteneur seul** ; Claude le consomme, ne le pose jamais).
+- **Verrou MVP** : seuls les items `Phase: MVP` éligibles tant que « MVP terminé » non déclaré.
+- **Lecture Project** : Claude lit l'état du Project **au démarrage de session** (pas d'automation live).
+- **Draft → Issue** : à `human-validated` (+ MVP), Claude **convertit le draft en Issue** (repo selon module) et passe `Stage → In progress`. **1 draft = 1 Issue = 1 repo**.
+- **Transitions Stage autorisées pour Claude** :
+  - `Backlog → Ready` : DoR satisfaite, en attente de `human-validated`
+  - `Ready → In progress` : démarrage implémentation (après `human-validated`)
+  - `In progress → Review` : implémentation terminée, recette humaine attendue
+  - **`Review → Done` : mainteneur uniquement — jamais Claude**
+- US bloquée → retour `Backlog` + note.
 
-Critères d'acceptation :
-- [ ] Given [contexte], when [action], then [résultat observable]
-- [ ] Error case: given [input invalide], system retourne [erreur / status code]
-- [ ] Security: [propriété de sécurité garantie]
+### Workflow autonome (boucle de session)
 
-Module cible : pivot-{module}
-Estimation : XS / S / M / L / XL
-Dépendances : #xxx (si applicable)
-```
+1. **Lecture** — au démarrage de session, Claude lit l'état du Project GitHub (Human Gate, Stage, Phase).
+2. **Si `Human Gate = human-validated` et `Phase: MVP`** :
+   - Convertit le draft en Issue dans le repo cible.
+   - Passe `Stage → In progress`.
+   - Implémente (Breaking Point 1 d'abord si non encore validé).
+3. **Fin d'implémentation** → passe `Stage → Review` (recette mainteneur).
+4. **`Review → Done`** : mainteneur uniquement — jamais Claude.
 
-### Champs GitHub Projects
-
-| Champ | Type | Valeurs |
-|-------|------|---------|
-| Status | Select | Backlog / Ready / In progress / Review / Done |
-| Priority | Select | Critical / High / Medium / Low |
-| Module | Select | core / whiteboard / session / roadmap / survey / quiz / auth / admin |
-| Phase | Select | MVP / v1-enterprise / phase-3 |
-| Size | Select | XS / S / M / L / XL |
-
-### Mise à jour des statuts (Claude)
-
-- Claude met le statut à **"Review"** quand une US est implémentée (Gate 2 vert)
-- Le mainteneur valide → statut **"Done"**
-- US bloquée → **"Backlog"** + note explicative
-- Ne jamais laisser un statut obsolète
+### Template US, Definition of Ready, vagues → `pivot-docs/backlog/README.md`.
 
 ---
 
@@ -208,7 +209,7 @@ Tout PR avec :
 | **2. Tests** | TU JUnit 5 + TI Testcontainers · Jest Angular — **dans le même commit** |
 | **3. Qualité** | Checkstyle · SpotBugs · ESLint · TypeCheck verts |
 | **4. UI / i18n / SCSS** | Composants Angular, styles, traductions |
-| **5. Backlog** | Mettre à jour le statut de l'US dans GitHub Issues · **obligatoire avant commit** |
+| **5. Project** | `Stage → Review` dans le Project GitHub (fin d'implémentation) · Issue trackée via PR · **obligatoire avant push** |
 | **6. E2E** | Spec Playwright (happy path + 1 erreur critique) |
 | **7. Commit** | `git add` fichier par fichier · commits atomiques · branche `feat/us-{id}-{slug}` |
 
@@ -276,7 +277,8 @@ Co-author sur chaque commit : `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthro
 
 ## Gates ACDD — Confidence Gates
 
-Chaque gate produit un artifact YAML dans `gates/us-{id}/`. Score 0–100, jamais booléen.
+Score 0–100, jamais booléen. Scores/décisions consignés en **commentaire de PR** (plus de
+dossier `gates/`). La validation humaine vit dans le champ **Human Gate** du Project.
 
 | Gate | Moment | Seuils |
 |------|--------|--------|
@@ -291,17 +293,7 @@ Chaque gate produit un artifact YAML dans `gates/us-{id}/`. Score 0–100, jamai
 
 **Checks Gate 3 :** SonarCloud ≥ 80 % (25) · zéro finding critique/high (25) · linters clean (20) · Gitleaks clean (20) · build Docker (10)
 
-**Format artifact** `gates/us-{id}/gate-{n}.yaml` :
-```yaml
-gate: READINESS          # READINESS | COVERAGE | QUALITY | MERGE_CONFIDENCE
-us_id: 42
-score: 87
-decision: VALIDATE_WITH_PO
-executed_by: Claude
-timestamp: 2026-06-19T10:00Z
-breakdown: { ... }
-notes: ""
-```
+**Format du commentaire de PR (gate)** : `gate` (READINESS | COVERAGE | QUALITY | MERGE_CONFIDENCE), `score`, `decision`, `breakdown`, `notes`.
 
 ---
 
@@ -312,7 +304,7 @@ notes: ""
 **ACDD (Acceptance Criteria Driven Development)** — gates de confiance continues.
 
 - Gates → score (0–100), jamais booléen pass/fail
-- Chaque gate → artifact YAML committé dans `docs/gates/` — pas réponse chat
+- Chaque gate → consigné en **commentaire de PR** (pas de fichier committé)
 - Breaking Points = seuls moments d'intervention humaine obligatoire
 - En dehors des Breaking Points : Claude décide selon le score
 
@@ -353,13 +345,13 @@ PO Agent rédige Epic + US avec AC
 Chaque AC mappe à au moins un test. AC sans test = non implémenté, peu importe le code présent.
 AC ambigu à l'implémentation → **stopper et demander au PO Agent** — jamais d'interprétation unilatérale.
 
-### Artifacts gates
+### Gates (commentaires de PR)
 
-Structure dans `gates/us-{id}/` :
-- `gate-1.yaml` — Readiness (avant implémentation)
-- `gate-2-{commit}.yaml` — Coverage (après chaque commit)
-- `gate-3.yaml` — Quality (après CI verte)
-- `gate-4.yaml` — Merge confidence (décision finale)
+Chaque gate est consigné en **commentaire de PR** (plus de fichiers `gates/`) :
+- Gate 1 Readiness (avant implémentation) — = `Human Gate: human-validated` côté Project
+- Gate 2 Coverage (après chaque commit)
+- Gate 3 Quality (après CI verte)
+- Gate 4 Merge confidence (décision finale)
 
 ### Labels PR
 
@@ -378,7 +370,7 @@ Structure dans `gates/us-{id}/` :
 ### Post-merge
 
 ```bash
-# 1. Mettre à jour statut GitHub Issues → "Done"
+# 1. Mainteneur : passe Stage → Done dans le Project GitHub (recette humaine — jamais Claude)
 # 2. Débloquer les US dépendantes
 # 3. Nettoyer la branche
 git push origin --delete feat/us-{id}-{slug}
@@ -458,7 +450,7 @@ Dans **pivot-docs** — un fichier par catégorie, mis à jour en place. **Jamai
 | Entités JPA exposées directement en API | Fuite de schéma, IDOR |
 | Logique métier dans les contrôleurs | Viole la séparation des couches |
 | Module désactivé avec routes accessibles | Contournement restriction admin |
-| Implémenter sans US tracée dans GitHub Issues | Perte de traçabilité |
+| Implémenter sans draft/Issue tracé dans le Project GitHub org | Perte de traçabilité |
 
 ---
 
@@ -466,7 +458,7 @@ Dans **pivot-docs** — un fichier par catégorie, mis à jour en place. **Jamai
 
 Après **2 tentatives** (même stratégie ou variantes proches) :
 1. **Stopper** — ne pas continuer à boucler
-2. **Committer l'artifact de gate** avec `decision: ESCALATED` et contexte complet
+2. **Poster un commentaire de gate** sur la PR avec `decision: ESCALATED` et contexte complet
 3. **Signaler** au mainteneur : blocage, tentatives, raison de l'échec — label `needs-human-review`
 4. **Proposer** une alternative : approche différente, outil différent, contournement
 
