@@ -64,13 +64,12 @@ pivot:
     from: ${PIVOT_MAIL_FROM:noreply@pivot.app}
   app:
     url: ${PIVOT_APP_URL:http://localhost:4200}
+    support-email: ${PIVOT_SUPPORT_EMAIL:support@pivot.app}
   auth:
     session-cookie-name: pivot_session
     device-cookie-name: pivot_device
-    device-ttl-days: 90
     verification-ttl-hours: 24
-    password-reset-ttl-minutes: 60
-    device-verify-ttl-minutes: 15
     secure-cookie: false
+    # TTL reset mdp, TTL OTP appareil, durée confiance appareil : table feature_flags
   cleanup:
     tokens-cron: "-"  # disabled in test

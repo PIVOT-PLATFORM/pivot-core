@@ -182,14 +182,15 @@ class PasswordServiceTest {
         prt.setExpiresAt(Instant.now().plusSeconds(600));
         when(passwordResetRepo.findByTokenHashAndUsedAtIsNull(CryptoUtils.sha256("valid")))
             .thenReturn(Optional.of(prt));
+        when(passwordResetRepo.markUsed(any(), any())).thenReturn(1);
         when(passwordEncoder.encode("password1")).thenReturn("hashed");
 
         service.resetPassword(new ResetPasswordRequest("valid", "password1"), "ip", "ua");
 
-        assertThat(prt.getUsedAt()).isNotNull();
         verify(user).setPasswordHash("hashed");
         verify(userRepo).save(user);
         verify(tokenService).revokeAllForUser(7L);
+        verify(emailService).sendPasswordChangedEmail(eq("user@x.com"), eq("Alice"), any(Instant.class), eq("ip"));
         verify(auditService).log(user, AuditService.PASSWORD_RESET, "ip", "ua");
     }
 }
