@@ -2,6 +2,7 @@ package fr.pivot.auth.service;
 
 import fr.pivot.auth.entity.TrustedDevice;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.repository.TrustedDeviceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,13 +30,15 @@ import static org.mockito.Mockito.when;
 class TrustedDeviceServiceTest {
 
     @Mock private TrustedDeviceRepository repo;
+    @Mock private FeatureFlagRepository featureFlagRepo;
     @Mock private User user;
 
     private TrustedDeviceService service;
 
     @BeforeEach
     void setUp() {
-        service = new TrustedDeviceService(repo, 90);
+        when(featureFlagRepo.getInt("DEVICE_TTL_DAYS", 90)).thenReturn(90);
+        service = new TrustedDeviceService(repo, featureFlagRepo);
         when(user.getId()).thenReturn(7L);
     }
 

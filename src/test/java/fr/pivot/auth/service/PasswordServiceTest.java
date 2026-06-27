@@ -4,6 +4,7 @@ import fr.pivot.auth.dto.ForgotPasswordRequest;
 import fr.pivot.auth.dto.ResetPasswordRequest;
 import fr.pivot.auth.entity.PasswordResetToken;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.repository.PasswordResetTokenRepository;
 import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.util.CryptoUtils;
@@ -44,6 +45,7 @@ class PasswordServiceTest {
     @Mock private UserRepository userRepo;
     @Mock private TenantRepository tenantRepo;
     @Mock private PasswordResetTokenRepository passwordResetRepo;
+    @Mock private FeatureFlagRepository featureFlagRepo;
     @Mock private TokenService tokenService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EmailService emailService;
@@ -56,8 +58,9 @@ class PasswordServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PasswordService(userRepo, tenantRepo, passwordResetRepo, tokenService,
-            passwordEncoder, emailService, rateLimiter, auditService, 60L);
+        when(featureFlagRepo.getInt("PASSWORD_RESET_TTL_MINUTES", 15)).thenReturn(15);
+        service = new PasswordService(userRepo, tenantRepo, passwordResetRepo, featureFlagRepo,
+            tokenService, passwordEncoder, emailService, rateLimiter, auditService);
         when(rateLimiter.forgotPasswordBucket(anyString())).thenReturn("forgot:ip:ip");
         when(rateLimiter.resetPasswordBucket(anyString())).thenReturn("reset:ip:ip");
         when(tenantRepo.findBySlug("pivot-saas")).thenReturn(Optional.of(tenant));

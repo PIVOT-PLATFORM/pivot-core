@@ -32,7 +32,7 @@ class EmailServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new EmailService(mailSender, templateEngine, "noreply@pivot.app", "http://app");
+        service = new EmailService(mailSender, templateEngine, "noreply@pivot.app", "http://app", "support@pivot.app");
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage((jakarta.mail.Session) null));
         when(templateEngine.process(any(String.class), any(Context.class))).thenReturn("<html>body</html>");
     }
