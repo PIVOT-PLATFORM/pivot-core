@@ -11,6 +11,8 @@ RUN --mount=type=cache,target=/root/.m2 mvn package -DskipTests -B -q
 # Runtime sur Alpine (musl) : surface OS minimale (~quelques paquets vs ~106 sur Ubuntu)
 # -> bien moins de CVE OS. Seule l'image runtime est livrée et scannée (le builder est jeté).
 FROM eclipse-temurin:25-jre-alpine
+# Upgrade OS packages to pick up any fixed CVEs (e.g. CVE-2026-2100 p11-kit).
+RUN apk upgrade --no-cache
 WORKDIR /app
 # Busybox/Alpine : addgroup/adduser (pas groupadd/useradd).
 RUN addgroup -S pivot && adduser -S -G pivot pivot
