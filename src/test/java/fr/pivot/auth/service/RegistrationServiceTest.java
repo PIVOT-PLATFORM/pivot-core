@@ -86,6 +86,10 @@ class RegistrationServiceTest {
             .isInstanceOf(RateLimitException.class);
     }
 
+    /**
+     * Anti-enumeration: duplicate email returns 200 (no 409).
+     * Unverified account gets a verification reminder; BCrypt decoy runs to equalize timing.
+     */
     @Test
     void register_isNeutral_whenEmailAlreadyExists() {
         when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);

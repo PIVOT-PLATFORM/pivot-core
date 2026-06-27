@@ -1,5 +1,7 @@
 package fr.pivot.auth.service;
 
+import fr.pivot.auth.exception.EmailDeliveryException;
+import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,8 +14,11 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -123,13 +128,12 @@ class EmailServiceTest {
 
     @Test
     void send_throwsEmailDeliveryException_onMessagingException() throws Exception {
-        final MimeMessage broken = org.mockito.Mockito.mock(MimeMessage.class);
-        org.mockito.Mockito.doThrow(new jakarta.mail.MessagingException("SMTP failure"))
+        final MimeMessage broken = mock(MimeMessage.class);
+        doThrow(new MessagingException("SMTP failure"))
             .when(broken).setSubject(any(String.class), any(String.class));
         when(mailSender.createMimeMessage()).thenReturn(broken);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(
-                () -> service.sendWelcomeEmail("x@x.com", "X"))
-            .isInstanceOf(fr.pivot.auth.exception.EmailDeliveryException.class);
+        assertThatThrownBy(() -> service.sendWelcomeEmail("x@x.com", "X"))
+            .isInstanceOf(EmailDeliveryException.class);
     }
 }
