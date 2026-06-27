@@ -154,6 +154,16 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
   - **`Review → Done` : mainteneur uniquement — jamais Claude**
 - US bloquée → retour `Backlog` + note.
 
+### Workflow autonome (boucle de session)
+
+1. **Lecture** — au démarrage de session, Claude lit l'état du Project GitHub (Human Gate, Stage, Phase).
+2. **Si `Human Gate = human-validated` et `Phase: MVP`** :
+   - Convertit le draft en Issue dans le repo cible.
+   - Passe `Stage → In progress`.
+   - Implémente (Breaking Point 1 d'abord si non encore validé).
+3. **Fin d'implémentation** → passe `Stage → Review` (recette mainteneur).
+4. **`Review → Done`** : mainteneur uniquement — jamais Claude.
+
 ### Template US, Definition of Ready, vagues → `pivot-docs/backlog/README.md`.
 
 ---
