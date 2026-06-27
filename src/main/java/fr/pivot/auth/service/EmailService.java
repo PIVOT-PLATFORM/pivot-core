@@ -21,6 +21,7 @@ import java.util.Map;
 public class EmailService {
 
     private static final String KEY_FIRST_NAME = "firstName";
+    private static final String KEY_RESET_URL = "resetUrl";
 
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
@@ -54,7 +55,7 @@ public class EmailService {
         send(to, "Réinitialisation de votre mot de passe — PIVOT",
             "email/reset-password",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : "là",
-                   "resetUrl", appUrl + "/auth/reset-password?token=" + token));
+                   KEY_RESET_URL, appUrl + "/auth/reset-password?token=" + token));
     }
 
     @Async
@@ -79,7 +80,7 @@ public class EmailService {
             "email/account-exists",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : "là",
                    "loginUrl", appUrl + "/auth/login",
-                   "resetUrl", appUrl + "/auth/forgot-password"));
+                   KEY_RESET_URL, appUrl + "/auth/forgot-password"));
     }
 
     /**
@@ -113,7 +114,7 @@ public class EmailService {
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : "là",
                    "changedAt", formattedDate,
                    "ip", ip != null ? ip : "inconnue",
-                   "resetUrl", appUrl + "/auth/forgot-password"));
+                   KEY_RESET_URL, appUrl + "/auth/forgot-password"));
     }
 
     @Async

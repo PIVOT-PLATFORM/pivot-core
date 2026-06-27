@@ -24,7 +24,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -192,5 +191,42 @@ class PasswordServiceTest {
         verify(tokenService).revokeAllForUser(7L);
         verify(emailService).sendPasswordChangedEmail(eq("user@x.com"), eq("Alice"), any(Instant.class), eq("ip"));
         verify(auditService).log(user, AuditService.PASSWORD_RESET, "ip", "ua");
+    }
+
+    // ---------------- checkResetToken ----------------
+
+    @Test
+    void checkResetToken_throws400_whenTokenNotFound() {
+        when(passwordResetRepo.findByTokenHashAndUsedAtIsNull(anyString())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.checkResetToken("missing"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void checkResetToken_throws400_whenTokenExpired() {
+        final PasswordResetToken prt = new PasswordResetToken();
+        prt.setUser(user);
+        prt.setExpiresAt(Instant.now().minusSeconds(10));
+        when(passwordResetRepo.findByTokenHashAndUsedAtIsNull(CryptoUtils.sha256("expired")))
+            .thenReturn(Optional.of(prt));
+
+        assertThatThrownBy(() -> service.checkResetToken("expired"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void checkResetToken_succeeds_whenTokenValid() {
+        final PasswordResetToken prt = new PasswordResetToken();
+        prt.setUser(user);
+        prt.setExpiresAt(Instant.now().plusSeconds(600));
+        when(passwordResetRepo.findByTokenHashAndUsedAtIsNull(CryptoUtils.sha256("valid")))
+            .thenReturn(Optional.of(prt));
+
+        service.checkResetToken("valid"); // no exception
     }
 }

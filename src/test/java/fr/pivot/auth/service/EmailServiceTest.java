@@ -82,4 +82,54 @@ class EmailServiceTest {
         verify(templateEngine).process(eq("email/welcome"), any(Context.class));
         verify(mailSender).send(any(MimeMessage.class));
     }
+
+    @Test
+    void sendAccountExistsEmail_rendersAndSends() {
+        service.sendAccountExistsEmail("user@x.com", "Eve");
+
+        verify(templateEngine).process(eq("email/account-exists"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendAccountExistsEmail_handlesNullFirstName() {
+        service.sendAccountExistsEmail("user@x.com", null);
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendVerificationReminderEmail_rendersAndSends() {
+        service.sendVerificationReminderEmail("user@x.com", "Frank", "remind-tok");
+
+        verify(templateEngine).process(eq("email/verify-reminder"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendPasswordChangedEmail_rendersAndSends() {
+        service.sendPasswordChangedEmail("user@x.com", "Grace", java.time.Instant.now(), "1.2.3.4");
+
+        verify(templateEngine).process(eq("email/password-changed"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendPasswordChangedEmail_handlesNullFirstNameAndIp() {
+        service.sendPasswordChangedEmail("user@x.com", null, java.time.Instant.now(), null);
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void send_throwsEmailDeliveryException_onMessagingException() throws Exception {
+        final MimeMessage broken = org.mockito.Mockito.mock(MimeMessage.class);
+        org.mockito.Mockito.doThrow(new jakarta.mail.MessagingException("SMTP failure"))
+            .when(broken).setSubject(any(String.class), any(String.class));
+        when(mailSender.createMimeMessage()).thenReturn(broken);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> service.sendWelcomeEmail("x@x.com", "X"))
+            .isInstanceOf(fr.pivot.auth.exception.EmailDeliveryException.class);
+    }
 }

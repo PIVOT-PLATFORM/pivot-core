@@ -135,5 +135,30 @@ class RateLimiterServiceTest {
         assertThat(service.resetPasswordBucket("1.2.3.4")).isEqualTo("reset:ip:1.2.3.4");
         assertThat(service.verifyEmailBucket("1.2.3.4")).isEqualTo("verify-email:ip:1.2.3.4");
         assertThat(service.deviceOtpBucket("42")).isEqualTo("device-otp:user:42");
+        assertThat(service.sessionRestoreBucket("5.6.7.8")).isEqualTo("session-restore:ip:5.6.7.8");
+        assertThat(service.resendVerificationBucket("9.10.11.12")).isEqualTo("resend-verification:ip:9.10.11.12");
+    }
+
+    @Test
+    void getRemainingSeconds_returnsZero_whenNotLocked() {
+        when(valueOps.get("rl:b:until")).thenReturn(null);
+
+        assertThat(service.getRemainingSeconds("b")).isZero();
+    }
+
+    @Test
+    void getRemainingSeconds_returnsRemaining_whenLocked() {
+        final long future = System.currentTimeMillis() / 1000 + 300;
+        when(valueOps.get("rl:b:until")).thenReturn(String.valueOf(future));
+
+        assertThat(service.getRemainingSeconds("b")).isGreaterThan(0L);
+    }
+
+    @Test
+    void getRemainingSeconds_returnsZero_whenLockoutJustExpired() {
+        final long past = System.currentTimeMillis() / 1000 - 5;
+        when(valueOps.get("rl:b:until")).thenReturn(String.valueOf(past));
+
+        assertThat(service.getRemainingSeconds("b")).isZero();
     }
 }

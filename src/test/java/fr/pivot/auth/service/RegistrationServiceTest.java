@@ -88,8 +88,6 @@ class RegistrationServiceTest {
 
     @Test
     void register_isNeutral_whenEmailAlreadyExists() {
-        // Anti-enumeration: no 409. Unverified existing account gets a verification reminder;
-        // BCrypt decoy work still runs to equalize response time.
         when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);
         when(userRepo.findByTenantIdAndEmailAndDeletedAtIsNull(1L, "user@x.com"))
             .thenReturn(Optional.of(realUser()));

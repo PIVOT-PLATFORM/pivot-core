@@ -193,4 +193,13 @@ class AuthControllerTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         verify(passwordService).resetPassword(any(), anyString(), anyString());
     }
+
+    @Test
+    void checkResetToken_returnsOk() {
+        final ResponseEntity<Map<String, String>> resp = controller.checkResetToken("valid-token");
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resp.getBody()).containsKey("message");
+        verify(passwordService).checkResetToken("valid-token");
+    }
 }
