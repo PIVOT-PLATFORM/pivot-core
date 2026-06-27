@@ -26,10 +26,12 @@ Closes #
 
 ## Gate de confiance
 
-- Gate 1 READINESS : `docs/gates/us-{id}/gate-1.yaml`
-- Gate 2 COVERAGE (dernier commit) : `docs/gates/us-{id}/gate-2-{sha}.yaml`
-- Gate 3 QUALITY (après CI) : `docs/gates/us-{id}/gate-3.yaml`
-- Gate 4 score : ___/100
+<!-- Les scores de gates sont consignés en commentaire de PR — pas de fichiers committés -->
+
+- Gate 1 READINESS : score ___/100
+- Gate 2 COVERAGE (dernier commit) : score ___/100
+- Gate 3 QUALITY (après CI) : score ___/100
+- Gate 4 MERGE CONFIDENCE : score ___/100
 
 ## Checklist
 
@@ -39,5 +41,4 @@ Closes #
 - [ ] JavaDoc sur classes et méthodes publiques
 - [ ] Migration Flyway créée si changement BDD
 - [ ] Spec Playwright ajoutée / mise à jour (happy path + 1 erreur critique)
-- [ ] Statut GitHub Issues mis à jour → "Review"
-- [ ] Artifact Gate 2 committé dans `docs/gates/`
+- [ ] Project GitHub org : `Stage → Review`

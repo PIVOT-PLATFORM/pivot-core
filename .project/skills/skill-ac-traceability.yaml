@@ -76,8 +76,8 @@ gate_checklist:
     - "Table de traçabilité AC → test remplie"
     - "Tous les ACs de l'US couverts par au moins un test"
     - "Tests nommés avec identifiant AC"
-    - "Artifact gate-2-{commit}.yaml commité dans docs/gates/us-{id}/"
+    - "Score Gate 2 posté en commentaire de PR (pas de fichier committé)"
   gate_4:
     - "Table traçabilité complète dans le PR template"
     - "Aucun AC orphelin (présent dans l'US mais absent de la table)"
-    - "Artifact gate-4.yaml commité"
+    - "Score Gate 4 posté en commentaire de PR (pas de fichier committé)"

@@ -89,7 +89,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 | **Expert OIDC / IAM** | OIDC PKCE S256, Spring Security OAuth2 Resource Server, Keycloak, claims mapping, rôles |
 | **Expert QA** | Stratégie TU/TI, Testcontainers, coverage ≥ 80 %, non-régression |
 | **Expert RGPD** | Conformité RGPD/CNIL, bases légales, droits des personnes, registre Art. 30 |
-| **Product Owner** | GitHub Issues backlog, Epics, US, critères d'acceptation, priorisation |
+| **Product Owner** | Project GitHub org backlog, Epics, US, critères d'acceptation, priorisation |
 | **Scrum Master** | Coordination, sprints, impediments, backlog consistency |
 | **Architecte Modules** | Système de modules activables, registre, feature flags, isolation inter-modules |
 | **Expert PR Review** | Relecture croisée neutre : cohérence architecture, lisibilité, dette technique, respect des standards PIVOT — intervient quand les experts dev signalent "prêt pour review" |
@@ -450,7 +450,7 @@ Dans **pivot-docs** — un fichier par catégorie, mis à jour en place. **Jamai
 | Entités JPA exposées directement en API | Fuite de schéma, IDOR |
 | Logique métier dans les contrôleurs | Viole la séparation des couches |
 | Module désactivé avec routes accessibles | Contournement restriction admin |
-| Implémenter sans US tracée dans GitHub Issues | Perte de traçabilité |
+| Implémenter sans draft/Issue tracé dans le Project GitHub org | Perte de traçabilité |
 
 ---
 
@@ -458,7 +458,7 @@ Dans **pivot-docs** — un fichier par catégorie, mis à jour en place. **Jamai
 
 Après **2 tentatives** (même stratégie ou variantes proches) :
 1. **Stopper** — ne pas continuer à boucler
-2. **Committer l'artifact de gate** avec `decision: ESCALATED` et contexte complet
+2. **Poster un commentaire de gate** sur la PR avec `decision: ESCALATED` et contexte complet
 3. **Signaler** au mainteneur : blocage, tentatives, raison de l'échec — label `needs-human-review`
 4. **Proposer** une alternative : approche différente, outil différent, contournement
 
