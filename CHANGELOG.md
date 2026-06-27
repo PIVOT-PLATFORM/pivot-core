@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v1.0.3...v1.1.0) (2026-06-27)
+
+
+### Features
+
+* **auth:** auth module MVP — E01 ([#105](https://github.com/PIVOT-PLATFORM/pivot-core/issues/105)) ([fc82e9b](https://github.com/PIVOT-PLATFORM/pivot-core/commit/fc82e9b4cd7d6511d86a0744e9dbe160efa6af4e))
+
 ## [1.0.3](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v1.0.2...v1.0.3) (2026-06-27)
 
 
