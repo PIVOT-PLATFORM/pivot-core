@@ -1,0 +1,3 @@
+pivot:
+  auth:
+    secure-cookie: false   # HTTP localhost — le flag Secure bloque les cookies en dev
