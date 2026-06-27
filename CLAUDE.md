@@ -143,7 +143,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 | Size | XS / S / M / L / XL |
 
 ### Règles dures
-- **Human Gate** : aucune implémentation tant que `Human Gate = human-validated` (posé par le **mainteneur seul** ; Claude le consomme, ne le pose jamais).
+- **Human Gate** : aucune implémentation tant que `Human Gate = needs-human-valid` (posé par le **mainteneur seul** ; Claude le consomme, ne le pose jamais).
 - **Verrou MVP** : seuls les items `Phase: MVP` éligibles tant que « MVP terminé » non déclaré.
 - **Lecture Project** : Claude lit l'état du Project **au démarrage de session** (pas d'automation live).
 - **Draft → Issue** : à `human-validated` (+ MVP), Claude **convertit le draft en Issue** (repo selon module) et passe `Stage → In progress`. **1 draft = 1 Issue = 1 repo**.
