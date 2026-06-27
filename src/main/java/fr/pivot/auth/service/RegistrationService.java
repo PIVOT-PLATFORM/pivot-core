@@ -3,6 +3,7 @@ package fr.pivot.auth.service;
 import fr.pivot.auth.entity.EmailVerification;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.dto.RegisterRequest;
+import fr.pivot.auth.exception.RateLimitException;
 import fr.pivot.auth.repository.EmailVerificationRepository;
 import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.util.CryptoUtils;
@@ -93,8 +94,9 @@ public class RegistrationService {
      */
     @Transactional
     public void register(final RegisterRequest req, final String ip, final String userAgent) {
-        if (!rateLimiter.checkAndRecord(rateLimiter.registerIpBucket(ip), REGISTER_MAX_PER_IP, REGISTER_WINDOW)) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Trop de tentatives");
+        final String registerBucket = rateLimiter.registerIpBucket(ip);
+        if (!rateLimiter.checkAndRecord(registerBucket, REGISTER_MAX_PER_IP, REGISTER_WINDOW)) {
+            throw new RateLimitException(Math.max(1L, rateLimiter.getRemainingSeconds(registerBucket)));
         }
 
         final Tenant tenant = saasDefaultTenant();
@@ -104,10 +106,10 @@ public class RegistrationService {
             .findByTenantIdAndEmailAndDeletedAtIsNull(tenant.getId(), email)
             .orElse(null);
         if (existing != null) {
-            // Neutral response: burn the same BCrypt time as a real signup, notify the real
-            // owner, and return as if the account had just been created — no enumeration.
             passwordEncoder.encode(req.password());
-            emailService.sendAccountExistsEmail(email, existing.getFirstName());
+            if (!existing.isEmailVerified()) {
+                issueVerificationReminder(existing);
+            }
             return;
         }
 
@@ -172,7 +174,7 @@ public class RegistrationService {
      */
     @Transactional
     public void resendVerification(final String email, final String ip, final String userAgent) {
-        if (!rateLimiter.checkAndRecord(rateLimiter.verifyEmailBucket(ip), RESEND_MAX, RESEND_WINDOW)) {
+        if (!rateLimiter.checkAndRecord(rateLimiter.resendVerificationBucket(ip), RESEND_MAX, RESEND_WINDOW)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
         }
 
@@ -185,6 +187,16 @@ public class RegistrationService {
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
+
+    private void issueVerificationReminder(final User user) {
+        final String rawToken = CryptoUtils.generateSecureToken();
+        final EmailVerification ev = new EmailVerification();
+        ev.setUser(user);
+        ev.setTokenHash(CryptoUtils.sha256(rawToken));
+        ev.setExpiresAt(Instant.now().plus(verificationTtlHours, ChronoUnit.HOURS));
+        emailVerifRepo.save(ev);
+        emailService.sendVerificationReminderEmail(user.getEmail(), user.getFirstName(), rawToken);
+    }
 
     private void issueVerificationToken(final User user) {
         final String rawToken = CryptoUtils.generateSecureToken();

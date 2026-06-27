@@ -9,6 +9,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Persists security/auth audit events ({@code login}, {@code logout}, {@code register}…).
@@ -61,7 +63,17 @@ public class AuditService {
      * @param userAgent client user-agent
      */
     public void log(User user, String eventType, String ip, String userAgent) {
-        self.log(user, user != null ? user.getTenant() : null, eventType, ip, userAgent, null);
+        final Tenant tenant = user != null ? user.getTenant() : null;
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    self.log(user, tenant, eventType, ip, userAgent, null);
+                }
+            });
+        } else {
+            self.log(user, tenant, eventType, ip, userAgent, null);
+        }
     }
 
     // Event type constants

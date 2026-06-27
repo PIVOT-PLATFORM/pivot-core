@@ -19,9 +19,13 @@
             <p style="margin:0 0 8px;font-size:13px;color:#1E40AF;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Code de vérification</p>
             <p style="margin:0;font-size:36px;font-weight:700;color:#1B2A4A;letter-spacing:8px;" th:text="${otp}">000000</p>
           </div>
-          <p style="margin:0 0 8px;font-size:13px;color:#9CA3AF;">Ce code expire dans 15 minutes.</p>
-          <p style="margin:0;font-size:13px;color:#EF4444;font-weight:500;">
+          <p style="margin:0 0 12px;font-size:13px;color:#9CA3AF;">Ce code expire dans 15 minutes.</p>
+          <p style="margin:0 0 12px;font-size:13px;color:#EF4444;font-weight:500;">
             Si ce n'est pas vous, changez immédiatement votre mot de passe.
+          </p>
+          <p style="margin:0;font-size:13px;color:#6B7280;background:#FEF3C7;border-left:3px solid #D97706;padding:10px 14px;border-radius:0 4px 4px 0;">
+            Si cette action ne vient pas de vous, contactez notre support :
+            <a th:href="'mailto:' + ${supportEmail}" th:text="${supportEmail}" style="color:#2563EB;">support@pivot.app</a>
           </p>
         </td></tr>
         <tr><td style="background:#F9FAFB;padding:20px 40px;border-top:1px solid #E5E7EB;">

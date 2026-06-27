@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
 
@@ -23,16 +26,19 @@ public class EmailService {
     private final TemplateEngine templateEngine;
     private final String from;
     private final String appUrl;
+    private final String supportEmail;
 
     public EmailService(
             JavaMailSender mailSender,
             TemplateEngine templateEngine,
             @Value("${pivot.mail.from:noreply@pivot.app}") String from,
-            @Value("${pivot.app.url:http://localhost:4200}") String appUrl) {
+            @Value("${pivot.app.url:http://localhost:4200}") String appUrl,
+            @Value("${pivot.app.support-email:support@pivot.app}") String supportEmail) {
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
         this.from = from;
         this.appUrl = appUrl;
+        this.supportEmail = supportEmail;
     }
 
     @Async
@@ -76,6 +82,40 @@ public class EmailService {
                    "resetUrl", appUrl + "/auth/forgot-password"));
     }
 
+    /**
+     * Notifies an address that a registration was attempted but an unverified account already exists.
+     * Provides a fresh verification link without revealing whether this is a duplicate attempt.
+     *
+     * @param to        the existing unverified account's email address
+     * @param firstName the account holder's first name (may be {@code null})
+     * @param token     the new raw verification token to embed in the link
+     */
+    @Async
+    public void sendVerificationReminderEmail(String to, String firstName, String token) {
+        send(to, "Rappel — vérification de votre compte PIVOT",
+            "email/verify-reminder",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : "là",
+                   "verifyUrl", appUrl + "/auth/verify-email?token=" + token));
+    }
+
+    /**
+     * Security notification sent after a successful password reset.
+     * Includes the timestamp and IP so the user can detect unauthorized changes.
+     */
+    @Async
+    public void sendPasswordChangedEmail(String to, String firstName, Instant changedAt, String ip) {
+        final String formattedDate = DateTimeFormatter
+            .ofPattern("dd/MM/yyyy 'à' HH:mm 'UTC'")
+            .withZone(ZoneId.of("UTC"))
+            .format(changedAt);
+        send(to, "Votre mot de passe PIVOT a été modifié",
+            "email/password-changed",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : "là",
+                   "changedAt", formattedDate,
+                   "ip", ip != null ? ip : "inconnue",
+                   "resetUrl", appUrl + "/auth/forgot-password"));
+    }
+
     @Async
     public void sendWelcomeEmail(String to, String firstName) {
         send(to, "Bienvenue sur PIVOT !",
@@ -89,6 +129,7 @@ public class EmailService {
             Context ctx = new Context(Locale.FRENCH);
             vars.forEach(ctx::setVariable);
             ctx.setVariable("appUrl", appUrl);
+            ctx.setVariable("supportEmail", supportEmail);
             String html = templateEngine.process(template, ctx);
 
             MimeMessage msg = mailSender.createMimeMessage();

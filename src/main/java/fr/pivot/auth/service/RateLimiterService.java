@@ -57,6 +57,18 @@ public class RateLimiterService {
         redis.delete(PREFIX + bucket + SUFFIX_UNTIL);
     }
 
+    /**
+     * Returns the remaining lockout duration in seconds for {@code bucket}, or 0 if not locked.
+     */
+    public long getRemainingSeconds(final String bucket) {
+        String until = redis.opsForValue().get(PREFIX + bucket + SUFFIX_UNTIL);
+        if (until == null) {
+            return 0L;
+        }
+        long remaining = Long.parseLong(until) - System.currentTimeMillis() / 1000;
+        return Math.max(0L, remaining);
+    }
+
     /** Convenience: check + record in one call. Returns false if denied. */
     public boolean checkAndRecord(String bucket, int maxAttempts, Duration window) {
         if (!isAllowed(bucket, maxAttempts, window)) {
@@ -74,5 +86,6 @@ public class RateLimiterService {
     public String forgotPasswordBucket(String ip) { return "forgot:ip:" + ip; }
     public String resetPasswordBucket(String ip) { return "reset:ip:" + ip; }
     public String verifyEmailBucket(String ip) { return "verify-email:ip:" + ip; }
+    public String resendVerificationBucket(String ip) { return "resend-verification:ip:" + ip; }
     public String deviceOtpBucket(String userId) { return "device-otp:user:" + userId; }
 }
