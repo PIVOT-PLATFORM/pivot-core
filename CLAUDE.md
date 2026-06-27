@@ -145,9 +145,14 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 ### Règles dures
 - **Human Gate** : aucune implémentation tant que `Human Gate = human-validated` (posé par le **mainteneur seul** ; Claude le consomme, ne le pose jamais).
 - **Verrou MVP** : seuls les items `Phase: MVP` éligibles tant que « MVP terminé » non déclaré.
-- **Draft → Issue** : à `human-validated` (+ MVP), Claude convertit le draft en Issue (repo selon module), fait avancer `Stage` (→ In progress → Review), implémente. **1 draft = 1 Issue = 1 repo**.
-- Claude lit l'état du Project **au démarrage de session** (pas d'automation live).
-- `Stage` : Claude → `Review` quand Gate 2 vert · mainteneur valide → `Done` · US bloquée → `Backlog` + note.
+- **Lecture Project** : Claude lit l'état du Project **au démarrage de session** (pas d'automation live).
+- **Draft → Issue** : à `human-validated` (+ MVP), Claude **convertit le draft en Issue** (repo selon module) et passe `Stage → In progress`. **1 draft = 1 Issue = 1 repo**.
+- **Transitions Stage autorisées pour Claude** :
+  - `Backlog → Ready` : DoR satisfaite, en attente de `human-validated`
+  - `Ready → In progress` : démarrage implémentation (après `human-validated`)
+  - `In progress → Review` : implémentation terminée, recette humaine attendue
+  - **`Review → Done` : mainteneur uniquement — jamais Claude**
+- US bloquée → retour `Backlog` + note.
 
 ### Template US, Definition of Ready, vagues → `pivot-docs/backlog/README.md`.
 
