@@ -209,7 +209,7 @@ Tout PR avec :
 | **2. Tests** | TU JUnit 5 + TI Testcontainers · Jest Angular — **dans le même commit** |
 | **3. Qualité** | Checkstyle · SpotBugs · ESLint · TypeCheck verts |
 | **4. UI / i18n / SCSS** | Composants Angular, styles, traductions |
-| **5. Backlog** | Mettre à jour le statut de l'US dans GitHub Issues · **obligatoire avant commit** |
+| **5. Project** | `Stage → Review` dans le Project GitHub (fin d'implémentation) · Issue trackée via PR · **obligatoire avant push** |
 | **6. E2E** | Spec Playwright (happy path + 1 erreur critique) |
 | **7. Commit** | `git add` fichier par fichier · commits atomiques · branche `feat/us-{id}-{slug}` |
 
@@ -370,7 +370,7 @@ Chaque gate est consigné en **commentaire de PR** (plus de fichiers `gates/`) :
 ### Post-merge
 
 ```bash
-# 1. Mettre à jour statut GitHub Issues → "Done"
+# 1. Mainteneur : passe Stage → Done dans le Project GitHub (recette humaine — jamais Claude)
 # 2. Débloquer les US dépendantes
 # 3. Nettoyer la branche
 git push origin --delete feat/us-{id}-{slug}
