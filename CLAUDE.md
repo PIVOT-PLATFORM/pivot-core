@@ -253,6 +253,14 @@ Rapporter ✅ ou stderr complet. Toute erreur ou warning non justifié = **stop,
 - Rebase avant merge : `git rebase -i origin/main` → squash WIP
 - `git push --force-with-lease` uniquement sur branches de travail
 
+**Création de branche — procédure obligatoire :**
+```bash
+git checkout main
+git pull origin main
+git checkout -b feat/us-{id}-{slug}
+```
+Sauf si la branche existe déjà → `git checkout {branche}` directement.
+
 ---
 
 ## Workflow — Commits
