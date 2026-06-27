@@ -3,6 +3,7 @@ package fr.pivot.auth.service;
 import fr.pivot.auth.dto.RegisterRequest;
 import fr.pivot.auth.entity.EmailVerification;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.exception.RateLimitException;
 import fr.pivot.auth.repository.EmailVerificationRepository;
 import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.util.CryptoUtils;
@@ -82,22 +83,23 @@ class RegistrationServiceTest {
 
         final RegisterRequest r = req();
         assertThatThrownBy(() -> service.register(r, "ip", "ua"))
-            .isInstanceOf(ResponseStatusException.class)
-            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
-            .isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+            .isInstanceOf(RateLimitException.class);
     }
 
+    /**
+     * Anti-enumeration: duplicate email returns 200 (no 409).
+     * Unverified account gets a verification reminder; BCrypt decoy runs to equalize timing.
+     */
     @Test
     void register_isNeutral_whenEmailAlreadyExists() {
-        // Anti-enumeration: no 409. The existing owner is notified, no new account is created,
-        // and the BCrypt decoy work still runs to equalize response time.
         when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);
         when(userRepo.findByTenantIdAndEmailAndDeletedAtIsNull(1L, "user@x.com"))
             .thenReturn(Optional.of(realUser()));
 
         service.register(req(), "ip", "ua");
 
-        verify(emailService).sendAccountExistsEmail("user@x.com", "Alice");
+        verify(emailService).sendVerificationReminderEmail(eq("user@x.com"), eq("Alice"), anyString());
+        verify(emailVerifRepo).save(any(EmailVerification.class));
         verify(passwordEncoder).encode(anyString());
         verify(userRepo, never()).save(any(User.class));
         verify(emailService, never()).sendVerificationEmail(anyString(), anyString(), anyString());

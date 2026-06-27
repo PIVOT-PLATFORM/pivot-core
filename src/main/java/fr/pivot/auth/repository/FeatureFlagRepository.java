@@ -74,6 +74,22 @@ public interface FeatureFlagRepository extends JpaRepository<FeatureFlag, Long> 
     }
 
     /**
+     * Returns the string value of a typed flag.
+     *
+     * <p>Falls back to {@code defaultValue} when the flag is not found or blank.
+     *
+     * @param flagKey      unique flag key
+     * @param defaultValue value returned when flag is absent or blank
+     * @return flag value as String
+     */
+    default String getString(final String flagKey, final String defaultValue) {
+        return findByFlagKey(flagKey)
+            .map(FeatureFlag::getValue)
+            .filter(v -> v != null && !v.isBlank())
+            .orElse(defaultValue);
+    }
+
+    /**
      * Checks if a boolean flag is enabled.
      *
      * <p>Backward-compatible convenience — callers can migrate to {@link #getBool} gradually.

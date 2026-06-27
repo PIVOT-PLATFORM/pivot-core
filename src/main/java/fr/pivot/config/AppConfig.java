@@ -9,13 +9,14 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.core.Ordered;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @Configuration
 @EnableCaching
 @EnableScheduling
-@EnableAsync
+@EnableAsync(order = Ordered.HIGHEST_PRECEDENCE)
 public class AppConfig {
 
     /**

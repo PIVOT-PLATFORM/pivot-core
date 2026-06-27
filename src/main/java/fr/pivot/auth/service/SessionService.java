@@ -69,7 +69,7 @@ public class SessionService {
     private final TrustedDeviceService trustedDeviceService;
     private final AuditService auditService;
 
-    private final long deviceVerifyTtlMinutes;
+    private static final int DEVICE_VERIFY_TTL_DEFAULT = 15;
     private final String otpSecret;
 
     private final SecureRandom secureRandom = new SecureRandom();
@@ -93,7 +93,6 @@ public class SessionService {
      * @param rateLimiter            sliding-window rate limiter backed by Redis
      * @param trustedDeviceService   manages trusted device records
      * @param auditService           async audit event logger
-     * @param deviceVerifyTtlMinutes OTP token TTL in minutes
      */
     public SessionService(
             final UserRepository userRepo,
@@ -106,7 +105,6 @@ public class SessionService {
             final RateLimiterService rateLimiter,
             final TrustedDeviceService trustedDeviceService,
             final AuditService auditService,
-            @Value("${pivot.auth.device-verify-ttl-minutes:15}") final long deviceVerifyTtlMinutes,
             @Value("${pivot.auth.otp-secret:}") final String otpSecret) {
         this.userRepo = userRepo;
         this.tenantRepo = tenantRepo;
@@ -118,7 +116,6 @@ public class SessionService {
         this.rateLimiter = rateLimiter;
         this.trustedDeviceService = trustedDeviceService;
         this.auditService = auditService;
-        this.deviceVerifyTtlMinutes = deviceVerifyTtlMinutes;
         if (otpSecret == null || otpSecret.isBlank()) {
             // No hardcoded fallback secret: generate an ephemeral per-boot key. OTPs hashed with
             // it stop verifying after a restart (acceptable in dev — 15 min TTL). Set
@@ -344,7 +341,9 @@ public class SessionService {
         dvt.setDeviceFingerprint(fingerprint);
         dvt.setDeviceName(deviceName);
         dvt.setOtpHash(fr.pivot.auth.util.CryptoUtils.hmacSha256(otp, otpSecret));
-        dvt.setExpiresAt(Instant.now().plus(deviceVerifyTtlMinutes, ChronoUnit.MINUTES));
+        dvt.setExpiresAt(Instant.now().plus(
+            featureFlagRepo.getInt("DEVICE_VERIFY_TTL_MINUTES", DEVICE_VERIFY_TTL_DEFAULT),
+            ChronoUnit.MINUTES));
         deviceVerifyRepo.save(dvt);
         emailService.sendDeviceVerifyEmail(user.getEmail(), user.getFirstName(), otp, deviceName);
         auditService.log(user, AuditService.DEVICE_OTP_SENT, ip, userAgent);

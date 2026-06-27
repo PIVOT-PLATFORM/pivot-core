@@ -6,6 +6,8 @@ import org.springframework.cache.CacheManager;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.task.SyncTaskExecutor;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -55,6 +57,17 @@ public abstract class AbstractIntegrationTest {
         @Bean
         public CacheManager cacheManager() {
             return new ConcurrentMapCacheManager("feature-flags");
+        }
+
+        /**
+         * Replace the default SimpleAsyncTaskExecutor with a synchronous executor so
+         * that {@code @Async} tasks complete on the calling thread in integration tests.
+         * REQUIRES_NEW propagation still creates a separate transaction, so transactional
+         * behaviour is preserved — only the threading model changes.
+         */
+        @Bean
+        public TaskExecutor taskExecutor() {
+            return new SyncTaskExecutor();
         }
     }
 }

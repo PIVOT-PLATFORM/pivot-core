@@ -1,5 +1,7 @@
 package fr.pivot.auth.service;
 
+import fr.pivot.auth.exception.EmailDeliveryException;
+import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,8 +14,11 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,7 +37,7 @@ class EmailServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new EmailService(mailSender, templateEngine, "noreply@pivot.app", "http://app");
+        service = new EmailService(mailSender, templateEngine, "noreply@pivot.app", "http://app", "support@pivot.app");
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage((jakarta.mail.Session) null));
         when(templateEngine.process(any(String.class), any(Context.class))).thenReturn("<html>body</html>");
     }
@@ -81,5 +86,54 @@ class EmailServiceTest {
 
         verify(templateEngine).process(eq("email/welcome"), any(Context.class));
         verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendAccountExistsEmail_rendersAndSends() {
+        service.sendAccountExistsEmail("user@x.com", "Eve");
+
+        verify(templateEngine).process(eq("email/account-exists"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendAccountExistsEmail_handlesNullFirstName() {
+        service.sendAccountExistsEmail("user@x.com", null);
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendVerificationReminderEmail_rendersAndSends() {
+        service.sendVerificationReminderEmail("user@x.com", "Frank", "remind-tok");
+
+        verify(templateEngine).process(eq("email/verify-reminder"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendPasswordChangedEmail_rendersAndSends() {
+        service.sendPasswordChangedEmail("user@x.com", "Grace", java.time.Instant.now(), "1.2.3.4");
+
+        verify(templateEngine).process(eq("email/password-changed"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendPasswordChangedEmail_handlesNullFirstNameAndIp() {
+        service.sendPasswordChangedEmail("user@x.com", null, java.time.Instant.now(), null);
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void send_throwsEmailDeliveryException_onMessagingException() throws Exception {
+        final MimeMessage broken = mock(MimeMessage.class);
+        doThrow(new MessagingException("SMTP failure"))
+            .when(broken).setSubject(any(String.class), any(String.class));
+        when(mailSender.createMimeMessage()).thenReturn(broken);
+
+        assertThatThrownBy(() -> service.sendWelcomeEmail("x@x.com", "X"))
+            .isInstanceOf(EmailDeliveryException.class);
     }
 }

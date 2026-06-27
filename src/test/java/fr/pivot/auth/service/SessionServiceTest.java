@@ -62,9 +62,10 @@ class SessionServiceTest {
 
     @BeforeEach
     void setUp() {
+        when(featureFlagRepo.getInt("DEVICE_VERIFY_TTL_MINUTES", 15)).thenReturn(15);
         service = new SessionService(userRepo, tenantRepo, featureFlagRepo, deviceVerifyRepo,
             passwordEncoder, tokenService, emailService, rateLimiter, trustedDeviceService,
-            auditService, 15L, OTP_SECRET);
+            auditService, OTP_SECRET);
 
         when(rateLimiter.loginIpBucket(anyString())).thenReturn("login:ip");
         when(rateLimiter.loginEmailBucket(anyString())).thenReturn("login:email");

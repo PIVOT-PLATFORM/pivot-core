@@ -119,4 +119,61 @@ class FeatureFlagRepositoryTest {
         }
         return f;
     }
+
+    private FeatureFlag stringFlag(final String value) {
+        final FeatureFlag f = new FeatureFlag();
+        try {
+            final var field = FeatureFlag.class.getDeclaredField("value");
+            field.setAccessible(true);
+            field.set(f, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return f;
+    }
+
+    // ----------------------------------------------------------------
+    // getString()
+    // ----------------------------------------------------------------
+
+    @Test
+    void getString_returnsValue_whenFlagExists() {
+        when(repo.findByFlagKey("SUPPORT_EMAIL")).thenReturn(Optional.of(stringFlag("support@pivot.app")));
+        when(repo.getString("SUPPORT_EMAIL", "default@pivot.app")).thenCallRealMethod();
+        assertThat(repo.getString("SUPPORT_EMAIL", "default@pivot.app")).isEqualTo("support@pivot.app");
+    }
+
+    @Test
+    void getString_returnsDefault_whenFlagMissing() {
+        when(repo.findByFlagKey("MISSING_STR")).thenReturn(Optional.empty());
+        when(repo.getString("MISSING_STR", "fallback")).thenCallRealMethod();
+        assertThat(repo.getString("MISSING_STR", "fallback")).isEqualTo("fallback");
+    }
+
+    @Test
+    void getString_returnsDefault_whenValueIsBlank() {
+        when(repo.findByFlagKey("BLANK_STR")).thenReturn(Optional.of(stringFlag("   ")));
+        when(repo.getString("BLANK_STR", "fallback")).thenCallRealMethod();
+        assertThat(repo.getString("BLANK_STR", "fallback")).isEqualTo("fallback");
+    }
+
+    // ----------------------------------------------------------------
+    // isEnabled()
+    // ----------------------------------------------------------------
+
+    @Test
+    void isEnabled_returnsTrue_whenFlagExistsAndEnabled() {
+        when(repo.findByFlagKey("MY_FEATURE")).thenReturn(Optional.of(boolFlag(true)));
+        when(repo.getBool("MY_FEATURE", false)).thenCallRealMethod();
+        when(repo.isEnabled("MY_FEATURE")).thenCallRealMethod();
+        assertThat(repo.isEnabled("MY_FEATURE")).isTrue();
+    }
+
+    @Test
+    void isEnabled_returnsFalse_whenFlagMissing() {
+        when(repo.findByFlagKey("MISSING_FEATURE")).thenReturn(Optional.empty());
+        when(repo.getBool("MISSING_FEATURE", false)).thenCallRealMethod();
+        when(repo.isEnabled("MISSING_FEATURE")).thenCallRealMethod();
+        assertThat(repo.isEnabled("MISSING_FEATURE")).isFalse();
+    }
 }

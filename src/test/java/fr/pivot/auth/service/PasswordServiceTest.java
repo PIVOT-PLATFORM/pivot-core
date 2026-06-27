@@ -4,6 +4,7 @@ import fr.pivot.auth.dto.ForgotPasswordRequest;
 import fr.pivot.auth.dto.ResetPasswordRequest;
 import fr.pivot.auth.entity.PasswordResetToken;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.repository.PasswordResetTokenRepository;
 import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.util.CryptoUtils;
@@ -23,7 +24,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -44,6 +44,7 @@ class PasswordServiceTest {
     @Mock private UserRepository userRepo;
     @Mock private TenantRepository tenantRepo;
     @Mock private PasswordResetTokenRepository passwordResetRepo;
+    @Mock private FeatureFlagRepository featureFlagRepo;
     @Mock private TokenService tokenService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EmailService emailService;
@@ -56,8 +57,9 @@ class PasswordServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PasswordService(userRepo, tenantRepo, passwordResetRepo, tokenService,
-            passwordEncoder, emailService, rateLimiter, auditService, 60L);
+        when(featureFlagRepo.getInt("PASSWORD_RESET_TTL_MINUTES", 15)).thenReturn(15);
+        service = new PasswordService(userRepo, tenantRepo, passwordResetRepo, featureFlagRepo,
+            tokenService, passwordEncoder, emailService, rateLimiter, auditService);
         when(rateLimiter.forgotPasswordBucket(anyString())).thenReturn("forgot:ip:ip");
         when(rateLimiter.resetPasswordBucket(anyString())).thenReturn("reset:ip:ip");
         when(tenantRepo.findBySlug("pivot-saas")).thenReturn(Optional.of(tenant));
@@ -179,14 +181,52 @@ class PasswordServiceTest {
         prt.setExpiresAt(Instant.now().plusSeconds(600));
         when(passwordResetRepo.findByTokenHashAndUsedAtIsNull(CryptoUtils.sha256("valid")))
             .thenReturn(Optional.of(prt));
+        when(passwordResetRepo.markUsed(any(), any())).thenReturn(1);
         when(passwordEncoder.encode("password1")).thenReturn("hashed");
 
         service.resetPassword(new ResetPasswordRequest("valid", "password1"), "ip", "ua");
 
-        assertThat(prt.getUsedAt()).isNotNull();
         verify(user).setPasswordHash("hashed");
         verify(userRepo).save(user);
         verify(tokenService).revokeAllForUser(7L);
+        verify(emailService).sendPasswordChangedEmail(eq("user@x.com"), eq("Alice"), any(Instant.class), eq("ip"));
         verify(auditService).log(user, AuditService.PASSWORD_RESET, "ip", "ua");
+    }
+
+    // ---------------- checkResetToken ----------------
+
+    @Test
+    void checkResetToken_throws400_whenTokenNotFound() {
+        when(passwordResetRepo.findByTokenHashAndUsedAtIsNull(anyString())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.checkResetToken("missing"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void checkResetToken_throws400_whenTokenExpired() {
+        final PasswordResetToken prt = new PasswordResetToken();
+        prt.setUser(user);
+        prt.setExpiresAt(Instant.now().minusSeconds(10));
+        when(passwordResetRepo.findByTokenHashAndUsedAtIsNull(CryptoUtils.sha256("expired")))
+            .thenReturn(Optional.of(prt));
+
+        assertThatThrownBy(() -> service.checkResetToken("expired"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void checkResetToken_succeeds_whenTokenValid() {
+        final PasswordResetToken prt = new PasswordResetToken();
+        prt.setUser(user);
+        prt.setExpiresAt(Instant.now().plusSeconds(600));
+        when(passwordResetRepo.findByTokenHashAndUsedAtIsNull(CryptoUtils.sha256("valid")))
+            .thenReturn(Optional.of(prt));
+
+        service.checkResetToken("valid"); // no exception
     }
 }

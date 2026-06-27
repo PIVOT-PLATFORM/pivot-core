@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -215,6 +216,20 @@ public class AuthController {
                                               final HttpServletRequest http) {
         passwordService.forgotPassword(req, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
         return Map.of(KEY_MESSAGE, "Si cet email est enregistré, vous recevrez un lien de réinitialisation.");
+    }
+
+    /**
+     * Validates a password reset token without consuming it.
+     * Returns 200 if the token is valid and unused, 400 otherwise.
+     * Used by the frontend to show the appropriate state on page load.
+     *
+     * @param token raw reset token from the email link
+     * @return 200 OK if valid, 400 if invalid/expired/used
+     */
+    @GetMapping("/check-reset-token")
+    public ResponseEntity<Map<String, String>> checkResetToken(@RequestParam final String token) {
+        passwordService.checkResetToken(token);
+        return ResponseEntity.ok(Map.of(KEY_MESSAGE, "valid"));
     }
 
     /**
