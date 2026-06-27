@@ -1,6 +1,5 @@
 -- pivot-platform schema v1 — consolidated DDL
--- Generated from Liquibase changesets 001–012
--- Source of truth for fresh installs (pre-1.0)
+-- Source of truth for fresh installs
 
 -- ----------------------------------------------------------------
 -- EXTENSIONS
@@ -32,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_tenants_slug ON tenants (slug);
 -- ================================================================
 -- TABLE: tenant_oidc_configs
 -- ================================================================
--- One or more OIDC configs per tenant (multi-IdP from 007).
+-- One or more OIDC configs per tenant (multi-IdP).
 -- When present, SAAS auth (password/Google) disabled.
 CREATE TABLE IF NOT EXISTS tenant_oidc_configs (
     id                   BIGSERIAL     NOT NULL,
@@ -158,7 +157,7 @@ CREATE INDEX IF NOT EXISTS idx_prt_user_id ON password_reset_tokens (user_id);
 -- ================================================================
 -- TABLE: trusted_devices
 -- ================================================================
--- Confirmed devices — trust survives session revocations. 90-day sliding window.
+-- Confirmed devices — trust survives session revocations. Sliding window TTL (DEVICE_TTL_DAYS).
 CREATE TABLE IF NOT EXISTS trusted_devices (
     id                 BIGSERIAL    NOT NULL,
     user_id            BIGINT       NOT NULL,
@@ -180,7 +179,7 @@ CREATE INDEX IF NOT EXISTS idx_td_user_id ON trusted_devices (user_id);
 -- ================================================================
 -- TABLE: device_verify_tokens
 -- ================================================================
--- MFA email OTP for login from unknown device. TTL: 15 minutes.
+-- MFA email OTP for login from unknown device. TTL: DEVICE_VERIFY_TTL_MINUTES (default 15 min).
 CREATE TABLE IF NOT EXISTS device_verify_tokens (
     id                 BIGSERIAL   NOT NULL,
     user_id            BIGINT      NOT NULL,
@@ -250,22 +249,11 @@ CREATE TABLE IF NOT EXISTS feature_flags (
     CONSTRAINT fk_ff_user FOREIGN KEY (updated_by) REFERENCES users (id)
 );
 
--- Idempotent column additions for pre-US-AUTH-002 installations where
--- feature_flags existed without value/type/label columns (added in 009).
-ALTER TABLE feature_flags ADD COLUMN IF NOT EXISTS value      VARCHAR(255) NOT NULL DEFAULT 'false';
-ALTER TABLE feature_flags ADD COLUMN IF NOT EXISTS type       VARCHAR(10)  NOT NULL DEFAULT 'bool';
-ALTER TABLE feature_flags ADD COLUMN IF NOT EXISTS label      VARCHAR(128);
-ALTER TABLE feature_flags ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW();
-
--- Drop legacy refresh_tokens table replaced by access_tokens (US-AUTH-002).
-DROP TABLE IF EXISTS refresh_tokens CASCADE;
-
 -- ================================================================
 -- TABLE: access_tokens
 -- ================================================================
--- Opaque session tokens replacing JWT HS512 (US-AUTH-002).
--- One token per session: 256-bit SecureRandom value (hex-encoded), stored as its
--- SHA-256 hash. Admin-configurable TTL, automatic renewal via Spring Security filter.
+-- Opaque session tokens. One token per session: 256-bit SecureRandom value (hex-encoded),
+-- stored as its SHA-256 hash. Admin-configurable TTL, automatic renewal via Spring Security filter.
 CREATE TABLE IF NOT EXISTS access_tokens (
     id                 BIGSERIAL   NOT NULL,
     -- Owner account — cascade delete if account deleted
@@ -295,8 +283,7 @@ CREATE TABLE IF NOT EXISTS access_tokens (
     revoked_at         TIMESTAMPTZ,
     -- Set when the token has been rotated. The row stays 'active' for a short grace
     -- window (SESSION_ROTATION_GRACE_SECONDS) so in-flight concurrent requests holding
-    -- the old token still authenticate, then it expires naturally. Prevents the
-    -- re-rotation storm + intermittent 401s under concurrency.
+    -- the old token still authenticate, then it expires naturally.
     rotated_at         TIMESTAMPTZ,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -321,7 +308,7 @@ CREATE INDEX IF NOT EXISTS idx_at_active_user_created ON access_tokens (user_id,
     WHERE status = 'active';
 
 -- ================================================================
--- SEED DATA: initial feature flags (non-test)
+-- SEED DATA: initial tenant + feature flags
 -- ================================================================
 
 -- Default PIVOT SaaS tenant
@@ -332,25 +319,34 @@ ON CONFLICT (slug) DO NOTHING;
 -- Platform feature flags
 INSERT INTO feature_flags (flag_key, enabled, value, type, description)
 VALUES
-    ('MFA_NEW_DEVICE_OTP',   false, 'false', 'bool',
+    ('MFA_NEW_DEVICE_OTP',              false, 'false',   'bool',
      'Email OTP requis lors de la connexion depuis un nouvel appareil'),
-    ('MFA_30DAY_REAUTH_OTP', false, 'false', 'bool',
+    ('MFA_30DAY_REAUTH_OTP',            false, 'false',   'bool',
      'Email OTP requis si dernier appareil de confiance date de plus de 30 jours'),
-    ('SESSION_REFRESH_THRESHOLD', true, '0.15', 'float',
+    ('SESSION_REFRESH_THRESHOLD',       true,  '0.15',    'float',
      'Ratio TTL restant déclenchant le renouvellement automatique de session (ex: 0.15 = derniers 15%)'),
-    ('SESSION_ROTATION_GRACE_SECONDS', true, '30', 'int',
+    ('SESSION_ROTATION_GRACE_SECONDS',  true,  '30',      'int',
      'Fenêtre de grâce (s) pendant laquelle l''ancien token reste valide après rotation (requêtes concurrentes en vol)'),
-    ('SESSION_TTL_SECONDS', true, '86400', 'int',
+    ('SESSION_TTL_SECONDS',             true,  '86400',   'int',
      'Durée de vie d''une session standard en secondes (86400 = 24h)'),
-    ('SESSION_TTL_REMEMBER_ME_SECONDS', true, '2592000', 'int',
+    ('SESSION_TTL_REMEMBER_ME_SECONDS', true,  '2592000', 'int',
      'Durée de vie d''une session «Se souvenir de moi» en secondes (2592000 = 30 jours)'),
-    ('MAX_SESSIONS_PER_USER', true, '5', 'int',
-     'Nombre maximum de sessions actives simultanées par utilisateur. La plus ancienne est révoquée si la limite est atteinte.')
+    ('MAX_SESSIONS_PER_USER',           true,  '5',       'int',
+     'Nombre maximum de sessions actives simultanées par utilisateur. La plus ancienne est révoquée si la limite est atteinte.'),
+    ('PASSWORD_RESET_TTL_MINUTES',      true,  '15',      'int',
+     'Durée de validité du lien de réinitialisation de mot de passe en minutes.'),
+    ('DEVICE_VERIFY_TTL_MINUTES',       true,  '15',      'int',
+     'Durée de validité du code OTP de vérification d''un nouvel appareil en minutes.'),
+    ('DEVICE_TTL_DAYS',                 true,  '90',      'int',
+     'Sliding TTL en jours avant qu''un appareil de confiance doive re-vérifier.')
 ON CONFLICT (flag_key) DO NOTHING;
 
--- Update labels for typed flags
-UPDATE feature_flags SET label = 'Seuil renouvellement session'    WHERE flag_key = 'SESSION_REFRESH_THRESHOLD';
-UPDATE feature_flags SET label = 'Fenêtre de grâce rotation (s)'   WHERE flag_key = 'SESSION_ROTATION_GRACE_SECONDS';
-UPDATE feature_flags SET label = 'TTL session standard (s)'        WHERE flag_key = 'SESSION_TTL_SECONDS';
-UPDATE feature_flags SET label = 'TTL session longue durée (s)'    WHERE flag_key = 'SESSION_TTL_REMEMBER_ME_SECONDS';
-UPDATE feature_flags SET label = 'Sessions max par utilisateur'    WHERE flag_key = 'MAX_SESSIONS_PER_USER';
+-- Labels for admin UI
+UPDATE feature_flags SET label = 'Seuil renouvellement session'        WHERE flag_key = 'SESSION_REFRESH_THRESHOLD';
+UPDATE feature_flags SET label = 'Fenêtre de grâce rotation (s)'       WHERE flag_key = 'SESSION_ROTATION_GRACE_SECONDS';
+UPDATE feature_flags SET label = 'TTL session standard (s)'            WHERE flag_key = 'SESSION_TTL_SECONDS';
+UPDATE feature_flags SET label = 'TTL session longue durée (s)'        WHERE flag_key = 'SESSION_TTL_REMEMBER_ME_SECONDS';
+UPDATE feature_flags SET label = 'Sessions max par utilisateur'        WHERE flag_key = 'MAX_SESSIONS_PER_USER';
+UPDATE feature_flags SET label = 'TTL lien reset mot de passe (min)'   WHERE flag_key = 'PASSWORD_RESET_TTL_MINUTES';
+UPDATE feature_flags SET label = 'TTL OTP vérification appareil (min)' WHERE flag_key = 'DEVICE_VERIFY_TTL_MINUTES';
+UPDATE feature_flags SET label = 'Durée de confiance appareil (jours)' WHERE flag_key = 'DEVICE_TTL_DAYS';
