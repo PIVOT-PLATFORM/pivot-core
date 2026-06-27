@@ -345,7 +345,7 @@ public class SessionService {
             featureFlagRepo.getInt("DEVICE_VERIFY_TTL_MINUTES", DEVICE_VERIFY_TTL_DEFAULT),
             ChronoUnit.MINUTES));
         deviceVerifyRepo.save(dvt);
-        emailService.sendDeviceVerifyEmail(user.getEmail(), user.getFirstName(), otp, deviceName);
+        emailService.sendDeviceVerifyEmail(user.getEmail(), user.getFirstName(), otp, deviceName, EmailService.toLocale(user.getLocale()));
         auditService.log(user, AuditService.DEVICE_OTP_SENT, ip, userAgent);
     }
 
