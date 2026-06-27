@@ -21,6 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -98,11 +99,11 @@ class RegistrationServiceTest {
 
         service.register(req(), "ip", "ua");
 
-        verify(emailService).sendVerificationReminderEmail(eq("user@x.com"), eq("Alice"), anyString());
+        verify(emailService).sendVerificationReminderEmail(eq("user@x.com"), eq("Alice"), anyString(), any(Locale.class));
         verify(emailVerifRepo).save(any(EmailVerification.class));
         verify(passwordEncoder).encode(anyString());
         verify(userRepo, never()).save(any(User.class));
-        verify(emailService, never()).sendVerificationEmail(anyString(), anyString(), anyString());
+        verify(emailService, never()).sendVerificationEmail(anyString(), anyString(), anyString(), any());
     }
 
     @Test
@@ -114,7 +115,7 @@ class RegistrationServiceTest {
 
         verify(userRepo).save(any(User.class));
         verify(emailVerifRepo).save(any(EmailVerification.class));
-        verify(emailService).sendVerificationEmail(eq("user@x.com"), eq("Alice"), anyString());
+        verify(emailService).sendVerificationEmail(eq("user@x.com"), eq("Alice"), anyString(), any(Locale.class));
         verify(auditService).log(any(User.class), eq(AuditService.REGISTER), eq("ip"), eq("ua"));
     }
 
@@ -182,7 +183,7 @@ class RegistrationServiceTest {
 
         assertThat(ev.getUsedAt()).isNotNull();
         assertThat(u.isEmailVerified()).isTrue();
-        verify(emailService).sendWelcomeEmail("user@x.com", "Alice");
+        verify(emailService).sendWelcomeEmail(eq("user@x.com"), eq("Alice"), any(Locale.class));
         verify(auditService).log(u, AuditService.EMAIL_VERIFIED, "ip", "ua");
     }
 
@@ -218,6 +219,6 @@ class RegistrationServiceTest {
         service.resendVerification("User@X.com", "ip", "ua");
 
         verify(emailVerifRepo).save(any(EmailVerification.class));
-        verify(emailService).sendVerificationEmail(eq("user@x.com"), eq("Alice"), anyString());
+        verify(emailService).sendVerificationEmail(eq("user@x.com"), eq("Alice"), anyString(), any(Locale.class));
     }
 }
