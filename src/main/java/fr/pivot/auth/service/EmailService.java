@@ -152,6 +152,37 @@ public class EmailService {
             locale);
     }
 
+    /**
+     * Confirmation sent to the person who submitted the contact form.
+     *
+     * @param to      sender's email address
+     * @param message the original message for reference
+     * @param locale  the sender's preferred locale
+     */
+    @Async
+    public void sendContactConfirmation(String to, String message, Locale locale) {
+        send(to, subject("email.subject.contact-confirmation", locale),
+            "email/contact-confirmation",
+            Map.of("message", message),
+            locale);
+    }
+
+    /**
+     * Internal notification forwarded to the support team.
+     *
+     * @param to      team/support email
+     * @param from    the sender's email from the form
+     * @param message the message body
+     * @param locale  the sender's preferred locale (used as notification context)
+     */
+    @Async
+    public void sendContactNotification(String to, String from, String message, Locale locale) {
+        send(to, subject("email.subject.contact-notification", locale),
+            "email/contact-notification",
+            Map.of("from", from, "message", message),
+            locale);
+    }
+
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
