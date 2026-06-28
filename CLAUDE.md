@@ -446,8 +446,9 @@ Rôles portés via claims OIDC ou assignés localement. Le mapping claims → r�
 - Ajouter les changements notables dans la section `## [Unreleased]` en tête de fichier
 - Rédigé en **français**, pour l'utilisateur final — pas le développeur
 - Langage naturel — pas de référence aux commits ou tickets
-- Après la release SR : renommer `[Unreleased]` en `[x.y.z] — JJ mois AAAA`
+- Après la release SR : le script `.scripts/prepare-patch-notes.sh` renomme `[Unreleased]` automatiquement
 - Fichier maintenu en place, **jamais de fichiers datés**
+- **Exception** : PRs `chore` / `ci` / `docs` sans impact utilisateur visible — pas de mise à jour PATCH_NOTES
 
 ---
 
