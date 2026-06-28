@@ -46,9 +46,10 @@ public class EmailService {
         this.supportEmail = supportEmail;
     }
 
-    /** Converts a BCP 47 language tag (e.g. {@code "fr"}, {@code "en"}) to a {@link Locale}. */
+    /** Converts a supported language tag ({@code "fr"}, {@code "en"}) to a {@link Locale}, defaulting to French. */
     public static Locale toLocale(String localeTag) {
-        return (localeTag == null || localeTag.isBlank()) ? Locale.FRENCH : Locale.forLanguageTag(localeTag);
+        if (localeTag == null || localeTag.isBlank()) return Locale.FRENCH;
+        return "en".equals(localeTag) ? Locale.ENGLISH : Locale.FRENCH;
     }
 
     @Async

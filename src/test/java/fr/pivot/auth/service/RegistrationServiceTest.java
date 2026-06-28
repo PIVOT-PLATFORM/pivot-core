@@ -73,7 +73,7 @@ class RegistrationServiceTest {
     }
 
     private RegisterRequest req() {
-        return new RegisterRequest("User@X.com", "password1", "Alice", "Doe");
+        return new RegisterRequest("User@X.com", "password1", "Alice", "Doe", null);
     }
 
     // ---------------- register ----------------
@@ -129,6 +129,15 @@ class RegistrationServiceTest {
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    void register_usesEnLocale_forVerificationEmail() {
+        when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);
+
+        service.register(new RegisterRequest("en@x.com", "password1", "Bob", "Doe", "en"), "ip", "ua");
+
+        verify(emailService).sendVerificationEmail(eq("en@x.com"), eq("Bob"), anyString(), eq(Locale.ENGLISH));
     }
 
     // ---------------- verifyEmail ----------------

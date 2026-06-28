@@ -119,6 +119,7 @@ public class RegistrationService {
         user.setPasswordHash(passwordEncoder.encode(req.password()));
         user.setFirstName(req.firstName());
         user.setLastName(req.lastName());
+        user.setLocale(req.locale() != null ? req.locale() : "fr");
         user = userRepo.save(user);
 
         issueVerificationToken(user);
