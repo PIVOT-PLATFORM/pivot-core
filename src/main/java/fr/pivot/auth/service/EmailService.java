@@ -147,7 +147,8 @@ public class EmailService {
         send(to, subject("email.subject.welcome", locale),
             "email/welcome",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
-                   "appUrl", appUrl),
+                   "appUrl", appUrl,
+                   "docsUrl", appUrl + "/docs"),
             locale);
     }
 
