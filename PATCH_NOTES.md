@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Registre des modules
+
+- **Liste des modules** : nouvel endpoint `GET /api/modules` — retourne l'état de chaque module activable (activé ou désactivé) pour l'utilisateur connecté
+
 ---
 
 ## [0.0.0] — 28 juin 2026
