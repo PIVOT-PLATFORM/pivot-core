@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Registre des modules
+
+- **Liste des modules** : nouvel endpoint `GET /api/modules` — retourne l'état de chaque module activable (activé ou désactivé) pour l'utilisateur connecté
+
 ### Formulaire de contact
 
 - **Page de contact publique** : nouveau formulaire accessible sans connexion — champ e-mail, message libre, bouton d'envoi
@@ -12,14 +16,6 @@
 ---
 
 ## [0.1.0] — 28 juin 2026
-
-### Registre des modules
-
-- **Liste des modules** : nouvel endpoint `GET /api/modules` — retourne l'état de chaque module activable (activé ou désactivé) pour l'utilisateur connecté
-
----
-
-## [0.0.0] — 28 juin 2026
 
 ### Module d'authentification
 
