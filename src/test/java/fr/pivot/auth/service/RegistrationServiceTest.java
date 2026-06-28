@@ -24,6 +24,8 @@ import java.time.Instant;
 import java.util.Locale;
 import java.util.Optional;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -134,9 +136,12 @@ class RegistrationServiceTest {
     @Test
     void register_usesEnLocale_forVerificationEmail() {
         when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);
+        final ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
 
         service.register(new RegisterRequest("en@x.com", "password1", "Bob", "Doe", "en"), "ip", "ua");
 
+        verify(userRepo).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getLocale()).isEqualTo("en");
         verify(emailService).sendVerificationEmail(eq("en@x.com"), eq("Bob"), anyString(), eq(Locale.ENGLISH));
     }
 
