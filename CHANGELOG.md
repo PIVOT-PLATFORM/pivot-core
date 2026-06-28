@@ -1,3 +1,10 @@
+# [0.1.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.0.0...v0.1.0) (2026-06-28)
+
+
+### Features
+
+* **api:** GET /api/modules — registre des modules PIVOT (EN03.4) ([#111](https://github.com/PIVOT-PLATFORM/pivot-core/issues/111)) ([b3e696a](https://github.com/PIVOT-PLATFORM/pivot-core/commit/b3e696a33ed56a6107f4ab23ddcb1e22d8227683))
+
 # Changelog
 
 All notable changes to PIVOT Core are documented in this file.
