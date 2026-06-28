@@ -1,5 +1,9 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+---
+
 ## [0.0.0] — 28 juin 2026
 
 ### Module d'authentification
