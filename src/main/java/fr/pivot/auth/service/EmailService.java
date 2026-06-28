@@ -3,6 +3,8 @@ package fr.pivot.auth.service;
 import fr.pivot.auth.exception.EmailDeliveryException;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSource;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -21,6 +23,7 @@ import java.util.Map;
 @Service
 public class EmailService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(EmailService.class);
     private static final String KEY_FIRST_NAME = "firstName";
     private static final String KEY_RESET_URL = "resetUrl";
 
@@ -160,7 +163,8 @@ public class EmailService {
     private DateTimeFormatter buildDateFormatter(final String pattern) {
         try {
             return DateTimeFormatter.ofPattern(pattern).withZone(ZoneId.of("UTC"));
-        } catch (final IllegalArgumentException e) {
+        } catch (final IllegalArgumentException _) {
+            LOG.warn("Invalid date format pattern '{}' in message bundle, falling back to ISO-8601", pattern);
             return DateTimeFormatter.ISO_INSTANT.withZone(ZoneId.of("UTC"));
         }
     }
