@@ -128,7 +128,7 @@ public class EmailService {
     @Async
     public void sendPasswordChangedEmail(String to, String firstName, Instant changedAt, String ip, Locale locale) {
         final String pattern = messageSource.getMessage("email.password-changed.date-format", null, locale);
-        final String formattedDate = DateTimeFormatter.ofPattern(pattern).withZone(ZoneId.of("UTC")).format(changedAt);
+        final String formattedDate = buildDateFormatter(pattern).format(changedAt);
         send(to, subject("email.subject.password-changed", locale),
             "email/password-changed",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
@@ -154,6 +154,15 @@ public class EmailService {
 
     private String subject(String key, Locale locale) {
         return messageSource.getMessage(key, null, locale);
+    }
+
+    /** Returns a formatter for {@code pattern}, falling back to ISO-8601 if the pattern is invalid. */
+    private DateTimeFormatter buildDateFormatter(final String pattern) {
+        try {
+            return DateTimeFormatter.ofPattern(pattern).withZone(ZoneId.of("UTC"));
+        } catch (final IllegalArgumentException e) {
+            return DateTimeFormatter.ISO_INSTANT.withZone(ZoneId.of("UTC"));
+        }
     }
 
     private String fallback(Locale locale) {
