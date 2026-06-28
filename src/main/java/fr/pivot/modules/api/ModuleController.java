@@ -6,6 +6,7 @@ import fr.pivot.modules.registry.ModuleRegistryService;
 import fr.pivot.modules.registry.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -51,15 +52,21 @@ public class ModuleController {
      *
      * <p>Le contexte tenant est construit depuis le {@link User} stocké dans les détails
      * de l'authentication courante (posé par {@link fr.pivot.config.TokenAuthenticationFilter}).
-     * L'identifiant tenant (Long BDD) est converti en UUID déterministe par encodage big-endian.
+     * Si les détails ne sont pas de type {@link User} (chemin OIDC enterprise ou contexte
+     * inattendu), la requête est rejetée avec 401.
      *
-     * @return 200 OK avec la liste des {@link ModuleDto}
+     * @return 200 OK avec la liste des {@link ModuleDto}, ou 401 si le contexte est invalide
      */
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<ModuleDto>> getModules() {
         final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        final User user = (User) auth.getDetails();
+
+        if (!(auth.getDetails() instanceof User user)) {
+            LOG.warn("event=GET_MODULES_REJECTED reason=invalid_auth_details type={}",
+                    auth.getDetails() == null ? "null" : auth.getDetails().getClass().getName());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
 
         final TenantContext ctx = buildTenantContext(user);
 
@@ -80,12 +87,13 @@ public class ModuleController {
      * <p>L'identifiant tenant stocké en BDD est un {@code Long}. Il est converti en
      * {@link UUID} déterministe (big-endian 64 bits, high-bits à zéro) pour satisfaire
      * le contrat {@link TenantContext} sans perte d'information.
+     * Si le tenant est absent (null), l'UUID zéro est utilisé.
      *
      * @param user l'utilisateur authentifié résolu par le filtre de sécurité
      * @return contexte tenant prêt pour l'évaluation des modules
      */
-    private static TenantContext buildTenantContext(final User user) {
-        final Long tenantLongId = user.getTenant().getId();
+    static TenantContext buildTenantContext(final User user) {
+        final Long tenantLongId = user.getTenant() != null ? user.getTenant().getId() : null;
         final UUID tenantUuid = longToUuid(tenantLongId);
         final String userId = user.getId() != null ? user.getId().toString() : "unknown";
         return new TenantContext(tenantUuid, userId, user.getRole());
@@ -96,11 +104,12 @@ public class ModuleController {
      *
      * <p>Encodage : {@code mostSignificantBits = 0L}, {@code leastSignificantBits = longId}.
      * Garantit une bijection Long → UUID pour les valeurs {@code ≥ 0}.
+     * Si {@code id} est {@code null}, retourne l'UUID zéro.
      *
-     * @param id identifiant Long à convertir
+     * @param id identifiant Long à convertir (peut être {@code null})
      * @return UUID correspondant, jamais {@code null}
      */
-    private static UUID longToUuid(final Long id) {
+    static UUID longToUuid(final Long id) {
         final long safeId = id != null ? id : 0L;
         final ByteBuffer bb = ByteBuffer.allocate(Long.BYTES * 2);
         bb.putLong(0L);
