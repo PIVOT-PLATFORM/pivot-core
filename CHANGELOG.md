@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v1.1.0...v1.2.0) (2026-06-28)
+
+
+### Features
+
+* **backend:** i18n emails transactionnels (fr + en) ([#107](https://github.com/PIVOT-PLATFORM/pivot-core/issues/107)) ([2a08125](https://github.com/PIVOT-PLATFORM/pivot-core/commit/2a08125fb65ca2dea2046c9dcfa53b600f7df887))
+
 # [1.1.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v1.0.3...v1.1.0) (2026-06-27)
 
 
