@@ -25,6 +25,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -189,7 +190,7 @@ class SessionServiceTest {
         assertThat(result.requiresDeviceVerification()).isTrue();
         assertThat(result.pendingDeviceFingerprint()).isEqualTo("fp");
         verify(deviceVerifyRepo).save(any(DeviceVerifyToken.class));
-        verify(emailService).sendDeviceVerifyEmail(eq("user@x.com"), eq("Alice"), anyString(), eq("Chrome"));
+        verify(emailService).sendDeviceVerifyEmail(eq("user@x.com"), eq("Alice"), anyString(), eq("Chrome"), any(Locale.class));
     }
 
     @Test

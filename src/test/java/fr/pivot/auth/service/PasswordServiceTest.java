@@ -22,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -80,7 +81,7 @@ class PasswordServiceTest {
         service.forgotPassword(new ForgotPasswordRequest("Test@X.com"), "ip", "ua");
 
         verify(passwordResetRepo, never()).save(any());
-        verify(emailService, never()).sendPasswordResetEmail(any(), any(), any());
+        verify(emailService, never()).sendPasswordResetEmail(any(), any(), any(), any());
     }
 
     @Test
@@ -104,7 +105,7 @@ class PasswordServiceTest {
         service.forgotPassword(new ForgotPasswordRequest("Test@X.com"), "ip", "ua");
 
         verify(passwordResetRepo, never()).save(any());
-        verify(emailService, never()).sendPasswordResetEmail(any(), any(), any());
+        verify(emailService, never()).sendPasswordResetEmail(any(), any(), any(), any());
     }
 
     @Test
@@ -116,7 +117,7 @@ class PasswordServiceTest {
         service.forgotPassword(new ForgotPasswordRequest("Test@X.com"), "ip", "ua");
 
         verify(passwordResetRepo).save(any(PasswordResetToken.class));
-        verify(emailService).sendPasswordResetEmail(eq("user@x.com"), eq("Alice"), anyString());
+        verify(emailService).sendPasswordResetEmail(eq("user@x.com"), eq("Alice"), anyString(), any(Locale.class));
         verify(auditService).log(user, AuditService.PASSWORD_RESET_REQUEST, "ip", "ua");
     }
 
@@ -189,7 +190,7 @@ class PasswordServiceTest {
         verify(user).setPasswordHash("hashed");
         verify(userRepo).save(user);
         verify(tokenService).revokeAllForUser(7L);
-        verify(emailService).sendPasswordChangedEmail(eq("user@x.com"), eq("Alice"), any(Instant.class), eq("ip"));
+        verify(emailService).sendPasswordChangedEmail(eq("user@x.com"), eq("Alice"), any(Instant.class), eq("ip"), any(Locale.class));
         verify(auditService).log(user, AuditService.PASSWORD_RESET, "ip", "ua");
     }
 

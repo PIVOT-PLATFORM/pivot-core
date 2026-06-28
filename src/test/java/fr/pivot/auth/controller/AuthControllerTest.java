@@ -62,7 +62,7 @@ class AuthControllerTest {
     @Test
     void register_delegatesAndReturnsMessage() {
         final Map<String, String> body = controller.register(
-            new RegisterRequest("u@x.com", "password1", "A", "B"), req);
+            new RegisterRequest("u@x.com", "password1", "A", "B", null), req);
 
         assertThat(body).containsKey("message");
         verify(registrationService).register(any(), eq("9.9.9.9"), eq("JUnit"));
@@ -75,7 +75,7 @@ class AuthControllerTest {
         // header must not influence the IP seen by the rate limiter / audit trail.
         req.addHeader("X-Forwarded-For", "1.1.1.1, 2.2.2.2");
 
-        controller.register(new RegisterRequest("u@x.com", "password1", "A", "B"), req);
+        controller.register(new RegisterRequest("u@x.com", "password1", "A", "B", null), req);
 
         verify(registrationService).register(any(), eq("9.9.9.9"), anyString());
     }

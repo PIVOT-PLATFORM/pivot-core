@@ -119,6 +119,7 @@ public class RegistrationService {
         user.setPasswordHash(passwordEncoder.encode(req.password()));
         user.setFirstName(req.firstName());
         user.setLastName(req.lastName());
+        user.setLocale(req.locale() != null ? req.locale() : "fr");
         user = userRepo.save(user);
 
         issueVerificationToken(user);
@@ -157,7 +158,7 @@ public class RegistrationService {
         user.setEmailVerified(true);
         userRepo.save(user);
 
-        emailService.sendWelcomeEmail(user.getEmail(), user.getFirstName());
+        emailService.sendWelcomeEmail(user.getEmail(), user.getFirstName(), EmailService.toLocale(user.getLocale()));
         auditService.log(user, AuditService.EMAIL_VERIFIED, ip, userAgent);
     }
 
@@ -195,7 +196,7 @@ public class RegistrationService {
         ev.setTokenHash(CryptoUtils.sha256(rawToken));
         ev.setExpiresAt(Instant.now().plus(verificationTtlHours, ChronoUnit.HOURS));
         emailVerifRepo.save(ev);
-        emailService.sendVerificationReminderEmail(user.getEmail(), user.getFirstName(), rawToken);
+        emailService.sendVerificationReminderEmail(user.getEmail(), user.getFirstName(), rawToken, EmailService.toLocale(user.getLocale()));
     }
 
     private void issueVerificationToken(final User user) {
@@ -205,7 +206,7 @@ public class RegistrationService {
         ev.setTokenHash(CryptoUtils.sha256(rawToken));
         ev.setExpiresAt(Instant.now().plus(verificationTtlHours, ChronoUnit.HOURS));
         emailVerifRepo.save(ev);
-        emailService.sendVerificationEmail(user.getEmail(), user.getFirstName(), rawToken);
+        emailService.sendVerificationEmail(user.getEmail(), user.getFirstName(), rawToken, EmailService.toLocale(user.getLocale()));
     }
 
     private Tenant saasDefaultTenant() {

@@ -21,7 +21,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Optional;
+
+import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -72,7 +75,7 @@ class RegistrationServiceTest {
     }
 
     private RegisterRequest req() {
-        return new RegisterRequest("User@X.com", "password1", "Alice", "Doe");
+        return new RegisterRequest("User@X.com", "password1", "Alice", "Doe", null);
     }
 
     // ---------------- register ----------------
@@ -98,11 +101,11 @@ class RegistrationServiceTest {
 
         service.register(req(), "ip", "ua");
 
-        verify(emailService).sendVerificationReminderEmail(eq("user@x.com"), eq("Alice"), anyString());
+        verify(emailService).sendVerificationReminderEmail(eq("user@x.com"), eq("Alice"), anyString(), any(Locale.class));
         verify(emailVerifRepo).save(any(EmailVerification.class));
         verify(passwordEncoder).encode(anyString());
         verify(userRepo, never()).save(any(User.class));
-        verify(emailService, never()).sendVerificationEmail(anyString(), anyString(), anyString());
+        verify(emailService, never()).sendVerificationEmail(anyString(), anyString(), anyString(), any());
     }
 
     @Test
@@ -114,7 +117,7 @@ class RegistrationServiceTest {
 
         verify(userRepo).save(any(User.class));
         verify(emailVerifRepo).save(any(EmailVerification.class));
-        verify(emailService).sendVerificationEmail(eq("user@x.com"), eq("Alice"), anyString());
+        verify(emailService).sendVerificationEmail(eq("user@x.com"), eq("Alice"), anyString(), any(Locale.class));
         verify(auditService).log(any(User.class), eq(AuditService.REGISTER), eq("ip"), eq("ua"));
     }
 
@@ -128,6 +131,18 @@ class RegistrationServiceTest {
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    void register_usesEnLocale_forVerificationEmail() {
+        when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);
+        final ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+
+        service.register(new RegisterRequest("en@x.com", "password1", "Bob", "Doe", "en"), "ip", "ua");
+
+        verify(userRepo).save(userCaptor.capture());
+        assertThat(userCaptor.getValue().getLocale()).isEqualTo("en");
+        verify(emailService).sendVerificationEmail(eq("en@x.com"), eq("Bob"), anyString(), eq(Locale.ENGLISH));
     }
 
     // ---------------- verifyEmail ----------------
@@ -182,7 +197,7 @@ class RegistrationServiceTest {
 
         assertThat(ev.getUsedAt()).isNotNull();
         assertThat(u.isEmailVerified()).isTrue();
-        verify(emailService).sendWelcomeEmail("user@x.com", "Alice");
+        verify(emailService).sendWelcomeEmail(eq("user@x.com"), eq("Alice"), any(Locale.class));
         verify(auditService).log(u, AuditService.EMAIL_VERIFIED, "ip", "ua");
     }
 
@@ -218,6 +233,6 @@ class RegistrationServiceTest {
         service.resendVerification("User@X.com", "ip", "ua");
 
         verify(emailVerifRepo).save(any(EmailVerification.class));
-        verify(emailService).sendVerificationEmail(eq("user@x.com"), eq("Alice"), anyString());
+        verify(emailService).sendVerificationEmail(eq("user@x.com"), eq("Alice"), anyString(), any(Locale.class));
     }
 }

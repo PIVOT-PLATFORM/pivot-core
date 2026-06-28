@@ -133,7 +133,7 @@ public class PasswordService {
                     featureFlagRepo.getInt("PASSWORD_RESET_TTL_MINUTES", PASSWORD_RESET_TTL_DEFAULT),
                     ChronoUnit.MINUTES));
                 passwordResetRepo.save(prt);
-                emailService.sendPasswordResetEmail(user.getEmail(), user.getFirstName(), rawToken);
+                emailService.sendPasswordResetEmail(user.getEmail(), user.getFirstName(), rawToken, EmailService.toLocale(user.getLocale()));
                 auditService.log(user, AuditService.PASSWORD_RESET_REQUEST, ip, userAgent);
             });
     }
@@ -175,7 +175,7 @@ public class PasswordService {
 
         // Revoke all active sessions — password change is a security event
         tokenService.revokeAllForUser(user.getId());
-        emailService.sendPasswordChangedEmail(user.getEmail(), user.getFirstName(), now, ip);
+        emailService.sendPasswordChangedEmail(user.getEmail(), user.getFirstName(), now, ip, EmailService.toLocale(user.getLocale()));
         auditService.log(user, AuditService.PASSWORD_RESET, ip, userAgent);
     }
 
