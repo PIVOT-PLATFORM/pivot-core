@@ -48,7 +48,9 @@ public class EmailService {
 
     /** Converts a supported language tag ({@code "fr"}, {@code "en"}) to a {@link Locale}, defaulting to French. */
     public static Locale toLocale(String localeTag) {
-        if (localeTag == null || localeTag.isBlank()) return Locale.FRENCH;
+        if (localeTag == null || localeTag.isBlank()) {
+            return Locale.FRENCH;
+        }
         return "en".equals(localeTag) ? Locale.ENGLISH : Locale.FRENCH;
     }
 
