@@ -68,8 +68,7 @@ pivot-core/
 │   ├── workflows/
 │   └── ISSUE_TEMPLATE/
 ├── .plumber.yaml              # Config Plumber (CI/CD compliance)
-├── Dockerfile
-└── docker-compose.yml         # Infra locale : postgres + redis + mailpit + app
+└── Dockerfile
 ```
 
 Frontend Angular → **pivot-ui**. Documentation → **pivot-docs**.
