@@ -122,9 +122,9 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 ## Backlog — Fichiers markdown
 
 > **Sources de vérité :**
-> - Hiérarchie backlog + conventions : `pivot-docs/backlog/README.md`
-> - Sprints, assignation US, état avancement : **`pivot-docs/backlog/SPRINTS.md`**
-> - Backlog opérationnel : **fichiers markdown dans `pivot-docs/backlog/`** — un fichier par US/Enabler avec frontmatter (`Stage`, `Human Gate`, `Priority`, `Phase`).
+> - Hiérarchie backlog + conventions : `pivot-docs/docs/backlog/README.md`
+> - Sprints, assignation US, état avancement : **`pivot-docs/docs/backlog/SPRINTS.md`**
+> - Backlog opérationnel : **fichiers markdown dans `pivot-docs/docs/backlog/`** — un fichier par US/Enabler avec frontmatter (`Stage`, `Priority`, `Phase`).
 
 ### Hiérarchie
 `EPIC → FEATURE (valeur) / ENABLER (technique) → US` · clé `E01 → F01.1 / EN01.1 → US01.1.1`.
@@ -136,37 +136,27 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 | Item Type | Epic / Feature / Enabler / US |
 | Parent | clé du parent (ex. `E01`, `F01.1`) |
 | Stage | Backlog / Ready / In progress / Review / Done |
-| Human Gate | needs-human-valid / human-validated / human-reject |
 | Priority | Critical / High / Medium / Low |
 | Module | core / auth / admin / oidc / whiteboard / session / roadmap / survey / quiz (extensible) |
 | Phase | MVP / v1-enterprise / phase-3 |
 | Sprint | Sprint 1…N |
 | Size | XS / S / M / L / XL |
 
-### Template US, Definition of Ready, vagues → `pivot-docs/backlog/README.md`.
+### Template US, Definition of Ready, vagues → `pivot-docs/docs/backlog/README.md`.
 
 ---
 
-## Breaking Points — Validation humaine obligatoire
+## Breaking Points
 
-### Breaking Point 1 : Avant toute implémentation d'US
+### Step 0 — Challenge PO avant implantation
 
-Demander explicitement la validation du mainteneur sur **deux points** :
+Avant tout code, le **PO Agent** challenge les ACs de l'US :
 
-**1. L'US elle-même** — confirmer que c'est la prochaine à traiter :
-> "Je m'apprête à implémenter `us-{slug}` (priorité X, estimation Y).
-> Tu confirmes que c'est bien la prochaine, ou tu veux réorienter ?"
+1. Verifier DoR — story complete, ACs Given/When/Then, AC erreur + securite
+2. Calculer Gate 1 : **>= 70** -> proceder · **< 70** -> PO Agent recrit ACs -> recalculer
+3. AC ambigus a l'implementation -> PO Agent clarifie, jamais d'interpretation unilaterale
 
-**2. Les critères d'acceptation** — présenter la liste et attendre le feu vert :
-> "Voici les critères d'acceptation : [liste Given/When/Then].
-> Tu valides, ou tu veux ajouter / modifier / retirer ?"
-
-**Pourquoi :** critères mal cadrés en amont = code à refaire. Le mainteneur valide **avant** que Claude écrive la moindre ligne de code de production.
-
-**Exceptions (pas de consultation requise) :**
-- Correctifs sécurité sur vecteur exploitable immédiatement
-- Syntaxe / linter / tests cassés bloquant la CI
-- Bugs dont la cause racine est clairement identifiée et le périmètre limité à un seul composant — **notifier le mainteneur a posteriori dans les 24h**
+Pas de blocage humain — Claude autonome de A a Z sur la validation des ACs.
 
 ### Breaking Point 2 : Gate 4 MERGE < 60 ou hard block
 
@@ -182,7 +172,7 @@ Tout PR avec :
 
 ## Workflow — Organisation par sprint
 
-Travail organisé par sprint. Référence : **`pivot-docs/backlog/SPRINTS.md`**.
+Travail organisé par sprint. Référence : **`pivot-docs/docs/backlog/SPRINTS.md`**.
 
 **Principes :**
 - **Une branche par US / Enabler** — `feat/{us-id}-{slug}` (ex. `feat/us03-1-1-admin-active-module`)
@@ -297,11 +287,11 @@ Co-author sur chaque commit : `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthro
 ## Gates ACDD — Confidence Gates
 
 Score 0–100, jamais booléen. Scores/décisions consignés en **commentaire de PR** (plus de
-dossier `gates/`). La validation humaine vit dans le champ **Human Gate** du frontmatter US (pivot-docs).
+dossier `gates/`). Le statut vit dans le champ **Stage** du frontmatter US (pivot-docs).
 
 | Gate | Moment | Seuils |
 |------|--------|--------|
-| **1 — READINESS** | Avant implémentation | ≥ 70 → déclenche Breaking Point 1 (demande de validation au mainteneur) · le mainteneur pose ensuite `Human Gate: human-validated` · < 70 → clarification PO d'abord |
+| **1 — READINESS** | Avant implémentation | PO Agent self-challenge · ≥ 70 → Stage: Ready → procéder · < 70 → PO Agent réécrit ACs |
 | **2 — COVERAGE** | Par commit | ≥ 85 → continuer · 70–84 → compléter tests · < 70 → stop |
 | **3 — QUALITY** | Après CI verte | Hard blocks : secret Gitleaks, label `security`/`breaking-change`, modif contrat module/OIDC |
 | **4 — MERGE CONFIDENCE** | Avant merge | ≥ 85 → merge autonome · 60–84 → merge documenté · < 60 → Breaking Point 2 |
@@ -348,7 +338,7 @@ PO Agent rédige Epic + US avec AC
     ├── QA Agent : testabilité de chaque AC
     └── → Gate 1 READINESS
            │
-           ├── Score ≥ 70 → Breaking Point 1 : validation du mainteneur (PO)
+           ├── Score ≥ 70 → Stage: Ready → procéder (PO Agent autonome)
            │     └── Le mainteneur valide → Dev Agent implémente
            └── Score < 70 → clarification PO Agent avant tout
 ```
@@ -367,7 +357,7 @@ AC ambigu à l'implémentation → **stopper et demander au PO Agent** — jamai
 ### Gates (commentaires de PR)
 
 Chaque gate est consigné en **commentaire de PR** (plus de fichiers `gates/`) :
-- Gate 1 Readiness (avant implémentation) — = `Human Gate: human-validated` dans le frontmatter US
+- Gate 1 Readiness (avant implémentation) — PO Agent valide ACs · ≥ 70 → Stage: Ready
 - Gate 2 Coverage (après chaque commit)
 - Gate 3 Quality (après CI verte)
 - Gate 4 Merge confidence (décision finale)
