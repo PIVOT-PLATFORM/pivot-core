@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Emails are sent asynchronously; the response is immediate (202 Accepted).
  */
 @RestController
-@RequestMapping("/api/contact")
+@RequestMapping("/contact")
 public class ContactController {
 
     private final ContactService contactService;

@@ -33,6 +33,7 @@ spring:
     basename: messages
     encoding: UTF-8
     use-code-as-default-message: false
+    fallback-to-system-locale: false
 
   mail:
     host: ${SPRING_MAIL_HOST:localhost}
