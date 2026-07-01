@@ -87,6 +87,7 @@ pivot:
     url: ${PIVOT_APP_URL:http://localhost:4200}
     support-email: ${PIVOT_SUPPORT_EMAIL:support@pivot.app}
     owner-mail: ${PIVOT_OWNER_MAIL:${pivot.app.support-email}}
+    owner-lang: ${PIVOT_OWNER_LANG:fr}
   auth:
     session-cookie-name: pivot_session
     device-cookie-name: pivot_device
