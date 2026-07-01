@@ -541,6 +541,10 @@ Index : `.project/skills/_index.yaml`
 | `skill-devops-cicd` | `skill-devops-cicd.yaml` | Fichier .github/workflows/, Dockerfile, config CI |
 | `skill-observability` | `skill-observability.yaml` | Nouveau log, nouvelle métrique, endpoint health |
 | `skill-rgpd` | `skill-rgpd.yaml` | US touchant données personnelles (email, nom, contenu) |
+| `skill-i18n` | `skill-i18n.yaml` | MessageSource, emails multilingues, locale resolution, fallback |
+| `skill-security-redteam` | `skill-security-redteam.yaml` | US touchant auth/admin/modules, nouvel endpoint REST, AC sécurité |
+| `skill-security-blueteam` | `skill-security-blueteam.yaml` | Rapport Red Team reçu, SecurityConfig, mécanisme auth modifié |
+| `skill-pr-reviewer` | `skill-pr-reviewer.yaml` | Gate 3 (qualité CI), Gate 4 (décision merge), review PR |
 
 **Règle :** avant d'écrire du code, identifier les skills applicables via l'index et les lire.
 La skill `skill-ac-traceability` est toujours chargée pour toute US.

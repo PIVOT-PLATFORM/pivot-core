@@ -1,6 +1,6 @@
 skill:
   id: pivot-skills-index
-  version: "1.1"
+  version: "1.2"
   name: "Skills Index — pivot-core"
   description: >
     Index de toutes les skills PIVOT-CORE et leurs règles de chargement.
@@ -84,6 +84,20 @@ skills:
         - "coverage < 85 %"
         - "nouveau Testcontainer"
         - "nouvelle spec Playwright"
+
+  # ── I18N ─────────────────────────────────────────────────────────────────────
+
+  - id: pivot-i18n-backend
+    file: .project/skills/skill-i18n.yaml
+    priority: 1
+    load_when:
+      agents: [Dev_Agent, Expert_RGPD]
+      triggers:
+        - "messages_*.properties créé ou modifié"
+        - "template Thymeleaf email créé ou modifié"
+        - "US touchant emails multilingues ou locale utilisateur"
+        - "EmailService ou MessageSource modifié"
+        - "variable PIVOT_OWNER_LANG ou lang dans DTO"
 
   # ── SÉCURITÉ ─────────────────────────────────────────────────────────────────
 
