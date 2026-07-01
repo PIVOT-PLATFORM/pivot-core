@@ -72,6 +72,7 @@ public class SecurityConfig {
                     .requestMatchers("/actuator/health", "/actuator/info", "/error").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/auth/**").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/contact").permitAll()
                     .anyRequest().authenticated()
                 )
                 // Opaque token filter runs before Spring's default UsernamePasswordAuthenticationFilter

@@ -34,19 +34,19 @@ services:
     image: axllent/mailpit:latest
     container_name: pivot-mailpit
     ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # UI web (http://localhost:8025)
+      - "1025:1025"
+      - "8025:8025"   # UI web → http://localhost:8025
     environment:
       MP_MAX_MESSAGES: 500
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
     restart: unless-stopped
 
-  app:
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: pivot-core
+    container_name: pivot-backend
     ports:
       - "8080:8080"
     environment:
@@ -61,8 +61,7 @@ services:
       SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       PIVOT_MAIL_FROM: ${MAIL_FROM:-pivot@localhost}
       PIVOT_APP_URL: ${APP_URL:-http://localhost}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-minimum-64-characters-long-pivot-key}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost}
       OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
     depends_on:
@@ -70,6 +69,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../pivot-ui
+      dockerfile: Dockerfile
+    container_name: pivot-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
     restart: unless-stopped
 
 volumes:

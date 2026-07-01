@@ -33,6 +33,7 @@ spring:
     basename: messages
     encoding: UTF-8
     use-code-as-default-message: false
+    fallback-to-system-locale: false
 
   mail:
     host: ${SPRING_MAIL_HOST:localhost}
@@ -85,6 +86,8 @@ pivot:
   app:
     url: ${PIVOT_APP_URL:http://localhost:4200}
     support-email: ${PIVOT_SUPPORT_EMAIL:support@pivot.app}
+    owner-mail: ${PIVOT_OWNER_MAIL:${pivot.app.support-email}}
+    owner-lang: ${PIVOT_OWNER_LANG:fr}
   auth:
     session-cookie-name: pivot_session
     device-cookie-name: pivot_device

@@ -17,6 +17,7 @@ import org.thymeleaf.context.Context;
 
 import java.util.Locale;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -144,5 +145,88 @@ class EmailServiceTest {
 
         assertThatThrownBy(() -> service.sendWelcomeEmail("x@x.com", "X", Locale.FRENCH))
             .isInstanceOf(EmailDeliveryException.class);
+    }
+
+    // ----------------------------------------------------------------
+    // toLocale
+    // ----------------------------------------------------------------
+
+    @Test
+    void toLocale_returns_french_for_fr() {
+        assertThat(EmailService.toLocale("fr")).isEqualTo(Locale.FRENCH);
+    }
+
+    @Test
+    void toLocale_returns_english_for_en() {
+        assertThat(EmailService.toLocale("en")).isEqualTo(Locale.ENGLISH);
+    }
+
+    @Test
+    void toLocale_returns_french_for_null() {
+        assertThat(EmailService.toLocale(null)).isEqualTo(Locale.FRENCH);
+    }
+
+    @Test
+    void toLocale_returns_french_for_blank() {
+        assertThat(EmailService.toLocale("  ")).isEqualTo(Locale.FRENCH);
+    }
+
+    @Test
+    void toLocale_returns_french_for_unknown_lang() {
+        assertThat(EmailService.toLocale("de")).isEqualTo(Locale.FRENCH);
+    }
+
+    // ----------------------------------------------------------------
+    // sendContactConfirmation
+    // ----------------------------------------------------------------
+
+    @Test
+    void sendContactConfirmation_rendersAndSends_in_french() {
+        service.sendContactConfirmation("user@x.com", "Mon message", Locale.FRENCH);
+
+        verify(templateEngine).process(eq("email/contact-confirmation"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendContactConfirmation_rendersAndSends_in_english() {
+        service.sendContactConfirmation("user@x.com", "My message", Locale.ENGLISH);
+
+        verify(templateEngine).process(eq("email/contact-confirmation"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    // ----------------------------------------------------------------
+    // sendContactNotification
+    // ----------------------------------------------------------------
+
+    @Test
+    void sendContactNotification_rendersAndSends_with_replyTo() {
+        service.sendContactNotification("owner@pivot.app", "user@x.com", "Une question", Locale.FRENCH);
+
+        verify(templateEngine).process(eq("email/contact-notification"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendContactNotification_rendersAndSends_in_english() {
+        service.sendContactNotification("owner@pivot.app", "user@x.com", "A question", Locale.ENGLISH);
+
+        verify(templateEngine).process(eq("email/contact-notification"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    // ----------------------------------------------------------------
+    // buildDateFormatter — fallback branch
+    // ----------------------------------------------------------------
+
+    @Test
+    void sendPasswordChangedEmail_fallsBackToIso_on_invalid_date_format_pattern() {
+        when(messageSource.getMessage(eq("email.password-changed.date-format"), any(), any(Locale.class)))
+            .thenReturn("INVALID_PATTERN_!!!");
+
+        service.sendPasswordChangedEmail("user@x.com", "Grace", java.time.Instant.now(), "1.2.3.4", Locale.FRENCH);
+
+        verify(mailSender).send(any(MimeMessage.class));
     }
 }

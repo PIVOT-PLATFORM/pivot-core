@@ -152,6 +152,39 @@ public class EmailService {
             locale);
     }
 
+    /**
+     * Confirmation sent to the person who submitted the contact form.
+     *
+     * @param to      sender's email address
+     * @param message the original message for reference
+     * @param locale  the sender's preferred locale
+     */
+    @Async
+    public void sendContactConfirmation(String to, String message, Locale locale) {
+        send(to, subject("email.subject.contact-confirmation", locale),
+            "email/contact-confirmation",
+            Map.of("message", message),
+            locale);
+    }
+
+    /**
+     * Internal notification forwarded to the owner — Reply-To set to the sender's address
+     * so the owner can reply directly to the user.
+     *
+     * @param to      owner email
+     * @param from    the sender's email from the form (also used as Reply-To)
+     * @param message the message body
+     * @param locale  the sender's preferred locale (used as notification context)
+     */
+    @Async
+    public void sendContactNotification(String to, String from, String message, Locale locale) {
+        send(to, subject("email.subject.contact-notification", locale),
+            "email/contact-notification",
+            Map.of("from", from, "message", message),
+            locale,
+            from);
+    }
+
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
@@ -175,6 +208,10 @@ public class EmailService {
     }
 
     private void send(String to, String subject, String template, Map<String, Object> vars, Locale locale) {
+        send(to, subject, template, vars, locale, null);
+    }
+
+    private void send(String to, String subject, String template, Map<String, Object> vars, Locale locale, String replyTo) {
         try {
             final Context ctx = new Context(locale);
             vars.forEach(ctx::setVariable);
@@ -186,6 +223,9 @@ public class EmailService {
             final MimeMessageHelper helper = new MimeMessageHelper(msg, true, "UTF-8");
             helper.setFrom(from);
             helper.setTo(to);
+            if (replyTo != null && !replyTo.isBlank()) {
+                helper.setReplyTo(replyTo);
+            }
             helper.setSubject(subject);
             helper.setText(html, true);
             mailSender.send(msg);
