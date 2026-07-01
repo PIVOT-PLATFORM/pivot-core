@@ -2,12 +2,12 @@
 target/
 *.class
 *.jar
+!.mvn/wrapper/maven-wrapper.jar
 *.war
 *.ear
 *.nar
 hs_err_pid*
 replay_pid*
-.mvn/wrapper/maven-wrapper.jar
 
 # ===== Secrets / Env =====
 .env
