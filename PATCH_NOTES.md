@@ -1,5 +1,16 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Formulaire de contact
+
+- **Page de contact publique** : nouveau formulaire accessible sans connexion — champ e-mail, message libre, bouton d'envoi
+- **Confirmation automatique** : un e-mail de confirmation est envoyé à l'expéditeur dans sa langue (français ou anglais)
+- **Notification interne** : l'équipe reçoit un e-mail de notification avec possibilité de répondre directement à l'expéditeur (Reply-To)
+- **Langue configurable** : la langue de notification de l'équipe est indépendante de celle de l'expéditeur (variable `PIVOT_OWNER_LANG`, défaut : français)
+
+---
+
 ## [0.1.0] — 28 juin 2026
 
 ### Registre des modules
