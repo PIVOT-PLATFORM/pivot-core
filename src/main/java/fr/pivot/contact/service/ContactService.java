@@ -19,24 +19,24 @@ public class ContactService {
     private static final Logger LOG = LoggerFactory.getLogger(ContactService.class);
 
     private final EmailService emailService;
-    private final String teamEmail;
+    private final String ownerEmail;
 
     public ContactService(
             final EmailService emailService,
-            @Value("${pivot.app.support-email:support@pivot.app}") final String teamEmail) {
+            @Value("${pivot.app.owner-mail:support@pivot.app}") final String ownerEmail) {
         this.emailService = emailService;
-        this.teamEmail = teamEmail;
+        this.ownerEmail = ownerEmail;
     }
 
     /**
-     * Sends a confirmation email to the sender and a notification to the team.
+     * Sends a confirmation email to the sender and a notification to the owner.
      *
      * @param dto validated contact request
      */
     public void processContact(final ContactRequestDto dto) {
         final Locale locale = EmailService.toLocale(dto.lang());
         emailService.sendContactConfirmation(dto.email(), dto.message(), locale);
-        emailService.sendContactNotification(teamEmail, dto.email(), dto.message(), locale);
+        emailService.sendContactNotification(ownerEmail, dto.email(), dto.message(), locale);
         LOG.info("contact_received from=\"{}\"", dto.email());
     }
 }

@@ -168,10 +168,11 @@ public class EmailService {
     }
 
     /**
-     * Internal notification forwarded to the support team.
+     * Internal notification forwarded to the owner — Reply-To set to the sender's address
+     * so the owner can reply directly to the user.
      *
-     * @param to      team/support email
-     * @param from    the sender's email from the form
+     * @param to      owner email
+     * @param from    the sender's email from the form (also used as Reply-To)
      * @param message the message body
      * @param locale  the sender's preferred locale (used as notification context)
      */
@@ -180,7 +181,8 @@ public class EmailService {
         send(to, subject("email.subject.contact-notification", locale),
             "email/contact-notification",
             Map.of("from", from, "message", message),
-            locale);
+            locale,
+            from);
     }
 
     // ----------------------------------------------------------------
@@ -206,6 +208,10 @@ public class EmailService {
     }
 
     private void send(String to, String subject, String template, Map<String, Object> vars, Locale locale) {
+        send(to, subject, template, vars, locale, null);
+    }
+
+    private void send(String to, String subject, String template, Map<String, Object> vars, Locale locale, String replyTo) {
         try {
             final Context ctx = new Context(locale);
             vars.forEach(ctx::setVariable);
@@ -217,6 +223,9 @@ public class EmailService {
             final MimeMessageHelper helper = new MimeMessageHelper(msg, true, "UTF-8");
             helper.setFrom(from);
             helper.setTo(to);
+            if (replyTo != null && !replyTo.isBlank()) {
+                helper.setReplyTo(replyTo);
+            }
             helper.setSubject(subject);
             helper.setText(html, true);
             mailSender.send(msg);
