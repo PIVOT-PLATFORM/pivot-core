@@ -63,20 +63,29 @@ Concise et directe. Techniquement précise. Pas de récapitulatifs inutiles.
 
 ```
 pivot-core/
-├── src/                       # Spring Boot (Maven)
-│   ├── main/java/
+├── src/
+│   ├── main/java/fr/pivot/
+│   │   ├── core/              # Packages exportés dans pivot-core-starter
+│   │   │   ├── auth/          # Spring Security, opaque tokens, OIDC RS
+│   │   │   ├── tenant/        # TenantContext, TenantContextHolder, @TenantAware
+│   │   │   ├── team/          # Team, TeamMember (entités schéma public)
+│   │   │   ├── modules/       # PivotModule interface, registre, @RequiresModule
+│   │   │   └── db/            # Flyway config multi-schéma, DataSource
+│   │   └── shell/             # Application shell (controllers, config Spring Boot)
 │   ├── main/resources/
-│   │   ├── db/migration/      # Migrations Flyway (V1__, V2__…)
+│   │   ├── db/migration/      # Flyway schéma public (V1__, V2__…)
 │   │   └── db/seeds/          # Seeds test (profil test uniquement)
 │   └── test/java/
 ├── .github/
 │   ├── workflows/
 │   └── ISSUE_TEMPLATE/
-├── .plumber.yaml              # Config Plumber (CI/CD compliance)
+├── .plumber.yaml
 └── Dockerfile
 ```
 
-Frontend Angular → **pivot-ui**. Documentation → **pivot-docs**.
+**Maven :** projet single-module. `pivot-core-starter` = artifact publié depuis ce même `pom.xml` via profil `release`. Les repos modules ajoutent `fr.pivot:pivot-core-starter` en dépendance.
+
+Frontend Angular → **pivot-ui**. Documentation → **pivot-docs**. Logique métier modules → **pivot-xxx-core**.
 
 ---
 
