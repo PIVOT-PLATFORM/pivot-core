@@ -2,21 +2,26 @@
 
 ## Projet
 
-**PIVOT-CORE** — backend Java/Spring Boot de la suite collaborative PIVOT. Contient l'API REST, la base de données (PostgreSQL + Flyway), la sécurité (Spring Security + opaque tokens SHA-256 + OIDC resource server) et le système de modules.
+**PIVOT-CORE** — backend shell Java/Spring Boot de la suite collaborative PIVOT. Double rôle :
 
-Le frontend Angular est dans **pivot-ui**. La documentation générale du projet vit dans **pivot-docs**.
+1. **Application shell** : API REST, sécurité (Spring Security + opaque tokens + OIDC resource server), gestion tenants/users/équipes, registre modules.
+2. **Librairie Maven partagée** : publie `fr.pivot:pivot-core-starter` (GitHub Packages) — consommé par tous les repos `pivot-xxx-core`.
 
-**Vision :** rendre accessible à tous (associations, TPE/PME, entreprises) des outils collaboratifs de qualité, auto-hébergeables, sans lock-in SaaS.
+Le frontend Angular est dans **pivot-ui**. La documentation générale vit dans **pivot-docs**.
 
-**Modules prévus (activables individuellement par les admins) :**
+**Ce que pivot-core-starter exporte :**
 
-| Module | Description | Inspiration |
-|--------|-------------|-------------|
-| `whiteboard` | Tableau blanc collaboratif temps réel | PouetPouet |
-| `session` | Sessions live : QUIZ, POLL, WORDCLOUD, BRAINSTORM, QA | Klaxoon |
-| `roadmap` | Roadmap / Gantt intégré | - |
-| `survey` | Système de sondage | - |
-| `quiz` | Quiz interactif gamifié | Kahoot |
+| Package | Contenu |
+|---------|---------|
+| `fr.pivot.core.auth` | Spring Security config, opaque token filter, OIDC resource server |
+| `fr.pivot.core.tenant` | `TenantContext`, `TenantContextHolder`, annotation `@TenantAware` |
+| `fr.pivot.core.team` | Entités `Team`, `TeamMember` — partagées cross-modules |
+| `fr.pivot.core.modules` | Interface `PivotModule`, registre, cache Redis, annotation `@RequiresModule` |
+| `fr.pivot.core.db` | Flyway baseline schéma `public`, config DataSource multi-schéma |
+
+**Architecture BDD :** schéma `public` géré par pivot-core (Flyway). Les repos modules créent leur propre schéma Flyway et referencent `public.teams(id)` / `public.tenants(id)` par FK.
+
+**Modules fonctionnels** : dans les repos dédiés (`pivot-pilotage-core`, `pivot-agilite-core`, `pivot-collaboratif-core`). pivot-core ne contient PAS de logique métier module.
 
 **Déploiement :**
 - Web internet public (SaaS auto-hébergeable)
