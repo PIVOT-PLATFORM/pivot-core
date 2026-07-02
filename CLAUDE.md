@@ -148,15 +148,15 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 
 ## Breaking Points
 
-### Step 0 — Challenge PO avant implantation
+### Step 0 — Challenge PO avant implémentation
 
 Avant tout code, le **PO Agent** challenge les ACs de l'US :
 
-1. Verifier DoR — story complete, ACs Given/When/Then, AC erreur + securite
-2. Calculer Gate 1 : **>= 70** -> proceder · **< 70** -> PO Agent recrit ACs -> recalculer
-3. AC ambigus a l'implementation -> PO Agent clarifie, jamais d'interpretation unilaterale
+1. Vérifier DoR — story complète, ACs Given/When/Then, AC erreur + sécurité
+2. Calculer Gate 1 : **≥ 70** → procéder · **< 70** → PO Agent réécrit ACs → recalculer
+3. AC ambigus à l'implémentation → PO Agent clarifie, jamais d'interprétation unilatérale
 
-Pas de blocage humain — Claude autonome de A a Z sur la validation des ACs.
+Pas de blocage humain — Claude autonome de A à Z sur la validation des ACs.
 
 ### Breaking Point 2 : Gate 4 MERGE < 60 ou hard block
 
