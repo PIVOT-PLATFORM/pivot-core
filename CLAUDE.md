@@ -2,21 +2,26 @@
 
 ## Projet
 
-**PIVOT-CORE** — backend Java/Spring Boot de la suite collaborative PIVOT. Contient l'API REST, la base de données (PostgreSQL + Flyway), la sécurité (Spring Security + opaque tokens SHA-256 + OIDC resource server) et le système de modules.
+**PIVOT-CORE** — backend shell Java/Spring Boot de la suite collaborative PIVOT. Double rôle :
 
-Le frontend Angular est dans **pivot-ui**. La documentation générale du projet vit dans **pivot-docs**.
+1. **Application shell** : API REST, sécurité (Spring Security + opaque tokens + OIDC resource server), gestion tenants/users/équipes, registre modules.
+2. **Librairie Maven partagée** : publie `fr.pivot:pivot-core-starter` (GitHub Packages) — consommé par tous les repos `pivot-xxx-core`.
 
-**Vision :** rendre accessible à tous (associations, TPE/PME, entreprises) des outils collaboratifs de qualité, auto-hébergeables, sans lock-in SaaS.
+Le frontend Angular est dans **pivot-ui**. La documentation générale vit dans **pivot-docs**.
 
-**Modules prévus (activables individuellement par les admins) :**
+**Ce que pivot-core-starter exporte :**
 
-| Module | Description | Inspiration |
-|--------|-------------|-------------|
-| `whiteboard` | Tableau blanc collaboratif temps réel | PouetPouet |
-| `session` | Sessions live : QUIZ, POLL, WORDCLOUD, BRAINSTORM, QA | Klaxoon |
-| `roadmap` | Roadmap / Gantt intégré | - |
-| `survey` | Système de sondage | - |
-| `quiz` | Quiz interactif gamifié | Kahoot |
+| Package | Contenu |
+|---------|---------|
+| `fr.pivot.core.auth` | Spring Security config, opaque token filter, OIDC resource server |
+| `fr.pivot.core.tenant` | `TenantContext`, `TenantContextHolder`, annotation `@TenantAware` |
+| `fr.pivot.core.team` | Entités `Team`, `TeamMember` — partagées cross-modules |
+| `fr.pivot.core.modules` | Interface `PivotModule`, registre, cache Redis, annotation `@RequiresModule` |
+| `fr.pivot.core.db` | Flyway baseline schéma `public`, config DataSource multi-schéma |
+
+**Architecture BDD :** schéma `public` géré par pivot-core (Flyway). Les repos modules créent leur propre schéma Flyway et referencent `public.teams(id)` / `public.tenants(id)` par FK.
+
+**Modules fonctionnels** : dans les repos dédiés (`pivot-pilotage-core`, `pivot-agilite-core`, `pivot-collaboratif-core`). pivot-core ne contient PAS de logique métier module.
 
 **Déploiement :**
 - Web internet public (SaaS auto-hébergeable)
@@ -58,20 +63,29 @@ Concise et directe. Techniquement précise. Pas de récapitulatifs inutiles.
 
 ```
 pivot-core/
-├── src/                       # Spring Boot (Maven)
-│   ├── main/java/
+├── src/
+│   ├── main/java/fr/pivot/
+│   │   ├── core/              # Packages exportés dans pivot-core-starter
+│   │   │   ├── auth/          # Spring Security, opaque tokens, OIDC RS
+│   │   │   ├── tenant/        # TenantContext, TenantContextHolder, @TenantAware
+│   │   │   ├── team/          # Team, TeamMember (entités schéma public)
+│   │   │   ├── modules/       # PivotModule interface, registre, @RequiresModule
+│   │   │   └── db/            # Flyway config multi-schéma, DataSource
+│   │   └── shell/             # Application shell (controllers, config Spring Boot)
 │   ├── main/resources/
-│   │   ├── db/migration/      # Migrations Flyway (V1__, V2__…)
+│   │   ├── db/migration/      # Flyway schéma public (V1__, V2__…)
 │   │   └── db/seeds/          # Seeds test (profil test uniquement)
 │   └── test/java/
 ├── .github/
 │   ├── workflows/
 │   └── ISSUE_TEMPLATE/
-├── .plumber.yaml              # Config Plumber (CI/CD compliance)
+├── .plumber.yaml
 └── Dockerfile
 ```
 
-Frontend Angular → **pivot-ui**. Documentation → **pivot-docs**.
+**Maven :** projet single-module. `pivot-core-starter` = artifact publié depuis ce même `pom.xml` via profil `release`. Les repos modules ajoutent `fr.pivot:pivot-core-starter` en dépendance.
+
+Frontend Angular → **pivot-ui**. Documentation → **pivot-docs**. Logique métier modules → **pivot-xxx-core**.
 
 ---
 
