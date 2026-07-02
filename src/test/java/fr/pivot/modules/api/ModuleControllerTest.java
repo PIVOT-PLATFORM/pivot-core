@@ -4,7 +4,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.modules.registry.ModuleDto;
 import fr.pivot.modules.registry.ModuleRegistryService;
 import fr.pivot.modules.registry.ModuleStatus;
-import fr.pivot.modules.registry.TenantContext;
+import fr.pivot.core.tenant.TenantContext;
 import fr.pivot.tenant.entity.Tenant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
