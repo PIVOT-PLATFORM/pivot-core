@@ -5,6 +5,8 @@
 ### Registre des modules
 
 - **Liste des modules** : nouvel endpoint `GET /api/modules` — retourne l'état de chaque module activable (activé ou désactivé) pour l'utilisateur connecté
+- **Socle du système de modules** : la plateforme sait désormais découvrir automatiquement les modules installés (tableau blanc, roadmap, quiz…) et mémoriser, pour chaque organisation, quels modules sont activés ou désactivés — cette base prépare l'activation des modules par les administrateurs
+- **Modules additionnels** : les futurs modules pourront s'ajouter à la plateforme sans mise à jour du cœur applicatif
 
 ### Formulaire de contact
 
