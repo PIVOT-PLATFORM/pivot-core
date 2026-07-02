@@ -3,7 +3,7 @@ package fr.pivot.modules.api;
 import fr.pivot.auth.entity.User;
 import fr.pivot.modules.registry.ModuleDto;
 import fr.pivot.modules.registry.ModuleRegistryService;
-import fr.pivot.modules.registry.TenantContext;
+import fr.pivot.core.tenant.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;

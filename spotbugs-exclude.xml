@@ -25,6 +25,9 @@
             <Package name="fr.pivot.auth.filter"/>
             <Package name="fr.pivot.auth.scheduler"/>
             <Package name="fr.pivot.scheduler"/>
+            <!-- Module system : ModuleActivationService stocke des beans singleton injectés
+                 (repository, registry, publisher) ; ModuleActivation est une entité JPA. -->
+            <Package name="fr.pivot.core.modules"/>
         </Or>
     </Match>
 
