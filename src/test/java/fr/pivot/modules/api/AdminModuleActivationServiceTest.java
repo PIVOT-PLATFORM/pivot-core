@@ -1,5 +1,8 @@
 package fr.pivot.modules.api;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import fr.pivot.core.modules.ModuleActivation;
 import fr.pivot.core.modules.ModuleActivationService;
 import fr.pivot.core.modules.UnknownModuleException;
@@ -8,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -65,6 +69,32 @@ class AdminModuleActivationServiceTest {
                 .isInstanceOf(ModuleAlreadyActiveException.class);
 
         verify(moduleActivationService, never()).activate(TENANT_ID, MODULE_ID);
+    }
+
+    @Test
+    void activate_shouldNeutralizeCrLf_whenLoggingConflictOnMaliciousModuleId() {
+        // Security (CWE-117 / log forging): a moduleId crafted with CR/LF must not be able
+        // to inject fake log lines into the (plain-text) application log.
+        final String maliciousId = "ghost\nevent=FAKE_ADMIN_LOGIN userId=999";
+        when(moduleActivationService.isEnabled(TENANT_ID, maliciousId)).thenReturn(true);
+
+        final Logger logger = (Logger) LoggerFactory.getLogger(AdminModuleActivationService.class);
+        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            assertThatThrownBy(() -> service.activate(TENANT_ID, maliciousId))
+                    .isInstanceOf(ModuleAlreadyActiveException.class);
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(appender.list).isNotEmpty();
+        appender.list.forEach(event -> {
+            final String formatted = event.getFormattedMessage();
+            assertThat(formatted).doesNotContain("\n").doesNotContain("\r");
+        });
     }
 
     @Test

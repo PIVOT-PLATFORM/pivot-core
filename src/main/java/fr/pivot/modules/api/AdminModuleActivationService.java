@@ -60,7 +60,8 @@ public class AdminModuleActivationService {
     @PreAuthorize("hasRole('ADMIN')")
     public ModuleActivation activate(final Long tenantId, final String moduleId) {
         if (moduleActivationService.isEnabled(tenantId, moduleId)) {
-            LOG.info("event=ADMIN_MODULE_ACTIVATE_CONFLICT tenantId={} moduleId={}", tenantId, moduleId);
+            LOG.info("event=ADMIN_MODULE_ACTIVATE_CONFLICT tenantId={} moduleId={}",
+                    tenantId, sanitizeForLog(moduleId));
             throw new ModuleAlreadyActiveException(moduleId);
         }
         try {
@@ -68,6 +69,22 @@ public class AdminModuleActivationService {
         } catch (final UnknownModuleException ex) {
             throw new ModuleNotInPlanException(moduleId, ex);
         }
+    }
+
+    /**
+     * Neutralise les caractères de contrôle CR/LF d'une valeur avant de la loguer.
+     *
+     * <p>{@code moduleId} provient in fine d'un {@code @PathVariable} — donnée utilisateur
+     * non fiable. Sans neutralisation, un identifiant contenant {@code \r} ou {@code \n}
+     * permettrait d'injecter de fausses lignes de log (CWE-117 / log forging) dans un
+     * fichier de log en texte brut. La valeur n'est jamais utilisée ailleurs que dans un
+     * message de log — la logique métier continue d'utiliser l'identifiant d'origine.
+     *
+     * @param value valeur potentiellement non fiable à journaliser
+     * @return valeur sans retour chariot ni saut de ligne, sûre pour un message de log
+     */
+    private static String sanitizeForLog(final String value) {
+        return value == null ? "null" : value.replaceAll("[\r\n]", "_");
     }
 
     /**

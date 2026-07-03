@@ -1,5 +1,8 @@
 package fr.pivot.modules.api;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.service.AuditService;
 import fr.pivot.config.CookieHelper;
@@ -15,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -125,6 +129,34 @@ class AdminModuleControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         verify(adminModuleActivationService, never()).activate(any(), anyString());
+    }
+
+    @Test
+    void activate_shouldNeutralizeCrLf_whenLoggingMaliciousModuleId() {
+        // Security (CWE-117 / log forging): a moduleId crafted with CR/LF must not be able
+        // to inject fake log lines into the (plain-text) application log.
+        setAuthentication(buildUser(1L, 42L, "ROLE_ADMIN"));
+        final String maliciousId = "ghost\nevent=FAKE_ADMIN_LOGIN userId=999";
+        final ModuleActivation activation = new ModuleActivation(42L, maliciousId);
+        activation.setEnabled(true);
+        when(adminModuleActivationService.activate(42L, maliciousId)).thenReturn(activation);
+
+        final Logger logger = (Logger) LoggerFactory.getLogger(AdminModuleController.class);
+        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            controller.activate(maliciousId, request);
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(appender.list).isNotEmpty();
+        appender.list.forEach(event -> {
+            final String formatted = event.getFormattedMessage();
+            assertThat(formatted).doesNotContain("\n").doesNotContain("\r");
+        });
     }
 
     // ----------------------------------------------------------------
