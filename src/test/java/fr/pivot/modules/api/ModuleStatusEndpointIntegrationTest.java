@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -31,9 +32,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Tests d'intégration (PostgreSQL via Testcontainers) pour
  * {@code GET /api/modules/{id}/status} — traçabilité EN03.2 / US03.2.2.
  *
- * <p>Exerce la chaîne complète : {@link ModuleController} → {@link ModuleActivationService}
- * (persistance réelle Flyway) et confirme la sémantique HTTP documentée dans
- * {@link ModuleStatusDto} : 200/enabled=true, 200/enabled=false, 404 module inconnu.
+ * <p>Exerce la chaîne complète : {@link ModuleController} →
+ * {@link fr.pivot.core.modules.cache.ModuleActivationCacheService} (cache Redis, EN03.3) →
+ * {@link ModuleActivationService} (persistance réelle Flyway) et confirme la sémantique HTTP
+ * documentée dans {@link ModuleStatusDto} : 200/enabled=true, 200/enabled=false, 404 module
+ * inconnu. Le cache Redis (réel, via {@code AbstractIntegrationTest}) est vidé après chaque
+ * test pour préserver l'isolation entre méthodes (voir {@link #tearDown()}).
  */
 @Import(ModuleStatusEndpointIntegrationTest.TestModuleConfig.class)
 class ModuleStatusEndpointIntegrationTest extends AbstractIntegrationTest {
@@ -52,6 +56,9 @@ class ModuleStatusEndpointIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private TenantRepository tenantRepository;
 
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
     private Long tenantId;
 
     @BeforeEach
@@ -62,6 +69,14 @@ class ModuleStatusEndpointIntegrationTest extends AbstractIntegrationTest {
     @AfterEach
     void tearDown() {
         activationRepository.deleteAll();
+        // Le cache Redis (EN03.3, désormais branché dans ModuleController.getModuleStatus)
+        // survit à la purge BDD ci-dessus — sans ce nettoyage, un test activant le module
+        // laisse une entrée "enabled=true" que les tests suivants de cette classe liraient
+        // à tort (le cache n'a pas de notion de rollback transactionnel comme PostgreSQL).
+        final var keys = redisTemplate.keys("module:status:*");
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
         SecurityContextHolder.clearContext();
     }
 

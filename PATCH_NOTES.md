@@ -1,5 +1,13 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Registre des modules
+
+- **Statut d'un module précis** : nouvel endpoint `GET /api/modules/{id}/status` — permet à l'application de vérifier en temps réel si un module précis est activé pour votre organisation avant d'y donner accès, sans mise en cache côté navigateur, et sans jamais attendre plus de quelques secondes après une activation/désactivation par un administrateur
+
+---
+
 ## [0.5.0] — 3 juillet 2026
 
 ### Registre des modules
@@ -23,7 +31,6 @@
 ### Registre des modules
 
 - **Réactivité de l'activation des modules** : la vérification qu'un module est activé pour une organisation passe désormais par un cache mémoire — un changement d'activation par un administrateur est pris en compte immédiatement, sans délai
-- **Statut d'un module précis** : nouvel endpoint `GET /api/modules/{id}/status` — permet à l'application de vérifier en temps réel si un module précis est activé pour votre organisation avant d'y donner accès, sans mise en cache côté navigateur
 
 ---
 

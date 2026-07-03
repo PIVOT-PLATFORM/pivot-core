@@ -4,6 +4,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.core.modules.ModuleActivationService;
 import fr.pivot.core.modules.ModuleRegistry;
 import fr.pivot.core.modules.UnknownModuleException;
+import fr.pivot.core.modules.cache.ModuleActivationCacheService;
 import fr.pivot.modules.registry.ModuleDto;
 import fr.pivot.modules.registry.ModuleRegistryService;
 import fr.pivot.modules.registry.ModuleStatusDto;
@@ -28,9 +29,9 @@ import java.util.List;
  *
  * <p>Responsabilité unique : résolution du contexte tenant depuis le
  * {@link SecurityContextHolder} et délégation au {@link ModuleRegistryService}
- * (liste des modules) ou au {@link ModuleActivationService} (statut d'un module précis,
- * source de vérité pour le {@code moduleGuard} Angular). Aucune logique métier dans ce
- * contrôleur.
+ * (liste des modules) ou au {@link ModuleActivationCacheService} (statut d'un module précis,
+ * source de vérité pour le {@code moduleGuard} Angular — cache-aside Redis devant
+ * {@link ModuleActivationService}, voir EN03.3). Aucune logique métier dans ce contrôleur.
  *
  * <p>Le filtre {@link fr.pivot.config.TokenAuthenticationFilter} peuple le contexte de
  * sécurité avec un {@code UsernamePasswordAuthenticationToken} dont les détails
@@ -44,21 +45,22 @@ public class ModuleController {
 
     private final ModuleRegistryService moduleRegistryService;
     private final ModuleRegistry moduleRegistry;
-    private final ModuleActivationService moduleActivationService;
+    private final ModuleActivationCacheService moduleActivationCacheService;
 
     /**
      * Construit le contrôleur avec ses collaborateurs de service.
      *
-     * @param moduleRegistryService    service de résolution des modules par tenant
-     * @param moduleRegistry           registre des modules enregistrés (vérification d'existence)
-     * @param moduleActivationService  service de résolution du statut d'activation par tenant
+     * @param moduleRegistryService         service de résolution des modules par tenant
+     * @param moduleRegistry                registre des modules enregistrés (vérification d'existence)
+     * @param moduleActivationCacheService  résolution (cache-aside Redis, EN03.3) du statut
+     *                                      d'activation par tenant
      */
     public ModuleController(final ModuleRegistryService moduleRegistryService,
                              final ModuleRegistry moduleRegistry,
-                             final ModuleActivationService moduleActivationService) {
+                             final ModuleActivationCacheService moduleActivationCacheService) {
         this.moduleRegistryService = moduleRegistryService;
         this.moduleRegistry = moduleRegistry;
-        this.moduleActivationService = moduleActivationService;
+        this.moduleActivationCacheService = moduleActivationCacheService;
     }
 
     /**
@@ -104,9 +106,11 @@ public class ModuleController {
      *   <li>module connu, désactivé pour le tenant → 200 {@code {"enabled": false}} ;</li>
      *   <li>module connu, activé pour le tenant → 200 {@code {"enabled": true}}.</li>
      * </ul>
-     * Aucune mise en cache HTTP côté client : {@code Cache-Control: no-store}, pour que le
-     * guard obtienne systématiquement l'état courant (le cache applicatif Redis côté serveur
-     * est un sujet distinct, hors périmètre de cet endpoint — voir EN03.3).
+     * Aucune mise en cache HTTP côté client : {@code Cache-Control: no-store} — le cache
+     * applicatif est côté serveur ({@link ModuleActivationCacheService}, Redis, EN03.3) ;
+     * il est invalidé immédiatement (write-through) à chaque activation/désactivation, donc
+     * jamais périmé de plus de {@code modules.cache.ttl-seconds} pour un tenant qui n'a pas
+     * encore déclenché de changement, et jamais périmé du tout pour celui qui vient de le faire.
      *
      * @param id identifiant technique du module (ex. {@code "whiteboard"})
      * @return 200 avec le {@link ModuleStatusDto}, 401 si le contexte d'authentification est
@@ -131,7 +135,7 @@ public class ModuleController {
         }
 
         final Long tenantId = user.getTenant() != null ? user.getTenant().getId() : null;
-        final boolean enabled = moduleActivationService.isEnabled(tenantId, id);
+        final boolean enabled = moduleActivationCacheService.isEnabled(tenantId, id);
 
         LOG.info("event=GET_MODULE_STATUS userId={} tenantId={} moduleId={} enabled={}",
                 user.getId(), tenantId, safeId, enabled);

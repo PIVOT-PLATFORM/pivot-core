@@ -1,8 +1,8 @@
 package fr.pivot.modules.api;
 
 import fr.pivot.auth.entity.User;
-import fr.pivot.core.modules.ModuleActivationService;
 import fr.pivot.core.modules.ModuleRegistry;
+import fr.pivot.core.modules.cache.ModuleActivationCacheService;
 import fr.pivot.core.modules.UnknownModuleException;
 import fr.pivot.modules.registry.ModuleDto;
 import fr.pivot.modules.registry.ModuleRegistryService;
@@ -55,13 +55,13 @@ class ModuleControllerTest {
     private ModuleRegistry moduleRegistry;
 
     @Mock
-    private ModuleActivationService moduleActivationService;
+    private ModuleActivationCacheService moduleActivationCacheService;
 
     private ModuleController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new ModuleController(moduleRegistryService, moduleRegistry, moduleActivationService);
+        controller = new ModuleController(moduleRegistryService, moduleRegistry, moduleActivationCacheService);
     }
 
     @AfterEach
@@ -192,7 +192,7 @@ class ModuleControllerTest {
     void getModuleStatus_shouldReturn200Enabled_whenModuleActivatedForTenant() {
         setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
         when(moduleRegistry.isRegistered("whiteboard")).thenReturn(true);
-        when(moduleActivationService.isEnabled(42L, "whiteboard")).thenReturn(true);
+        when(moduleActivationCacheService.isEnabled(42L, "whiteboard")).thenReturn(true);
 
         final ResponseEntity<ModuleStatusDto> response = controller.getModuleStatus("whiteboard");
 
@@ -204,7 +204,7 @@ class ModuleControllerTest {
     void getModuleStatus_shouldReturn200Disabled_whenModuleDeactivatedForTenant() {
         setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
         when(moduleRegistry.isRegistered("whiteboard")).thenReturn(true);
-        when(moduleActivationService.isEnabled(42L, "whiteboard")).thenReturn(false);
+        when(moduleActivationCacheService.isEnabled(42L, "whiteboard")).thenReturn(false);
 
         final ResponseEntity<ModuleStatusDto> response = controller.getModuleStatus("whiteboard");
 
@@ -216,7 +216,7 @@ class ModuleControllerTest {
     void getModuleStatus_shouldSetNoStoreCacheControl() {
         setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
         when(moduleRegistry.isRegistered("whiteboard")).thenReturn(true);
-        when(moduleActivationService.isEnabled(42L, "whiteboard")).thenReturn(true);
+        when(moduleActivationCacheService.isEnabled(42L, "whiteboard")).thenReturn(true);
 
         final ResponseEntity<ModuleStatusDto> response = controller.getModuleStatus("whiteboard");
 
@@ -259,7 +259,7 @@ class ModuleControllerTest {
                 .isInstanceOf(UnknownModuleException.class)
                 .hasMessageContaining("ghost");
 
-        verifyNoInteractions(moduleActivationService);
+        verifyNoInteractions(moduleActivationCacheService);
     }
 
     @Test
@@ -272,7 +272,7 @@ class ModuleControllerTest {
         final ResponseEntity<ModuleStatusDto> response = controller.getModuleStatus("whiteboard");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        verifyNoInteractions(moduleRegistry, moduleActivationService);
+        verifyNoInteractions(moduleRegistry, moduleActivationCacheService);
     }
 
     @Test
@@ -281,11 +281,11 @@ class ModuleControllerTest {
         // authenticated User's own tenant — there is no body/query param that could override it.
         setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
         when(moduleRegistry.isRegistered("whiteboard")).thenReturn(true);
-        when(moduleActivationService.isEnabled(anyLong(), eq("whiteboard"))).thenReturn(true);
+        when(moduleActivationCacheService.isEnabled(anyLong(), eq("whiteboard"))).thenReturn(true);
 
         controller.getModuleStatus("whiteboard");
 
-        verify(moduleActivationService).isEnabled(eq(42L), eq("whiteboard"));
+        verify(moduleActivationCacheService).isEnabled(eq(42L), eq("whiteboard"));
     }
 
     // ----------------------------------------------------------------
