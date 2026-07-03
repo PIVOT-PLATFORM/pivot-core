@@ -57,6 +57,14 @@ logging:
     org.springframework.web: DEBUG
     org.flywaydb: INFO
 
+# Politique de robustesse des mots de passe (US01.2.4) — mêmes défauts qu'en production.
+security:
+  password:
+    min-length: 12
+    min-uppercase: 1
+    min-digits: 1
+    min-special: 1
+
 pivot:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}

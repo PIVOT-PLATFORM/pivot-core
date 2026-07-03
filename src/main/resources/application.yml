@@ -78,6 +78,16 @@ logging:
     org.springframework.web: ${LOG_LEVEL_WEB:WARN}
     org.flywaydb: ${LOG_LEVEL_FLYWAY:WARN}
 
+# Politique de robustesse des mots de passe (US01.2.4).
+# Liste exhaustive des paramètres — aucun paramètre implicite.
+# Exposée au frontend via GET /api/auth/password-policy.
+security:
+  password:
+    min-length: ${SECURITY_PASSWORD_MIN_LENGTH:12}
+    min-uppercase: ${SECURITY_PASSWORD_MIN_UPPERCASE:1}
+    min-digits: ${SECURITY_PASSWORD_MIN_DIGITS:1}
+    min-special: ${SECURITY_PASSWORD_MIN_SPECIAL:1}
+
 pivot:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}

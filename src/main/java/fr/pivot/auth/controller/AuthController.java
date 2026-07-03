@@ -5,11 +5,13 @@ import fr.pivot.auth.dto.DeviceOtpRequest;
 import fr.pivot.auth.dto.ForgotPasswordRequest;
 import fr.pivot.auth.dto.LoginRequest;
 import fr.pivot.auth.dto.LoginResult;
+import fr.pivot.auth.dto.PasswordPolicyDto;
 import fr.pivot.auth.dto.RegisterRequest;
 import fr.pivot.auth.dto.ResetPasswordRequest;
 import fr.pivot.auth.service.PasswordService;
 import fr.pivot.auth.service.RegistrationService;
 import fr.pivot.auth.service.SessionService;
+import fr.pivot.auth.validation.PasswordPolicyProperties;
 import fr.pivot.config.CookieHelper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -54,6 +56,7 @@ public class AuthController {
     private final SessionService sessionService;
     private final PasswordService passwordService;
     private final CookieHelper cookieHelper;
+    private final PasswordPolicyProperties passwordPolicy;
 
     /**
      * Constructs the controller with its required service collaborators.
@@ -62,16 +65,30 @@ public class AuthController {
      * @param sessionService      manages login, device OTP, session restore and logout
      * @param passwordService     manages forgot-password and reset-password flows
      * @param cookieHelper        shared session-cookie + client-IP helper
+     * @param passwordPolicy      configured password robustness policy (US01.2.4)
      */
     public AuthController(
             final RegistrationService registrationService,
             final SessionService sessionService,
             final PasswordService passwordService,
-            final CookieHelper cookieHelper) {
+            final CookieHelper cookieHelper,
+            final PasswordPolicyProperties passwordPolicy) {
         this.registrationService = registrationService;
         this.sessionService = sessionService;
         this.passwordService = passwordService;
         this.cookieHelper = cookieHelper;
+        this.passwordPolicy = passwordPolicy;
+    }
+
+    /**
+     * Exposes the password robustness policy so the frontend renders the exact rules
+     * the backend enforces (US01.2.4). Public endpoint — the policy is not a secret.
+     *
+     * @return the configured password policy (min length, uppercase, digits, special)
+     */
+    @GetMapping("/password-policy")
+    public PasswordPolicyDto passwordPolicy() {
+        return PasswordPolicyDto.from(passwordPolicy);
     }
 
     /**
