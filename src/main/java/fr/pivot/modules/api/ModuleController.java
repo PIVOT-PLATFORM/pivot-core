@@ -1,17 +1,24 @@
 package fr.pivot.modules.api;
 
 import fr.pivot.auth.entity.User;
+import fr.pivot.core.modules.ModuleActivationService;
+import fr.pivot.core.modules.ModuleRegistry;
+import fr.pivot.core.modules.UnknownModuleException;
+import fr.pivot.core.modules.cache.ModuleActivationCacheService;
 import fr.pivot.modules.registry.ModuleDto;
 import fr.pivot.modules.registry.ModuleRegistryService;
+import fr.pivot.modules.registry.ModuleStatusDto;
 import fr.pivot.core.tenant.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -21,8 +28,10 @@ import java.util.List;
  * REST controller exposant le registre des modules PIVOT.
  *
  * <p>Responsabilité unique : résolution du contexte tenant depuis le
- * {@link SecurityContextHolder} et délégation au {@link ModuleRegistryService}.
- * Aucune logique métier dans ce contrôleur.
+ * {@link SecurityContextHolder} et délégation au {@link ModuleRegistryService}
+ * (liste des modules) ou au {@link ModuleActivationCacheService} (statut d'un module précis,
+ * source de vérité pour le {@code moduleGuard} Angular — cache-aside Redis devant
+ * {@link ModuleActivationService}, voir EN03.3). Aucune logique métier dans ce contrôleur.
  *
  * <p>Le filtre {@link fr.pivot.config.TokenAuthenticationFilter} peuple le contexte de
  * sécurité avec un {@code UsernamePasswordAuthenticationToken} dont les détails
@@ -35,14 +44,23 @@ public class ModuleController {
     private static final Logger LOG = LoggerFactory.getLogger(ModuleController.class);
 
     private final ModuleRegistryService moduleRegistryService;
+    private final ModuleRegistry moduleRegistry;
+    private final ModuleActivationCacheService moduleActivationCacheService;
 
     /**
-     * Construit le contrôleur avec son collaborateur de service.
+     * Construit le contrôleur avec ses collaborateurs de service.
      *
-     * @param moduleRegistryService service de résolution des modules par tenant
+     * @param moduleRegistryService         service de résolution des modules par tenant
+     * @param moduleRegistry                registre des modules enregistrés (vérification d'existence)
+     * @param moduleActivationCacheService  résolution (cache-aside Redis, EN03.3) du statut
+     *                                      d'activation par tenant
      */
-    public ModuleController(final ModuleRegistryService moduleRegistryService) {
+    public ModuleController(final ModuleRegistryService moduleRegistryService,
+                             final ModuleRegistry moduleRegistry,
+                             final ModuleActivationCacheService moduleActivationCacheService) {
         this.moduleRegistryService = moduleRegistryService;
+        this.moduleRegistry = moduleRegistry;
+        this.moduleActivationCacheService = moduleActivationCacheService;
     }
 
     /**
@@ -75,9 +93,78 @@ public class ModuleController {
         return ResponseEntity.ok(modules);
     }
 
+    /**
+     * Retourne le statut d'activation d'un module précis pour le tenant courant.
+     *
+     * <p>Consommé par le {@code moduleGuard} Angular avant toute navigation vers une route
+     * d'un module — doit répondre avant que le bundle lazy-loaded du module ne soit chargé.
+     *
+     * <p><b>Sémantique HTTP</b> (voir {@link ModuleStatusDto} pour la justification complète) :
+     * <ul>
+     *   <li>module inconnu du {@link ModuleRegistry} → 404 (via
+     *       {@link UnknownModuleException}, traduit par le gestionnaire d'exceptions global) ;</li>
+     *   <li>module connu, désactivé pour le tenant → 200 {@code {"enabled": false}} ;</li>
+     *   <li>module connu, activé pour le tenant → 200 {@code {"enabled": true}}.</li>
+     * </ul>
+     * Aucune mise en cache HTTP côté client : {@code Cache-Control: no-store} — le cache
+     * applicatif est côté serveur ({@link ModuleActivationCacheService}, Redis, EN03.3) ;
+     * il est invalidé immédiatement (write-through) à chaque activation/désactivation, donc
+     * jamais périmé de plus de {@code modules.cache.ttl-seconds} pour un tenant qui n'a pas
+     * encore déclenché de changement, et jamais périmé du tout pour celui qui vient de le faire.
+     *
+     * @param id identifiant technique du module (ex. {@code "whiteboard"})
+     * @return 200 avec le {@link ModuleStatusDto}, 401 si le contexte d'authentification est
+     *         invalide, 404 si le module n'est pas enregistré dans le registre
+     */
+    @GetMapping("/{id}/status")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ModuleStatusDto> getModuleStatus(@PathVariable("id") final String id) {
+        final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        final String safeId = sanitizeForLog(id);
+
+        if (!(auth.getDetails() instanceof User user)) {
+            LOG.warn("event=GET_MODULE_STATUS_REJECTED reason=invalid_auth_details moduleId={} type={}",
+                    safeId, auth.getDetails() == null ? "null" : auth.getDetails().getClass().getName());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if (!moduleRegistry.isRegistered(id)) {
+            LOG.warn("event=GET_MODULE_STATUS_REJECTED reason=unknown_module moduleId={} userId={}",
+                    safeId, user.getId());
+            throw new UnknownModuleException(id);
+        }
+
+        final Long tenantId = user.getTenant() != null ? user.getTenant().getId() : null;
+        final boolean enabled = moduleActivationCacheService.isEnabled(tenantId, id);
+
+        LOG.info("event=GET_MODULE_STATUS userId={} tenantId={} moduleId={} enabled={}",
+                user.getId(), tenantId, safeId, enabled);
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(new ModuleStatusDto(enabled));
+    }
+
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
+
+    /**
+     * Neutralise les caractères de contrôle CR/LF d'une valeur avant de la loguer.
+     *
+     * <p>{@code id} provient d'un {@code @PathVariable} — donnée utilisateur non fiable.
+     * Sans neutralisation, un identifiant contenant {@code \r} ou {@code \n} permettrait
+     * d'injecter de fausses lignes de log (CWE-117 / log forging) dans un fichier de log
+     * en texte brut. Les retours à la ligne sont remplacés par {@code _} ; la valeur
+     * n'est jamais utilisée ailleurs que dans un message de log (le {@code id} d'origine,
+     * non modifié, reste utilisé pour toute la logique métier).
+     *
+     * @param value valeur potentiellement non fiable à journaliser
+     * @return valeur sans retour chariot ni saut de ligne, sûre pour un message de log
+     */
+    private static String sanitizeForLog(final String value) {
+        return value == null ? "null" : value.replaceAll("[\r\n]", "_");
+    }
 
     /**
      * Construit un {@link TenantContext} depuis l'entité {@link User} authentifiée.
