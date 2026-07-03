@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Sécurité des mots de passe
+
+- **Politique de robustesse renforcée** : tout nouveau mot de passe (inscription ou réinitialisation) doit désormais compter au moins 12 caractères, dont une majuscule, un chiffre et un caractère spécial
+- **Règles configurables** : les administrateurs de la plateforme peuvent ajuster ces exigences (longueur minimale, nombre de majuscules, de chiffres et de caractères spéciaux)
+- **Règles consultables** : les critères en vigueur sont exposés publiquement afin que le formulaire d'inscription affiche toujours les exigences exactes
+
 ### Registre des modules
 
 - **Liste des modules** : nouvel endpoint `GET /api/modules` — retourne l'état de chaque module activable (activé ou désactivé) pour l'utilisateur connecté
