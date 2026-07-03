@@ -1,6 +1,6 @@
 # Notes de version — PIVOT Core
 
-## [Unreleased]
+## [0.6.0] — 3 juillet 2026
 
 ### Registre des modules
 

@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.5.0...v0.6.0) (2026-07-03)
+
+
+### Features
+
+* **api:** EN03.2/US03.2.2 - GET /api/modules/{id}/status ([#123](https://github.com/PIVOT-PLATFORM/pivot-core/issues/123)) ([0b359d9](https://github.com/PIVOT-PLATFORM/pivot-core/commit/0b359d9ca1f943eba9431e3ec1118d7e329e4b18)), closes [pivot-ui#66](https://github.com/pivot-ui/issues/66)
+
 # [0.5.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.4.1...v0.5.0) (2026-07-03)
 
 
