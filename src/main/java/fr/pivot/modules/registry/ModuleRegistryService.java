@@ -1,5 +1,8 @@
 package fr.pivot.modules.registry;
 
+import fr.pivot.core.modules.ModuleRegistry;
+import fr.pivot.core.modules.PivotModule;
+import fr.pivot.core.tenant.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -9,10 +12,11 @@ import java.util.List;
 /**
  * Service centralisant la résolution des modules PIVOT pour un tenant donné.
  *
- * <p>Spring injecte automatiquement tous les beans qui implémentent {@link PivotModule}
- * dans la liste {@code modules}. Pour chaque module, le service évalue son activation
- * via {@link PivotModule#isEnabled(TenantContext)} et construit le {@link ModuleDto}
- * correspondant.
+ * <p>S'appuie sur le {@link ModuleRegistry} (auto-découverte des beans {@link PivotModule}
+ * du contexte Spring — voir
+ * {@link fr.pivot.core.modules.autoconfigure.PivotModulesAutoConfiguration}). Pour chaque
+ * module enregistré, le service évalue son activation via
+ * {@link PivotModule#isEnabled(TenantContext)} et construit le {@link ModuleDto} correspondant.
  *
  * <p>Pas de {@code @Transactional} : opération de lecture pure en mémoire, aucun accès BDD.
  */
@@ -21,18 +25,15 @@ public class ModuleRegistryService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ModuleRegistryService.class);
 
-    private final List<PivotModule> modules;
+    private final ModuleRegistry moduleRegistry;
 
     /**
-     * Construit le service avec la liste des modules enregistrés dans le contexte Spring.
+     * Construit le service avec le registre des modules découverts.
      *
-     * <p>La liste est copiée de façon défensive pour éviter toute mutation externe
-     * sur la représentation interne du service.
-     *
-     * @param modules liste de tous les beans {@link PivotModule} disponibles
+     * @param moduleRegistry registre immuable des modules disponibles
      */
-    public ModuleRegistryService(final List<PivotModule> modules) {
-        this.modules = List.copyOf(modules);
+    public ModuleRegistryService(final ModuleRegistry moduleRegistry) {
+        this.moduleRegistry = moduleRegistry;
     }
 
     /**
@@ -51,7 +52,7 @@ public class ModuleRegistryService {
         LOG.info("event=MODULE_REGISTRY_LIST tenantId={} userId={} role={}",
                 ctx.tenantId(), ctx.userId(), ctx.role());
 
-        return modules.stream()
+        return moduleRegistry.getModules().stream()
                 .map(module -> {
                     final boolean enabled = module.isEnabled(ctx);
                     final ModuleStatus status = enabled ? ModuleStatus.ONLINE : ModuleStatus.OFFLINE;
