@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.2.0...v0.3.0) (2026-07-03)
+
+
+### Features
+
+* **modules:** EN03.3 — Cache Redis statut modules TTL 60s ([#121](https://github.com/PIVOT-PLATFORM/pivot-core/issues/121)) ([8f15f09](https://github.com/PIVOT-PLATFORM/pivot-core/commit/8f15f093e475af212f456799f40be91d18592093))
+
 # [0.2.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.1.0...v0.2.0) (2026-07-03)
 
 
