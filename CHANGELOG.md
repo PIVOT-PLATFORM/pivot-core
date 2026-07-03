@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.3.0...v0.4.0) (2026-07-03)
+
+
+### Features
+
+* **auth:** politique de robustesse du mot de passe configurable (US01.2.4) ([#120](https://github.com/PIVOT-PLATFORM/pivot-core/issues/120)) ([2276c6d](https://github.com/PIVOT-PLATFORM/pivot-core/commit/2276c6d4b32ba35145db8e4cd204b5ace71d9cff))
+
 # [0.3.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.2.0...v0.3.0) (2026-07-03)
 
 
