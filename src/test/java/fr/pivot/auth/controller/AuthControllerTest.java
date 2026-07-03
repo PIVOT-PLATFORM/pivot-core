@@ -48,11 +48,22 @@ class AuthControllerTest {
     @BeforeEach
     void setUp() {
         controller = new AuthController(registrationService, sessionService, passwordService,
-            new fr.pivot.config.CookieHelper("pivot_session", true));
+            new fr.pivot.config.CookieHelper("pivot_session", true),
+            new fr.pivot.auth.validation.PasswordPolicyProperties(12, 1, 1, 1));
         req = new MockHttpServletRequest();
         req.setRemoteAddr("9.9.9.9");
         req.addHeader("User-Agent", "JUnit");
         res = new MockHttpServletResponse();
+    }
+
+    @Test
+    void passwordPolicy_returnsConfiguredRules() {
+        final var policy = controller.passwordPolicy();
+
+        assertThat(policy.minLength()).isEqualTo(12);
+        assertThat(policy.minUppercase()).isEqualTo(1);
+        assertThat(policy.minDigits()).isEqualTo(1);
+        assertThat(policy.minSpecial()).isEqualTo(1);
     }
 
     private AuthResponse.UserInfo userInfo() {
