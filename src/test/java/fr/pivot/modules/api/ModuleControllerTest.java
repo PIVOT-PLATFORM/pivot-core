@@ -10,12 +10,16 @@ import fr.pivot.modules.registry.ModuleStatus;
 import fr.pivot.modules.registry.ModuleStatusDto;
 import fr.pivot.core.tenant.TenantContext;
 import fr.pivot.tenant.entity.Tenant;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -217,6 +221,33 @@ class ModuleControllerTest {
         final ResponseEntity<ModuleStatusDto> response = controller.getModuleStatus("whiteboard");
 
         assertThat(response.getHeaders().getCacheControl()).contains("no-store");
+    }
+
+    @Test
+    void getModuleStatus_shouldNeutralizeCrLf_whenLoggingUnknownModuleId() {
+        // Security (CWE-117 / log forging): a moduleId crafted with CR/LF must not be able
+        // to inject fake log lines into the (plain-text) application log.
+        setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
+        final String maliciousId = "ghost\nevent=FAKE_ADMIN_LOGIN userId=999";
+        when(moduleRegistry.isRegistered(maliciousId)).thenReturn(false);
+
+        final Logger logger = (Logger) LoggerFactory.getLogger(ModuleController.class);
+        final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            assertThatThrownBy(() -> controller.getModuleStatus(maliciousId))
+                    .isInstanceOf(UnknownModuleException.class);
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(appender.list).isNotEmpty();
+        appender.list.forEach(event -> {
+            final String formatted = event.getFormattedMessage();
+            assertThat(formatted).doesNotContain("\n").doesNotContain("\r");
+        });
     }
 
     @Test

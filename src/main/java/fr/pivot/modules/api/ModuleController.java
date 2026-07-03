@@ -116,16 +116,17 @@ public class ModuleController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ModuleStatusDto> getModuleStatus(@PathVariable("id") final String id) {
         final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        final String safeId = sanitizeForLog(id);
 
         if (!(auth.getDetails() instanceof User user)) {
             LOG.warn("event=GET_MODULE_STATUS_REJECTED reason=invalid_auth_details moduleId={} type={}",
-                    id, auth.getDetails() == null ? "null" : auth.getDetails().getClass().getName());
+                    safeId, auth.getDetails() == null ? "null" : auth.getDetails().getClass().getName());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         if (!moduleRegistry.isRegistered(id)) {
             LOG.warn("event=GET_MODULE_STATUS_REJECTED reason=unknown_module moduleId={} userId={}",
-                    id, user.getId());
+                    safeId, user.getId());
             throw new UnknownModuleException(id);
         }
 
@@ -133,7 +134,7 @@ public class ModuleController {
         final boolean enabled = moduleActivationService.isEnabled(tenantId, id);
 
         LOG.info("event=GET_MODULE_STATUS userId={} tenantId={} moduleId={} enabled={}",
-                user.getId(), tenantId, id, enabled);
+                user.getId(), tenantId, safeId, enabled);
 
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
@@ -143,6 +144,23 @@ public class ModuleController {
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
+
+    /**
+     * Neutralise les caractères de contrôle CR/LF d'une valeur avant de la loguer.
+     *
+     * <p>{@code id} provient d'un {@code @PathVariable} — donnée utilisateur non fiable.
+     * Sans neutralisation, un identifiant contenant {@code \r} ou {@code \n} permettrait
+     * d'injecter de fausses lignes de log (CWE-117 / log forging) dans un fichier de log
+     * en texte brut. Les retours à la ligne sont remplacés par {@code _} ; la valeur
+     * n'est jamais utilisée ailleurs que dans un message de log (le {@code id} d'origine,
+     * non modifié, reste utilisé pour toute la logique métier).
+     *
+     * @param value valeur potentiellement non fiable à journaliser
+     * @return valeur sans retour chariot ni saut de ligne, sûre pour un message de log
+     */
+    private static String sanitizeForLog(final String value) {
+        return value == null ? "null" : value.replaceAll("[\r\n]", "_");
+    }
 
     /**
      * Construit un {@link TenantContext} depuis l'entité {@link User} authentifiée.
