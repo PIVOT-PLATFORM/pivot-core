@@ -1,12 +1,14 @@
 package fr.pivot.modules.registry;
 
+import fr.pivot.core.modules.ModuleRegistry;
+import fr.pivot.core.modules.PivotModule;
+import fr.pivot.core.tenant.TenantContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -15,7 +17,8 @@ import static org.mockito.Mockito.when;
  * Tests unitaires pour {@link ModuleRegistryService}.
  *
  * <p>Vérifie la logique de projection {@link PivotModule} → {@link ModuleDto} :
- * activation, désactivation et liste vide.
+ * activation, désactivation et liste vide — via un {@link ModuleRegistry} réel
+ * construit sur des modules mockés.
  */
 @ExtendWith(MockitoExtension.class)
 class ModuleRegistryServiceTest {
@@ -26,14 +29,15 @@ class ModuleRegistryServiceTest {
     @Mock
     private PivotModule disabledModule;
 
-    private static final TenantContext CTX = new TenantContext(
-            UUID.fromString("00000000-0000-0000-0000-000000000001"),
-            "42",
-            "ROLE_USER");
+    private static final TenantContext CTX = new TenantContext(1L, "42", "ROLE_USER");
+
+    private static ModuleRegistryService serviceWith(final List<PivotModule> modules) {
+        return new ModuleRegistryService(new ModuleRegistry(modules));
+    }
 
     @Test
     void shouldReturnEmptyList_whenNoModulesRegistered() {
-        final ModuleRegistryService service = new ModuleRegistryService(List.of());
+        final ModuleRegistryService service = serviceWith(List.of());
 
         final List<ModuleDto> result = service.getModulesForTenant(CTX);
 
@@ -47,7 +51,7 @@ class ModuleRegistryServiceTest {
         when(enabledModule.getVersion()).thenReturn("1.0.0");
         when(enabledModule.isEnabled(CTX)).thenReturn(true);
 
-        final ModuleRegistryService service = new ModuleRegistryService(List.of(enabledModule));
+        final ModuleRegistryService service = serviceWith(List.of(enabledModule));
 
         final List<ModuleDto> result = service.getModulesForTenant(CTX);
 
@@ -67,7 +71,7 @@ class ModuleRegistryServiceTest {
         when(disabledModule.getVersion()).thenReturn("0.1.0");
         when(disabledModule.isEnabled(CTX)).thenReturn(false);
 
-        final ModuleRegistryService service = new ModuleRegistryService(List.of(disabledModule));
+        final ModuleRegistryService service = serviceWith(List.of(disabledModule));
 
         final List<ModuleDto> result = service.getModulesForTenant(CTX);
 
@@ -90,7 +94,7 @@ class ModuleRegistryServiceTest {
         when(disabledModule.getVersion()).thenReturn("0.2.0");
         when(disabledModule.isEnabled(CTX)).thenReturn(false);
 
-        final ModuleRegistryService service = new ModuleRegistryService(List.of(enabledModule, disabledModule));
+        final ModuleRegistryService service = serviceWith(List.of(enabledModule, disabledModule));
 
         final List<ModuleDto> result = service.getModulesForTenant(CTX);
 

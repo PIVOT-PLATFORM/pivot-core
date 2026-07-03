@@ -106,3 +106,9 @@ pivot:
     # TTL reset mdp, TTL OTP appareil, durée confiance appareil : table feature_flags
   cleanup:
     tokens-cron: "0 0 2 * * *"  # Nightly 02:00 — overridable via env PIVOT_CLEANUP_TOKENS_CRON
+
+modules:
+  cache:
+    # TTL du cache Redis de statut d'activation (module:status:{tenantId}:{moduleId}).
+    # Override via MODULES_CACHE_TTL_SECONDS (relaxed binding).
+    ttl-seconds: ${MODULES_CACHE_TTL_SECONDS:60}

@@ -1,6 +1,7 @@
 package fr.pivot.auth.web;
 
 import fr.pivot.auth.exception.RateLimitException;
+import fr.pivot.core.modules.UnknownModuleException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -37,5 +38,14 @@ class GlobalExceptionHandlerTest {
 
         assertThat(resp.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("30");
         assertThat(resp.getBody()).containsEntry("retryAfterSeconds", 30L);
+    }
+
+    @Test
+    void handleUnknownModule_returns404_withModuleNotFoundCode() {
+        final ResponseEntity<Map<String, Object>> resp =
+            handler.handleUnknownModule(new UnknownModuleException("nonexistent"));
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(resp.getBody()).containsEntry("code", "MODULE_NOT_FOUND");
     }
 }

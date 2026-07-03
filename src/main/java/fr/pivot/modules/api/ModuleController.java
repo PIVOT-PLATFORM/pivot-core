@@ -3,7 +3,7 @@ package fr.pivot.modules.api;
 import fr.pivot.auth.entity.User;
 import fr.pivot.modules.registry.ModuleDto;
 import fr.pivot.modules.registry.ModuleRegistryService;
-import fr.pivot.modules.registry.TenantContext;
+import fr.pivot.core.tenant.TenantContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -15,9 +15,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.ByteBuffer;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * REST controller exposant le registre des modules PIVOT.
@@ -84,37 +82,17 @@ public class ModuleController {
     /**
      * Construit un {@link TenantContext} depuis l'entité {@link User} authentifiée.
      *
-     * <p>L'identifiant tenant stocké en BDD est un {@code Long}. Il est converti en
-     * {@link UUID} déterministe (big-endian 64 bits, high-bits à zéro) pour satisfaire
-     * le contrat {@link TenantContext} sans perte d'information.
-     * Si le tenant est absent (null), l'UUID zéro est utilisé.
+     * <p>{@code tenantId} est transmis tel quel — même type ({@code Long}, clé primaire
+     * {@code public.tenants.id}) que celui utilisé partout ailleurs dans la couche
+     * persistance (voir {@link fr.pivot.core.modules.ModuleActivationService}).
+     * {@code null} si l'utilisateur n'a pas de tenant.
      *
      * @param user l'utilisateur authentifié résolu par le filtre de sécurité
      * @return contexte tenant prêt pour l'évaluation des modules
      */
     static TenantContext buildTenantContext(final User user) {
-        final Long tenantLongId = user.getTenant() != null ? user.getTenant().getId() : null;
-        final UUID tenantUuid = longToUuid(tenantLongId);
+        final Long tenantId = user.getTenant() != null ? user.getTenant().getId() : null;
         final String userId = user.getId() != null ? user.getId().toString() : "unknown";
-        return new TenantContext(tenantUuid, userId, user.getRole());
-    }
-
-    /**
-     * Convertit un identifiant {@code Long} en {@link UUID} déterministe.
-     *
-     * <p>Encodage : {@code mostSignificantBits = 0L}, {@code leastSignificantBits = longId}.
-     * Garantit une bijection Long → UUID pour les valeurs {@code ≥ 0}.
-     * Si {@code id} est {@code null}, retourne l'UUID zéro.
-     *
-     * @param id identifiant Long à convertir (peut être {@code null})
-     * @return UUID correspondant, jamais {@code null}
-     */
-    static UUID longToUuid(final Long id) {
-        final long safeId = id != null ? id : 0L;
-        final ByteBuffer bb = ByteBuffer.allocate(Long.BYTES * 2);
-        bb.putLong(0L);
-        bb.putLong(safeId);
-        bb.rewind();
-        return new UUID(bb.getLong(), bb.getLong());
+        return new TenantContext(tenantId, userId, user.getRole());
     }
 }

@@ -1,6 +1,14 @@
 # Notes de version — PIVOT Core
 
-## [Unreleased]
+## [0.3.0] — 3 juillet 2026
+
+### Registre des modules
+
+- **Réactivité de l'activation des modules** : la vérification qu'un module est activé pour une organisation passe désormais par un cache mémoire — un changement d'activation par un administrateur est pris en compte immédiatement, sans délai
+
+---
+
+## [0.2.0] — 3 juillet 2026
 
 ### Sécurité des mots de passe
 
@@ -11,6 +19,9 @@
 ### Registre des modules
 
 - **Liste des modules** : nouvel endpoint `GET /api/modules` — retourne l'état de chaque module activable (activé ou désactivé) pour l'utilisateur connecté
+- **Socle du système de modules** : la plateforme sait désormais découvrir automatiquement les modules installés (tableau blanc, roadmap, quiz…) et mémoriser, pour chaque organisation, quels modules sont activés ou désactivés — cette base prépare l'activation des modules par les administrateurs
+- **Modules additionnels** : les futurs modules pourront s'ajouter à la plateforme sans mise à jour du cœur applicatif
+- **Fiabilisation interne** : l'identifiant technique d'organisation utilisé en interne par le système de modules a été uniformisé, et les erreurs sur un module inconnu sont désormais correctement signalées — aucun changement visible pour les utilisateurs
 
 ### Formulaire de contact
 
