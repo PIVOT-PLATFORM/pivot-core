@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.4.1...v0.5.0) (2026-07-03)
+
+
+### Features
+
+* **api:** admin active/desactive les modules PIVOT par tenant (US03.1.1, US03.1.2) ([#122](https://github.com/PIVOT-PLATFORM/pivot-core/issues/122)) ([3c68345](https://github.com/PIVOT-PLATFORM/pivot-core/commit/3c683454d206375facb9cbc2eca13f9e3b4593e8))
+
 ## [0.4.1](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.4.0...v0.4.1) (2026-07-03)
 
 
