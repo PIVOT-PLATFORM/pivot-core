@@ -27,10 +27,6 @@ All notable changes to PIVOT Core are documented in this file.
 
 ---
 
-## [Unreleased]
-
----
-
 ## [0.0.0] - 2026-06-28
 
 ### Features
