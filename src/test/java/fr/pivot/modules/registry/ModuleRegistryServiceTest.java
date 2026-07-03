@@ -9,7 +9,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -30,10 +29,7 @@ class ModuleRegistryServiceTest {
     @Mock
     private PivotModule disabledModule;
 
-    private static final TenantContext CTX = new TenantContext(
-            UUID.fromString("00000000-0000-0000-0000-000000000001"),
-            "42",
-            "ROLE_USER");
+    private static final TenantContext CTX = new TenantContext(1L, "42", "ROLE_USER");
 
     private static ModuleRegistryService serviceWith(final List<PivotModule> modules) {
         return new ModuleRegistryService(new ModuleRegistry(modules));

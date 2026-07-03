@@ -1,7 +1,5 @@
 package fr.pivot.core.tenant;
 
-import java.util.UUID;
-
 /**
  * Contexte tenant résolu depuis le token d'authentification courant (opaque token ou OIDC).
  *
@@ -12,9 +10,13 @@ import java.util.UUID;
  * <p>Règle d'isolation tenant : ce contexte est construit exclusivement depuis le token
  * porteur (Spring Security) — jamais depuis le body, un query param ou un header custom.
  *
- * @param tenantId identifiant du tenant courant
+ * <p>{@code tenantId} est l'identifiant BDD natif du tenant ({@code public.tenants.id}),
+ * sans conversion — aligné avec {@link fr.pivot.core.modules.ModuleActivationService} et
+ * le reste de la couche persistance, qui utilisent tous le même type.
+ *
+ * @param tenantId identifiant du tenant courant (clé primaire {@code public.tenants.id})
  * @param userId   identifiant de l'utilisateur authentifié
  * @param role     rôle Spring Security de l'utilisateur (ex. {@code ROLE_ADMIN})
  */
-public record TenantContext(UUID tenantId, String userId, String role) {
+public record TenantContext(Long tenantId, String userId, String role) {
 }

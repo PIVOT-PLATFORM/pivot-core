@@ -18,7 +18,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -143,29 +142,27 @@ class ModuleControllerTest {
     // ----------------------------------------------------------------
 
     @Test
-    void buildTenantContext_shouldProduceDeterministicUuid_forSameTenantId() {
+    void buildTenantContext_shouldUseTenantIdDirectly_withoutConversion() {
         final User user1 = buildUser(1L, 7L, "ROLE_USER");
         final User user2 = buildUser(2L, 7L, "ROLE_ADMIN");
 
         final TenantContext ctx1 = ModuleController.buildTenantContext(user1);
         final TenantContext ctx2 = ModuleController.buildTenantContext(user2);
 
+        assertThat(ctx1.tenantId()).isEqualTo(7L);
         assertThat(ctx1.tenantId()).isEqualTo(ctx2.tenantId());
     }
 
     @Test
-    void longToUuid_shouldHandleNullId() {
-        final UUID result = ModuleController.longToUuid(null);
+    void buildTenantContext_shouldReturnNullTenantId_whenUserHasNoTenant() {
+        final User user = mock(User.class);
+        when(user.getId()).thenReturn(3L);
+        when(user.getRole()).thenReturn("ROLE_USER");
+        when(user.getTenant()).thenReturn(null);
 
-        assertThat(result).isEqualTo(new UUID(0L, 0L));
-    }
+        final TenantContext ctx = ModuleController.buildTenantContext(user);
 
-    @Test
-    void longToUuid_shouldProduceDifferentUuids_forDifferentIds() {
-        final UUID uuid1 = ModuleController.longToUuid(1L);
-        final UUID uuid2 = ModuleController.longToUuid(2L);
-
-        assertThat(uuid1).isNotEqualTo(uuid2);
+        assertThat(ctx.tenantId()).isNull();
     }
 
     // ----------------------------------------------------------------
