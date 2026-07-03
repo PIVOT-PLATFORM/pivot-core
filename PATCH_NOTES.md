@@ -1,5 +1,13 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Registre des modules
+
+- **Réactivité de l'activation des modules** : la vérification qu'un module est activé pour une organisation passe désormais par un cache mémoire — un changement d'activation par un administrateur est pris en compte immédiatement, sans délai
+
+---
+
 ## [0.2.0] — 3 juillet 2026
 
 ### Registre des modules
