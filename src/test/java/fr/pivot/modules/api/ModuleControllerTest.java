@@ -1,9 +1,13 @@
 package fr.pivot.modules.api;
 
 import fr.pivot.auth.entity.User;
+import fr.pivot.core.modules.ModuleActivationService;
+import fr.pivot.core.modules.ModuleRegistry;
+import fr.pivot.core.modules.UnknownModuleException;
 import fr.pivot.modules.registry.ModuleDto;
 import fr.pivot.modules.registry.ModuleRegistryService;
 import fr.pivot.modules.registry.ModuleStatus;
+import fr.pivot.modules.registry.ModuleStatusDto;
 import fr.pivot.core.tenant.TenantContext;
 import fr.pivot.tenant.entity.Tenant;
 import org.junit.jupiter.api.AfterEach;
@@ -20,10 +24,15 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -38,11 +47,17 @@ class ModuleControllerTest {
     @Mock
     private ModuleRegistryService moduleRegistryService;
 
+    @Mock
+    private ModuleRegistry moduleRegistry;
+
+    @Mock
+    private ModuleActivationService moduleActivationService;
+
     private ModuleController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new ModuleController(moduleRegistryService);
+        controller = new ModuleController(moduleRegistryService, moduleRegistry, moduleActivationService);
     }
 
     @AfterEach
@@ -166,17 +181,97 @@ class ModuleControllerTest {
     }
 
     // ----------------------------------------------------------------
+    // GET /api/modules/{id}/status
+    // ----------------------------------------------------------------
+
+    @Test
+    void getModuleStatus_shouldReturn200Enabled_whenModuleActivatedForTenant() {
+        setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
+        when(moduleRegistry.isRegistered("whiteboard")).thenReturn(true);
+        when(moduleActivationService.isEnabled(42L, "whiteboard")).thenReturn(true);
+
+        final ResponseEntity<ModuleStatusDto> response = controller.getModuleStatus("whiteboard");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().enabled()).isTrue();
+    }
+
+    @Test
+    void getModuleStatus_shouldReturn200Disabled_whenModuleDeactivatedForTenant() {
+        setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
+        when(moduleRegistry.isRegistered("whiteboard")).thenReturn(true);
+        when(moduleActivationService.isEnabled(42L, "whiteboard")).thenReturn(false);
+
+        final ResponseEntity<ModuleStatusDto> response = controller.getModuleStatus("whiteboard");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().enabled()).isFalse();
+    }
+
+    @Test
+    void getModuleStatus_shouldSetNoStoreCacheControl() {
+        setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
+        when(moduleRegistry.isRegistered("whiteboard")).thenReturn(true);
+        when(moduleActivationService.isEnabled(42L, "whiteboard")).thenReturn(true);
+
+        final ResponseEntity<ModuleStatusDto> response = controller.getModuleStatus("whiteboard");
+
+        assertThat(response.getHeaders().getCacheControl()).contains("no-store");
+    }
+
+    @Test
+    void getModuleStatus_shouldThrowUnknownModuleException_whenModuleNotRegistered() {
+        setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
+        when(moduleRegistry.isRegistered("ghost")).thenReturn(false);
+
+        assertThatThrownBy(() -> controller.getModuleStatus("ghost"))
+                .isInstanceOf(UnknownModuleException.class)
+                .hasMessageContaining("ghost");
+
+        verifyNoInteractions(moduleActivationService);
+    }
+
+    @Test
+    void getModuleStatus_shouldReturn401_whenAuthDetailsNotUser() {
+        final UsernamePasswordAuthenticationToken auth =
+                new UsernamePasswordAuthenticationToken("principal", "credentials");
+        auth.setDetails("not-a-user-object");
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        final ResponseEntity<ModuleStatusDto> response = controller.getModuleStatus("whiteboard");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verifyNoInteractions(moduleRegistry, moduleActivationService);
+    }
+
+    @Test
+    void getModuleStatus_shouldNeverUseATenantIdOtherThanTheAuthenticatedUsersOwn() {
+        // Security: the tenantId used to resolve activation comes exclusively from the
+        // authenticated User's own tenant — there is no body/query param that could override it.
+        setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
+        when(moduleRegistry.isRegistered("whiteboard")).thenReturn(true);
+        when(moduleActivationService.isEnabled(anyLong(), eq("whiteboard"))).thenReturn(true);
+
+        controller.getModuleStatus("whiteboard");
+
+        verify(moduleActivationService).isEnabled(eq(42L), eq("whiteboard"));
+    }
+
+    // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
 
     private static User buildUser(final Long userId, final Long tenantId, final String role) {
+        // lenient(): this helper is shared across tests exercising different code paths
+        // (getModules() uses getRole(); getModuleStatus() does not) — not every stub is
+        // consumed by every caller, which is fine and not a test smell here.
         final User user = mock(User.class);
-        when(user.getId()).thenReturn(userId);
-        when(user.getRole()).thenReturn(role);
+        lenient().when(user.getId()).thenReturn(userId);
+        lenient().when(user.getRole()).thenReturn(role);
         if (tenantId != null) {
             final Tenant tenant = mock(Tenant.class);
-            when(tenant.getId()).thenReturn(tenantId);
-            when(user.getTenant()).thenReturn(tenant);
+            lenient().when(tenant.getId()).thenReturn(tenantId);
+            lenient().when(user.getTenant()).thenReturn(tenant);
         }
         return user;
     }

@@ -42,10 +42,13 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void handleUnknownModule_returns404_withModuleNotFoundCode() {
-        final ResponseEntity<Map<String, Object>> resp =
-            handler.handleUnknownModule(new UnknownModuleException("nonexistent"));
+        final UnknownModuleException ex = new UnknownModuleException("ghost");
+
+        final ResponseEntity<Map<String, Object>> resp = handler.handleUnknownModule(ex);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(resp.getBody()).containsEntry("code", "MODULE_NOT_FOUND");
+        // Security: body must not leak the requested module id or the list of registered ids.
+        assertThat(resp.getBody()).doesNotContainValue("ghost");
     }
 }
