@@ -1,3 +1,10 @@
+## [0.4.1](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.4.0...v0.4.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **docs:** corrige la section PATCH_NOTES mal placée pour US01.2.4 ([#125](https://github.com/PIVOT-PLATFORM/pivot-core/issues/125)) ([a7856b2](https://github.com/PIVOT-PLATFORM/pivot-core/commit/a7856b2626d6c80651ccefed9e51a371df69a3f0)), closes [#120](https://github.com/PIVOT-PLATFORM/pivot-core/issues/120) [#120](https://github.com/PIVOT-PLATFORM/pivot-core/issues/120) [#120](https://github.com/PIVOT-PLATFORM/pivot-core/issues/120)
+
 # [0.4.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.3.0...v0.4.0) (2026-07-03)
 
 
