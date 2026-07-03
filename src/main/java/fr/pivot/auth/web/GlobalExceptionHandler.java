@@ -1,6 +1,7 @@
 package fr.pivot.auth.web;
 
 import fr.pivot.auth.exception.RateLimitException;
+import fr.pivot.core.modules.UnknownModuleException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,5 +30,17 @@ public class GlobalExceptionHandler {
                 "code", "RATE_LIMITED",
                 "retryAfterSeconds", ex.getRetryAfterSeconds()
             ));
+    }
+
+    /**
+     * Returns 404 for operations targeting a module id absent from the {@link
+     * fr.pivot.core.modules.ModuleRegistry} — no detail beyond the requested id is
+     * disclosed, matching the "don't confirm existence" isolation rule.
+     */
+    @ExceptionHandler(UnknownModuleException.class)
+    public ResponseEntity<Map<String, Object>> handleUnknownModule(final UnknownModuleException ex) {
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(Map.of("code", "MODULE_NOT_FOUND"));
     }
 }
