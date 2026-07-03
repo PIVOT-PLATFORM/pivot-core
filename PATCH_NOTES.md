@@ -1,5 +1,13 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Registre des modules
+
+- **Activation des modules par les administrateurs** : les administrateurs peuvent désormais activer et désactiver les modules pour leur organisation depuis l'API — chaque changement est tracé dans le journal d'audit
+
+---
+
 ## [0.4.0] — 3 juillet 2026
 
 ### Sécurité des mots de passe

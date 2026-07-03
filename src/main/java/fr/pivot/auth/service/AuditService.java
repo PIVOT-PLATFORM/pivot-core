@@ -89,4 +89,6 @@ public class AuditService {
     public static final String DEVICE_VERIFIED = "auth.device_verified";
     public static final String DEVICE_OTP_FAILED = "auth.device_otp_failed";
     public static final String OIDC_LOGIN = "auth.oidc_login";
+    public static final String MODULE_ACTIVATED = "module.activated";
+    public static final String MODULE_DEACTIVATED = "module.deactivated";
 }
