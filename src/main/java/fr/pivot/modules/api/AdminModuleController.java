@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -41,11 +42,14 @@ import java.util.Map;
  * {@link User} posée par {@link fr.pivot.config.TokenAuthenticationFilter} dans les détails
  * de l'authentification courante.
  *
- * <p><strong>RBAC :</strong> l'autorisation {@code ROLE_ADMIN} est portée par
- * {@link AdminModuleActivationService} ({@code @PreAuthorize}), pas par ce contrôleur — un
- * appel non autorisé lève {@link org.springframework.security.access.AccessDeniedException},
- * traduite en {@code 403} par le comportement par défaut de Spring Security (pas de
- * gestionnaire custom nécessaire ici).
+ * <p><strong>RBAC :</strong> pour {@code activate}/{@code deactivate}, l'autorisation
+ * {@code ROLE_ADMIN} est portée par {@link AdminModuleActivationService} ({@code @PreAuthorize}
+ * sur le service, pas sur ce contrôleur). Pour {@code list()}, qui ne délègue à aucun service
+ * dédié ({@link ModuleRegistry} et {@link ModuleActivationService} sont partagés avec des
+ * endpoints non-admin), le {@code @PreAuthorize("hasRole('ADMIN')")} est porté directement par
+ * la méthode du contrôleur. Dans les deux cas, un appel non autorisé lève
+ * {@link org.springframework.security.access.AccessDeniedException}, traduite en {@code 403}
+ * par le comportement par défaut de Spring Security (pas de gestionnaire custom nécessaire ici).
  */
 @RestController
 @RequestMapping("/api/admin/modules")
@@ -147,6 +151,7 @@ public class AdminModuleController {
      *     contexte d'authentification est invalide
      */
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<AdminModuleDto>> list() {
         final ResolvedAdmin resolved = resolveAdmin();
         if (resolved == null) {

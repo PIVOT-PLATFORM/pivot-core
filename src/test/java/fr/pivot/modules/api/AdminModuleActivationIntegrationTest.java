@@ -1,6 +1,7 @@
 package fr.pivot.modules.api;
 
 import fr.pivot.AbstractIntegrationTest;
+import fr.pivot.auth.entity.User;
 import fr.pivot.core.modules.ModuleActivation;
 import fr.pivot.core.modules.ModuleActivationRepository;
 import fr.pivot.core.modules.ModuleActivationService;
@@ -15,6 +16,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -24,6 +27,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Tests d'intégration (PostgreSQL via Testcontainers, contexte Spring réel) pour
@@ -51,6 +56,9 @@ class AdminModuleActivationIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private ModuleActivationService moduleActivationService;
+
+    @Autowired
+    private AdminModuleController adminModuleController;
 
     @Autowired
     private ModuleActivationRepository repository;
@@ -109,6 +117,28 @@ class AdminModuleActivationIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(result.isEnabled()).isTrue();
         assertThat(moduleActivationService.isEnabled(tenantAId, MODULE_ID)).isTrue();
+    }
+
+    // ----------------------------------------------------------------
+    // GET /api/admin/modules (list) : RBAC porté par le contrôleur (pas de service dédié)
+    // ----------------------------------------------------------------
+
+    @Test
+    void list_shouldThrowAccessDenied_whenCallerIsRoleUser() {
+        setAuthentication("ROLE_USER");
+
+        assertThatThrownBy(() -> adminModuleController.list())
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void list_shouldSucceed_whenCallerIsRoleAdmin() {
+        setAuthenticationWithUserDetails("ROLE_ADMIN", tenantAId);
+
+        final ResponseEntity<List<AdminModuleDto>> response = adminModuleController.list();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
     }
 
     // ----------------------------------------------------------------
@@ -181,6 +211,24 @@ class AdminModuleActivationIntegrationTest extends AbstractIntegrationTest {
     private static void setAuthentication(final String role) {
         final UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                 "test-principal", null, List.of(new SimpleGrantedAuthority(role)));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
+    /**
+     * Comme {@link #setAuthentication(String)}, mais pose aussi un {@link User} mocké dans les
+     * détails de l'authentification — requis par {@code AdminModuleController.resolveAdmin()}
+     * (contrairement à {@code AdminModuleActivationService}, appelé directement dans les autres
+     * tests de cette classe avec un {@code tenantId} explicite).
+     */
+    private static void setAuthenticationWithUserDetails(final String role, final Long tenantId) {
+        final Tenant tenant = mock(Tenant.class);
+        when(tenant.getId()).thenReturn(tenantId);
+        final User user = mock(User.class);
+        when(user.getTenant()).thenReturn(tenant);
+
+        final UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                "test-principal", null, List.of(new SimpleGrantedAuthority(role)));
+        auth.setDetails(user);
         SecurityContextHolder.getContext().setAuthentication(auth);
     }
 

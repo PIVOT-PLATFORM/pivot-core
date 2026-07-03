@@ -39,8 +39,10 @@ import static org.mockito.Mockito.when;
  * des exceptions métier en codes HTTP dédiés, rejet sur détails d'authentification invalides
  * ou tenant absent, et déclenchement de l'audit sur succès.
  *
- * <p>Le RBAC (\{@code @PreAuthorize}) porté par {@link AdminModuleActivationService} n'est pas
- * exercé ici (service mocké) — couvert par {@code AdminModuleActivationIntegrationTest}.
+ * <p>Le RBAC ({@code @PreAuthorize}), qu'il soit porté par {@link AdminModuleActivationService}
+ * (activate/deactivate) ou directement par {@link AdminModuleController#list()}, n'est pas
+ * exercé ici (contrôleur instancié directement, hors proxy Spring) — couvert par
+ * {@code AdminModuleActivationIntegrationTest}.
  */
 @ExtendWith(MockitoExtension.class)
 class AdminModuleControllerTest {
