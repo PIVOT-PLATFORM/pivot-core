@@ -1,3 +1,10 @@
+# [0.2.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.1.0...v0.2.0) (2026-07-03)
+
+
+### Features
+
+* **modules:** EN03.1 — PivotModule interface + registre backend ([#119](https://github.com/PIVOT-PLATFORM/pivot-core/issues/119)) ([4bd4334](https://github.com/PIVOT-PLATFORM/pivot-core/commit/4bd4334bf2f2756331e0baf5234d6fbff1c6c90e)), closes [#2](https://github.com/PIVOT-PLATFORM/pivot-core/issues/2)
+
 # [0.1.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.0.0...v0.1.0) (2026-06-28)
 
 
