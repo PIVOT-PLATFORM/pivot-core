@@ -1,7 +1,5 @@
 package fr.pivot.account.util;
 
-import java.util.regex.Pattern;
-
 /**
  * Strips HTML markup from user-supplied text fields (US02.1.1 — XSS protection on
  * profile {@code firstName}/{@code lastName}, displayed to other users e.g. in the
@@ -13,11 +11,16 @@ import java.util.regex.Pattern;
  * interpolation ({@code {{ value }}}), which HTML-escapes on output — stripping at write time
  * is defense-in-depth against stored payloads (logs, exports, future non-Angular consumers),
  * not the only XSS control.
+ *
+ * <p><strong>Implementation note:</strong> deliberately hand-rolled as a single linear scan
+ * instead of a {@code Pattern}-based {@code <[^>]*>} replace. That regex is safe in isolation,
+ * but on a string with many {@code '<'} characters and no closing {@code '>'} it degrades to
+ * quadratic time (CodeQL: "polynomial regular expression used on uncontrolled data") because
+ * {@code Matcher} retries the failed match at every subsequent position. This method is a
+ * public, reusable utility not tied to the caller-enforced 100-character cap on name fields, so
+ * it must be safe (O(n)) for arbitrary-length, adversarial input on its own.
  */
 public final class HtmlStripper {
-
-    /** Matches a complete {@code <...>} tag, opening or closing. */
-    private static final Pattern TAG_PATTERN = Pattern.compile("<[^>]*>");
 
     private HtmlStripper() {
     }
@@ -36,7 +39,36 @@ public final class HtmlStripper {
         if (input == null) {
             return null;
         }
-        final String withoutTags = TAG_PATTERN.matcher(input).replaceAll("");
-        return withoutTags.replace("<", "").replace(">", "");
+        final int length = input.length();
+
+        // nextClosingBracket[i] = index of the first '>' at or after position i, or `length`
+        // if none exists — precomputed with one backward pass so the forward scan below can
+        // jump straight past a well-formed <...> span in O(1) instead of re-scanning ahead for
+        // its closing '>' (which is what makes the naive regex quadratic on pathological input).
+        final int[] nextClosingBracket = new int[length + 1];
+        nextClosingBracket[length] = length;
+        for (int i = length - 1; i >= 0; i--) {
+            nextClosingBracket[i] = input.charAt(i) == '>' ? i : nextClosingBracket[i + 1];
+        }
+
+        final StringBuilder result = new StringBuilder(length);
+        int i = 0;
+        while (i < length) {
+            final char c = input.charAt(i);
+            if (c == '<') {
+                final int closingBracket = nextClosingBracket[i + 1];
+                // Well-formed <...> span found ahead: drop the whole thing in one jump.
+                // Otherwise (no more '>' anywhere after this '<'): it's a stray, unmatched
+                // bracket — drop just this one character and keep scanning normally.
+                i = closingBracket < length ? closingBracket + 1 : i + 1;
+            } else if (c == '>') {
+                // Stray '>' not consumed as the end of a tag above — drop it too.
+                i++;
+            } else {
+                result.append(c);
+                i++;
+            }
+        }
+        return result.toString();
     }
 }
