@@ -43,7 +43,8 @@ class GoogleAuthControllerTest {
 
     @Test
     void authenticate_setsCookieAndReturnsResponse() {
-        final AuthResponse.UserInfo ui = new AuthResponse.UserInfo(1L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "pivot-saas");
+        final AuthResponse.UserInfo ui =
+                new AuthResponse.UserInfo(1L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "pivot-saas", "fr");
         when(googleAuthService.authenticate(any(), anyString(), anyString()))
             .thenReturn(new GoogleAuthService.GoogleLoginResult("g-tok", 123L, 3600, ui, true));
 
@@ -63,7 +64,8 @@ class GoogleAuthControllerTest {
         // X-Forwarded-For is no longer trusted in app code (RemoteIpValve handles it at the
         // container, trusted-proxy aware). A spoofed header must not change the resolved IP.
         req.addHeader("X-Forwarded-For", "1.1.1.1, 2.2.2.2");
-        final AuthResponse.UserInfo ui = new AuthResponse.UserInfo(1L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "s");
+        final AuthResponse.UserInfo ui =
+                new AuthResponse.UserInfo(1L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "s", "fr");
         when(googleAuthService.authenticate(any(), eq("9.9.9.9"), anyString()))
             .thenReturn(new GoogleAuthService.GoogleLoginResult("g-tok", 1L, 60, ui, false));
 

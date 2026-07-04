@@ -51,7 +51,8 @@ class OidcAuthControllerTest {
 
     @Test
     void exchange_setsCookieAndReturnsResponse() {
-        final AuthResponse.UserInfo ui = new AuthResponse.UserInfo(1L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "acme");
+        final AuthResponse.UserInfo ui =
+                new AuthResponse.UserInfo(1L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "acme", "fr");
         when(oidcAuthService.exchange(any(), anyString(), anyString()))
             .thenReturn(new OidcAuthService.OidcLoginResult("o-tok", 123L, 3600, ui));
 

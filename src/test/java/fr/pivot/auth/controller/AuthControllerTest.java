@@ -67,7 +67,7 @@ class AuthControllerTest {
     }
 
     private AuthResponse.UserInfo userInfo() {
-        return new AuthResponse.UserInfo(1L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "pivot-saas");
+        return new AuthResponse.UserInfo(1L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "pivot-saas", "fr");
     }
 
     @Test
