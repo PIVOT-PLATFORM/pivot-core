@@ -5,6 +5,7 @@ import fr.pivot.account.dto.ProfileUpdateRequest;
 import fr.pivot.account.exception.AvatarTooLargeException;
 import fr.pivot.account.exception.EmailFieldNotAllowedException;
 import fr.pivot.account.exception.InvalidAvatarFormatException;
+import fr.pivot.account.exception.InvalidPreferredLanguageException;
 import fr.pivot.account.exception.InvalidProfileNameException;
 import fr.pivot.account.service.ProfileService;
 import fr.pivot.auth.entity.User;
@@ -92,7 +93,8 @@ public class AccountController {
     }
 
     /**
-     * Updates the authenticated user's {@code firstName}/{@code lastName}.
+     * Updates the authenticated user's {@code firstName}/{@code lastName} and, optionally,
+     * {@code preferredLanguage} (US02.1.2).
      *
      * <p>The body is read as a raw {@code Map} — not deserialized directly into
      * {@link ProfileUpdateRequest} — specifically so an {@code email} property can be detected
@@ -102,14 +104,20 @@ public class AccountController {
      * case-insensitive ({@code "Email"}/{@code "EMAIL"}/... all trigger the same rejection) so
      * the check cannot be bypassed by varying the JSON property casing. Email changes are out
      * of scope (US02.2.2) and must never be silently accepted or ignored. Any other unexpected
-     * property is silently dropped (only {@code firstName}/{@code lastName} are read) — not a
-     * security concern, since nothing but those two fields is ever passed to the service.
+     * property is silently dropped (only {@code firstName}/{@code lastName}/
+     * {@code preferredLanguage} are read) — not a security concern, since nothing but those
+     * fields is ever passed to the service.
+     *
+     * <p>{@code preferredLanguage} is optional: an absent key (or a non-string value) leaves
+     * the user's language unchanged. When present, it must be {@code fr} or {@code en}
+     * (case-insensitive) — any other value is rejected with {@code 400}, never defaulted.
      *
      * @param body    the raw request body
      * @param request incoming request (IP, User-Agent extraction for audit)
      * @return {@code 200} with the updated {@link ProfileDto} · {@code 400} on validation
-     *     failure (missing/blank/too-long name) or if an {@code email} property is present ·
-     *     {@code 401} if the authentication context is invalid
+     *     failure (missing/blank/too-long name, invalid {@code preferredLanguage}) or if an
+     *     {@code email} property is present · {@code 401} if the authentication context is
+     *     invalid
      */
     @PatchMapping("/profile")
     public ResponseEntity<ProfileDto> updateProfile(
@@ -124,7 +132,9 @@ public class AccountController {
         }
 
         final ProfileUpdateRequest req = new ProfileUpdateRequest(
-                asString(body.get("firstName")), asString(body.get("lastName")));
+                asString(body.get("firstName")),
+                asString(body.get("lastName")),
+                asString(body.get("preferredLanguage")));
         final ProfileDto dto = profileService.updateProfile(user, req);
         auditService.log(user, AuditService.PROFILE_UPDATED,
                 cookieHelper.clientIp(request), request.getHeader(HEADER_USER_AGENT));
@@ -185,6 +195,21 @@ public class AccountController {
         return ResponseEntity.badRequest().body(Map.of(
                 "error", "EMAIL_CHANGE_NOT_ALLOWED",
                 "message", "La modification de l'adresse email n'est pas prise en charge par cet endpoint."));
+    }
+
+    /**
+     * Translates an unsupported {@code preferredLanguage} value into {@code 400 Bad Request}
+     * (US02.1.2).
+     *
+     * @param ex the exception raised by {@link ProfileService}
+     * @return {@code 400} error body
+     */
+    @ExceptionHandler(InvalidPreferredLanguageException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidPreferredLanguage(
+            final InvalidPreferredLanguageException ex) {
+        return ResponseEntity.badRequest().body(Map.of(
+                "error", "INVALID_PREFERRED_LANGUAGE",
+                "message", "La langue préférée doit être 'fr' ou 'en'."));
     }
 
     /**

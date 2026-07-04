@@ -4,6 +4,7 @@ import fr.pivot.account.dto.ProfileDto;
 import fr.pivot.account.dto.ProfileUpdateRequest;
 import fr.pivot.account.exception.AvatarTooLargeException;
 import fr.pivot.account.exception.InvalidAvatarFormatException;
+import fr.pivot.account.exception.InvalidPreferredLanguageException;
 import fr.pivot.account.exception.InvalidProfileNameException;
 import fr.pivot.account.service.ProfileService;
 import fr.pivot.auth.entity.User;
@@ -84,7 +85,7 @@ class AccountControllerTest {
     void ac0211_01_getProfile_returns200WithDto() {
         final User user = buildUser(1L);
         setAuthentication(user);
-        final ProfileDto dto = new ProfileDto("Alice", "Martin", "alice@pivot.test", null);
+        final ProfileDto dto = new ProfileDto("Alice", "Martin", "alice@pivot.test", null, "fr");
         when(profileService.getProfile(user)).thenReturn(dto);
 
         final ResponseEntity<ProfileDto> response = controller.getProfile();
@@ -124,8 +125,8 @@ class AccountControllerTest {
         when(cookieHelper.clientIp(request)).thenReturn("127.0.0.1");
         when(request.getHeader("User-Agent")).thenReturn("test-agent");
         final Map<String, Object> body = Map.of("firstName", "Bob", "lastName", "Dupont");
-        final ProfileDto dto = new ProfileDto("Bob", "Dupont", "alice@pivot.test", null);
-        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont"))))
+        final ProfileDto dto = new ProfileDto("Bob", "Dupont", "alice@pivot.test", null, "fr");
+        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null))))
                 .thenReturn(dto);
 
         final ResponseEntity<ProfileDto> response = controller.updateProfile(body, request);
@@ -194,6 +195,66 @@ class AccountControllerTest {
     }
 
     // ----------------------------------------------------------------
+    // updateProfile — preferredLanguage (US02.1.2)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0212_01_updateProfile_forwardsPreferredLanguageToService() {
+        final User user = buildUser(1L);
+        setAuthentication(user);
+        when(cookieHelper.clientIp(request)).thenReturn("127.0.0.1");
+        when(request.getHeader("User-Agent")).thenReturn("test-agent");
+        final Map<String, Object> body =
+                Map.of("firstName", "Bob", "lastName", "Dupont", "preferredLanguage", "en");
+        final ProfileDto dto = new ProfileDto("Bob", "Dupont", "alice@pivot.test", null, "en");
+        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", "en"))))
+                .thenReturn(dto);
+
+        final ResponseEntity<ProfileDto> response = controller.updateProfile(body, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().preferredLanguage()).isEqualTo("en");
+    }
+
+    @Test
+    void ac0212_02_updateProfile_omitsPreferredLanguage_whenAbsentFromBody() {
+        final User user = buildUser(1L);
+        setAuthentication(user);
+        when(cookieHelper.clientIp(request)).thenReturn("127.0.0.1");
+        when(request.getHeader("User-Agent")).thenReturn("test-agent");
+        final Map<String, Object> body = Map.of("firstName", "Bob", "lastName", "Dupont");
+        final ProfileDto dto = new ProfileDto("Bob", "Dupont", "alice@pivot.test", null, "fr");
+        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null))))
+                .thenReturn(dto);
+
+        controller.updateProfile(body, request);
+
+        verify(profileService).updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null)));
+    }
+
+    @Test
+    void ac0212_err_updateProfile_propagatesInvalidPreferredLanguage() {
+        final User user = buildUser(1L);
+        setAuthentication(user);
+        final Map<String, Object> body =
+                Map.of("firstName", "Bob", "lastName", "Dupont", "preferredLanguage", "de");
+        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", "de"))))
+                .thenThrow(new InvalidPreferredLanguageException("La langue préférée doit être 'fr' ou 'en'."));
+
+        assertThatThrownBy(() -> controller.updateProfile(body, request))
+                .isInstanceOf(InvalidPreferredLanguageException.class);
+    }
+
+    @Test
+    void handleInvalidPreferredLanguage_shouldReturn400WithBody() {
+        final ResponseEntity<java.util.Map<String, Object>> response =
+                controller.handleInvalidPreferredLanguage(new InvalidPreferredLanguageException("bad value"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).containsEntry("error", "INVALID_PREFERRED_LANGUAGE");
+    }
+
+    // ----------------------------------------------------------------
     // uploadAvatar
     // ----------------------------------------------------------------
 
@@ -204,7 +265,7 @@ class AccountControllerTest {
         when(cookieHelper.clientIp(request)).thenReturn("127.0.0.1");
         when(request.getHeader("User-Agent")).thenReturn("test-agent");
         final MultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
-        final ProfileDto dto = new ProfileDto("Alice", "Martin", "alice@pivot.test", "/api/avatars/1/uuid.jpg");
+        final ProfileDto dto = new ProfileDto("Alice", "Martin", "alice@pivot.test", "/api/avatars/1/uuid.jpg", "fr");
         when(profileService.updateAvatar(eq(user), eq(file))).thenReturn(dto);
 
         final ResponseEntity<ProfileDto> response = controller.uploadAvatar(file, request);
