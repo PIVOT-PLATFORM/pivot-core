@@ -1,5 +1,13 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Supervision plateforme
+
+- **Liste des tenants pour les super-administrateurs** : nouvel écran de supervision permettant aux super-administrateurs de consulter tous les clients de la plateforme (nom, plan, mode d'authentification, statut, nombre d'utilisateurs, date de création), avec recherche par nom et filtres par statut, plan et mode d'authentification
+
+---
+
 ## [0.6.0] — 3 juillet 2026
 
 ### Registre des modules
