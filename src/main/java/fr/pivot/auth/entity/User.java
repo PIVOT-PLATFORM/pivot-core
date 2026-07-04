@@ -49,7 +49,13 @@ public class User {
     @Column(name = "oidc_subject", length = 500)
     private String oidcSubject;
 
-    /** Preferred UI language (i18n). Defaults to French. */
+    /**
+     * Preferred UI language (i18n). Defaults to French. {@code fr}/{@code en} only — enforced
+     * by the {@code chk_users_locale} DB constraint (V4 migration). Used both to localize
+     * transactional emails ({@code EmailService.toLocale}) and, since US02.1.2, exposed/
+     * editable via the account profile API as {@code preferredLanguage} — single source of
+     * truth for "the user's language", not one column per feature.
+     */
     @Column(nullable = false, length = 10)
     private String locale = "fr";
 
