@@ -120,4 +120,44 @@ public interface AccessTokenRepository extends JpaRepository<AccessToken, Long> 
         @Param("userId") Long userId,
         @Param("status") TokenStatus status,
         Pageable pageable);
+
+    /**
+     * Lists a user's sessions with a given status, most recently created first — backs
+     * {@code GET /api/account/sessions} (US02.2.3).
+     *
+     * @param userId the owning user
+     * @param status the lifecycle status to filter on (typically {@code ACTIVE})
+     * @return matching tokens ordered by {@code createdAt} descending
+     */
+    List<AccessToken> findByUserIdAndStatusOrderByCreatedAtDesc(Long userId, TokenStatus status);
+
+    /**
+     * Finds a token by id scoped to its owning user — used to verify ownership before revoking
+     * a specific session (US02.2.3). A token id that exists but belongs to another user must
+     * yield an empty result here, never leak details about the other user's token.
+     *
+     * @param id     the token primary key (path variable, untrusted)
+     * @param userId the current user's id (from the bearer token, never from the request)
+     * @return the token if it exists and belongs to {@code userId}, empty otherwise
+     */
+    Optional<AccessToken> findByIdAndUserId(Long id, Long userId);
+
+    /**
+     * Revokes all of a user's active sessions except one — backs
+     * {@code DELETE /api/account/sessions} ("revoke all other sessions", US02.2.3).
+     *
+     * @param userId    the user whose other sessions must be terminated
+     * @param currentId the token id to preserve (the caller's own current session)
+     * @param active    the active status value (passed as parameter to bypass JPQL literal)
+     * @param revoked   the revoked status value (passed as parameter to bypass JPQL literal)
+     * @return the number of tokens revoked
+     */
+    @Modifying
+    @Query("UPDATE AccessToken t SET t.status = :revoked, t.revokedAt = CURRENT_TIMESTAMP " +
+           "WHERE t.user.id = :userId AND t.status = :active AND t.id <> :currentId")
+    int revokeAllForUserExceptToken(
+        @Param("userId") Long userId,
+        @Param("currentId") Long currentId,
+        @Param("active") TokenStatus active,
+        @Param("revoked") TokenStatus revoked);
 }
