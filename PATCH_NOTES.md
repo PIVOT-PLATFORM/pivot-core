@@ -1,5 +1,15 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Espace compte
+
+- **Consulter et modifier son profil** : chaque utilisateur peut désormais consulter et modifier son prénom et son nom depuis son espace compte (la modification de l'adresse email n'est pas encore disponible ici et fera l'objet d'une fonctionnalité dédiée)
+- **Photo de profil** : possibilité d'ajouter ou de remplacer sa photo de profil (JPEG, PNG ou WEBP, 2 Mo maximum) ; sans photo, vos initiales s'affichent à la place
+- **Sécurité** : les prénoms et noms sont nettoyés de tout code indésirable avant d'être affichés à d'autres utilisateurs
+
+---
+
 ## [0.9.0] — 5 juillet 2026
 
 ### Espace compte

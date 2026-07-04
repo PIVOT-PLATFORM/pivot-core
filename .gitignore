@@ -24,6 +24,9 @@ jacoco.xml
 # ===== Docker =====
 docker-compose.override.yml
 
+# ===== US02.1.1 — avatar storage (local filesystem, default dev path) =====
+/data/avatars/
+
 # ===== IDE =====
 .idea/
 *.iml

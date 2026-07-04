@@ -36,6 +36,11 @@ spring:
           starttls:
             enable: false
 
+  servlet:
+    multipart:
+      max-file-size: 3MB
+      max-request-size: 3MB
+
 server:
   port: ${SERVER_PORT:8080}
   servlet:
@@ -81,3 +86,7 @@ pivot:
     # TTL reset mdp, TTL OTP appareil, durée confiance appareil : table feature_flags
   cleanup:
     tokens-cron: "-"  # disabled in test
+  storage:
+    avatars:
+      # Never write into the repo working directory during tests — system temp dir instead.
+      base-path: ${java.io.tmpdir:/tmp}/pivot-test-avatars

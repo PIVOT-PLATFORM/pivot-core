@@ -73,6 +73,10 @@ public class SecurityConfig {
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/auth/**").permitAll()
                     .requestMatchers(HttpMethod.POST, "/contact").permitAll()
+                    // US02.1.1 — avatar images served as a public static resource (unguessable
+                    // UUID filename, see AvatarWebConfig) so a plain <img src> works with no
+                    // per-request auth plumbing. GET only.
+                    .requestMatchers(HttpMethod.GET, "/avatars/**").permitAll()
                     .anyRequest().authenticated()
                 )
                 // Opaque token filter runs before Spring's default UsernamePasswordAuthenticationFilter
