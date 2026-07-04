@@ -135,6 +135,41 @@ class TokenServiceTest {
         assertThat(captor.getValue().getAuthMethod()).isEqualTo(AuthMethod.GOOGLE);
     }
 
+    @Test
+    void issue_stripsHtmlFromDeviceName_beforeStorage() {
+        // US02.2.3: the "device" field must be HTML-stripped before it ever reaches the DB.
+        when(tokenRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        tokenService.issue(user, "fp", "<script>evil()</script>Chrome", "ua", "ip", AuthMethod.PASSWORD, false);
+
+        final ArgumentCaptor<AccessToken> captor = ArgumentCaptor.forClass(AccessToken.class);
+        verify(tokenRepo).save(captor.capture());
+        assertThat(captor.getValue().getDeviceName()).isEqualTo("evil()Chrome");
+    }
+
+    @Test
+    void issue_truncatesDeviceNameTo200Chars_beforeStorage() {
+        when(tokenRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+        final String longDeviceName = "a".repeat(250);
+
+        tokenService.issue(user, "fp", longDeviceName, "ua", "ip", AuthMethod.PASSWORD, false);
+
+        final ArgumentCaptor<AccessToken> captor = ArgumentCaptor.forClass(AccessToken.class);
+        verify(tokenRepo).save(captor.capture());
+        assertThat(captor.getValue().getDeviceName()).hasSize(200);
+    }
+
+    @Test
+    void issue_toleratesNullDeviceName() {
+        when(tokenRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        tokenService.issue(user, null, null, "ua", "ip", AuthMethod.PASSWORD, false);
+
+        final ArgumentCaptor<AccessToken> captor = ArgumentCaptor.forClass(AccessToken.class);
+        verify(tokenRepo).save(captor.capture());
+        assertThat(captor.getValue().getDeviceName()).isNull();
+    }
+
     // ----------------------------------------------------------------
     // validate()
     // ----------------------------------------------------------------

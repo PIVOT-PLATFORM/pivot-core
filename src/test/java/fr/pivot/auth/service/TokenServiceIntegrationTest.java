@@ -234,6 +234,21 @@ class TokenServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(newToken.getIpAddress()).isEqualTo("10.0.0.1");
     }
 
+    @Test
+    void issue_stripsHtmlAndTruncatesDeviceName_inDb() {
+        // US02.2.3: "appareil" is HTML-stripped and truncated to 200 chars before storage.
+        final String maliciousLongName = "<script>evil()</script>" + "a".repeat(250);
+        final TokenService.TokenIssueResult result = tokenService.issue(
+            testUser, "fp-xss", maliciousLongName, "ua", "127.0.0.1", AuthMethod.PASSWORD, false);
+
+        final AccessToken saved = tokenRepo
+            .findByTokenHashAndStatus(CryptoUtils.sha256(result.rawToken()), TokenStatus.ACTIVE)
+            .orElseThrow();
+
+        assertThat(saved.getDeviceName()).doesNotContain("<", ">");
+        assertThat(saved.getDeviceName()).hasSize(200);
+    }
+
     // ----------------------------------------------------------------
     // TokenStatus AttributeConverter round-trip
     // ----------------------------------------------------------------
