@@ -28,6 +28,20 @@ public record TenantPageResponse(
         int size) {
 
     /**
+     * Copie défensive de {@code content} — évite qu'une liste mutable externe soit stockée
+     * (SpotBugs EI_EXPOSE_REP2) ou que la liste interne soit exposée en écriture (EI_EXPOSE_REP).
+     *
+     * @param content       éléments de la page courante
+     * @param totalElements nombre total d'éléments toutes pages confondues
+     * @param totalPages    nombre total de pages
+     * @param number        index de la page courante (0-based)
+     * @param size          taille de page demandée
+     */
+    public TenantPageResponse {
+        content = List.copyOf(content);
+    }
+
+    /**
      * Construit l'enveloppe à partir d'une {@link Page} Spring Data de {@link TenantSummaryDto}.
      *
      * @param page page source
