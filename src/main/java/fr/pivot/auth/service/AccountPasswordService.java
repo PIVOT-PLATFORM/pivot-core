@@ -10,12 +10,14 @@ import fr.pivot.auth.mapper.UserMapper;
 import fr.pivot.auth.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 
 /**
  * Handles the authenticated "change my password" flow (US02.2.1) — distinct from
@@ -53,10 +55,14 @@ public class AccountPasswordService {
     private static final Logger LOG = LoggerFactory.getLogger(AccountPasswordService.class);
 
     /**
-     * Shared verbatim between the 401 and 429 responses — anti-enumeration: identical wording
-     * regardless of which of the two conditions actually triggered.
+     * Message-bundle key for the text shared verbatim between the 401 and 429 responses —
+     * anti-enumeration: identical wording regardless of which of the two conditions actually
+     * triggered. Resolved via {@link MessageSource} (bundle {@code messages.properties}) rather
+     * than a hardcoded literal, the same mechanism {@link EmailService} uses for every other
+     * user-facing string in this codebase — kept in French regardless of the caller's locale, on
+     * a par with the flow's current (non-localized) behaviour.
      */
-    static final String WRONG_PASSWORD_MESSAGE = "Mot de passe actuel incorrect";
+    private static final String AUTH_FAILURE_MESSAGE_KEY = "account.change-password.auth-failure";
 
     private static final int MAX_ATTEMPTS = 5;
     private static final Duration WINDOW = Duration.ofMinutes(15);
@@ -67,6 +73,7 @@ public class AccountPasswordService {
     private final EmailService emailService;
     private final RateLimiterService rateLimiter;
     private final AuditService auditService;
+    private final MessageSource messageSource;
 
     /**
      * Constructs the service with its required collaborators.
@@ -77,6 +84,7 @@ public class AccountPasswordService {
      * @param emailService    sends the "password changed" confirmation email
      * @param rateLimiter     sliding-window rate limiter backed by Redis
      * @param auditService    async audit event logger
+     * @param messageSource   resolves the shared anti-enumeration message text
      */
     public AccountPasswordService(
             final UserRepository userRepo,
@@ -84,13 +92,24 @@ public class AccountPasswordService {
             final TokenService tokenService,
             final EmailService emailService,
             final RateLimiterService rateLimiter,
-            final AuditService auditService) {
+            final AuditService auditService,
+            final MessageSource messageSource) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
         this.tokenService = tokenService;
         this.emailService = emailService;
         this.rateLimiter = rateLimiter;
         this.auditService = auditService;
+        this.messageSource = messageSource;
+    }
+
+    /**
+     * Resolves the shared anti-enumeration message text (identical for the 401 and 429 cases).
+     *
+     * @return the message text, always in French — this flow does not vary by caller locale
+     */
+    private String authFailureMessage() {
+        return messageSource.getMessage(AUTH_FAILURE_MESSAGE_KEY, null, Locale.FRENCH);
     }
 
     /**
@@ -122,18 +141,18 @@ public class AccountPasswordService {
                 rateLimiter.getRemainingSeconds(ipBucket));
             LOG.warn("event=CHANGE_PASSWORD_RATE_LIMITED userId={}", userId);
             throw new ChangePasswordRateLimitException(
-                WRONG_PASSWORD_MESSAGE, Math.max(retryAfter, 1L));
+                authFailureMessage(), Math.max(retryAfter, 1L));
         }
 
         final User user = userRepo.findById(userId)
-            .orElseThrow(() -> new InvalidCurrentPasswordException(WRONG_PASSWORD_MESSAGE));
+            .orElseThrow(() -> new InvalidCurrentPasswordException(authFailureMessage()));
 
         if (!passwordEncoder.matches(req.currentPassword(), user.getPasswordHash())) {
             rateLimiter.recordAttempt(userBucket, WINDOW);
             rateLimiter.recordAttempt(ipBucket, WINDOW);
             auditService.log(user, AuditService.CHANGE_PASSWORD_FAILED, ip, userAgent);
             LOG.warn("event=CHANGE_PASSWORD_FAILED reason=bad_current_password userId={}", userId);
-            throw new InvalidCurrentPasswordException(WRONG_PASSWORD_MESSAGE);
+            throw new InvalidCurrentPasswordException(authFailureMessage());
         }
 
         rateLimiter.reset(userBucket);

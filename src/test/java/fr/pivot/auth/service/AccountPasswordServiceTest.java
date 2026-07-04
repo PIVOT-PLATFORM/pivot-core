@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.MessageSource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Duration;
@@ -68,6 +69,7 @@ class AccountPasswordServiceTest {
     @Mock private EmailService emailService;
     @Mock private RateLimiterService rateLimiter;
     @Mock private AuditService auditService;
+    @Mock private MessageSource messageSource;
     @Mock private User user;
     @Mock private Tenant tenant;
 
@@ -75,7 +77,11 @@ class AccountPasswordServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AccountPasswordService(userRepo, passwordEncoder, tokenService, emailService, rateLimiter, auditService);
+        service = new AccountPasswordService(
+            userRepo, passwordEncoder, tokenService, emailService, rateLimiter, auditService, messageSource);
+
+        when(messageSource.getMessage(eq("account.change-password.auth-failure"), any(), eq(Locale.FRENCH)))
+            .thenReturn(WRONG_PASSWORD_MESSAGE);
 
         when(rateLimiter.changePasswordUserBucket(USER_ID.toString())).thenReturn(USER_BUCKET);
         when(rateLimiter.changePasswordIpBucket(IP)).thenReturn(IP_BUCKET);
