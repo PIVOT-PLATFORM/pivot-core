@@ -35,6 +35,16 @@ spring:
     use-code-as-default-message: false
     fallback-to-system-locale: false
 
+  jackson:
+    deserialization:
+      # Jackson 3.x flipped this default to false (silently ignore unknown JSON properties) —
+      # explicitly re-enabled: a spoofed field (e.g. userId/tenantId/accountId smuggled into an
+      # /api/account/* or /api/admin/* request body) must be rejected with 400, never silently
+      # dropped. Verified by AccountControllerIntegrationTest (US02.2.1). Per-DTO
+      # @JsonIgnoreProperties(ignoreUnknown = false) does NOT reliably override this Jackson 3.x
+      # mapper-level default — the global setting is the only lever that works.
+      fail-on-unknown-properties: true
+
   mail:
     host: ${SPRING_MAIL_HOST:localhost}
     port: ${SPRING_MAIL_PORT:1025}

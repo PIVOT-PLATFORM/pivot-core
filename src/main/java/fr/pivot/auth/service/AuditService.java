@@ -84,6 +84,8 @@ public class AuditService {
     public static final String EMAIL_VERIFIED = "auth.email_verified";
     public static final String PASSWORD_RESET_REQUEST = "auth.password_reset_request";
     public static final String PASSWORD_RESET = "auth.password_reset";
+    public static final String CHANGE_PASSWORD = "auth.change_password";
+    public static final String CHANGE_PASSWORD_FAILED = "auth.change_password_failed";
     public static final String GOOGLE_LINKED = "auth.google_linked";
     public static final String DEVICE_OTP_SENT = "auth.device_otp_sent";
     public static final String DEVICE_VERIFIED = "auth.device_verified";

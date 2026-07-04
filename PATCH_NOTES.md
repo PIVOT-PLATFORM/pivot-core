@@ -1,5 +1,16 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Espace compte
+
+- **Changer son mot de passe** : depuis votre espace compte, vous pouvez désormais changer votre mot de passe en confirmant votre mot de passe actuel — le nouveau mot de passe doit respecter la politique de robustesse en vigueur
+- **Sécurité renforcée à chaque changement** : toutes vos autres sessions actives (autres appareils, autres navigateurs) sont automatiquement déconnectées, tandis que votre session en cours reste active sans interruption
+- **Email de confirmation** : un email vous est envoyé à chaque changement de mot de passe réussi, avec la date et l'adresse IP à l'origine du changement, pour vous permettre de détecter rapidement une activité suspecte
+- **Protection contre les tentatives répétées** : au-delà de 5 tentatives infructueuses en 15 minutes, l'accès à cette fonctionnalité est temporairement limité
+
+---
+
 ## [0.8.0] — 5 juillet 2026
 
 ### Administration des utilisateurs
