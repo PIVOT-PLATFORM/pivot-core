@@ -60,7 +60,7 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(final HttpServletRequest request,
                                     final HttpServletResponse response,
                                     final FilterChain chain) throws ServletException, IOException {
-        final String rawToken = extractBearerToken(request);
+        final String rawToken = cookieHelper.extractBearerToken(request);
 
         if (rawToken != null) {
             tokenService.validate(rawToken).ifPresent(token -> {
@@ -89,15 +89,6 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
-
-    private String extractBearerToken(final HttpServletRequest request) {
-        final String authHeader = request.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            final String token = authHeader.substring(7).trim();
-            return token.isBlank() ? null : token;
-        }
-        return null;
-    }
 
     private void authenticateRequest(final User user) {
         final var auth = new UsernamePasswordAuthenticationToken(
