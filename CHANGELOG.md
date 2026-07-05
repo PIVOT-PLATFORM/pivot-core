@@ -1,3 +1,10 @@
+# [0.15.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.14.0...v0.15.0) (2026-07-05)
+
+
+### Features
+
+* **api:** super admin désactive un tenant (US06.2.2) ([#135](https://github.com/PIVOT-PLATFORM/pivot-core/issues/135)) ([e1a6155](https://github.com/PIVOT-PLATFORM/pivot-core/commit/e1a61559aadfa4550faa4e9bfa715b6ee8023f51)), closes [TokenService#validate](https://github.com/TokenService/issues/validate) [#126](https://github.com/PIVOT-PLATFORM/pivot-core/issues/126)
+
 # [0.14.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.13.0...v0.14.0) (2026-07-05)
 
 
