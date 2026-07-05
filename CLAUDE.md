@@ -191,7 +191,7 @@ Travail organisé par sprint. Référence : **`pivot-docs/docs/backlog/SPRINTS.m
 **Principes :**
 - **Une branche par US / Enabler** — `feat/{us-id}-{slug}` (ex. `feat/us03-1-1-admin-active-module`)
 - **Agents en parallèle** — un agent par item du sprint, branches séparées
-- **Backlog pivot-docs sur la branche courante** — SPRINTS.md + PATCH_NOTES.md committés sur la branche de l'item (pas de branche docs séparée)
+- **Backlog pivot-docs sur la branche courante** — SPRINTS.md committé sur la branche de l'item (pas de branche docs séparée)
 
 ## Workflow — Autoloop PR par US
 
@@ -257,7 +257,7 @@ Rapporter ✅ ou stderr complet. Toute erreur ou warning non justifié = **stop,
 **Règles :**
 - Jamais de travail direct sur `main`
 - **Une branche = un item de sprint** (US ou Enabler)
-- **Backlog pivot-docs et PATCH_NOTES.md committés sur la branche de l'item courant**
+- **Backlog pivot-docs committé sur la branche de l'item courant**
 - Rebase avant merge → squash WIP
 - `git push --force-with-lease` uniquement sur branches de travail
 
@@ -469,18 +469,6 @@ Rôles portés via claims OIDC ou assignés localement. Le mapping claims → r�
 
 ---
 
-## Releases — PATCH_NOTES.md
-
-`PATCH_NOTES.md` (situé à la racine de `pivot-core/`) est mis à jour **dans chaque PR** (embarqué avec le code) :
-- Ajouter les changements notables dans la section `## [Unreleased]` en tête de fichier
-- Rédigé en **français**, pour l'utilisateur final — pas le développeur
-- Langage naturel — pas de référence aux commits ou tickets
-- Après la release SR : le script `.scripts/prepare-patch-notes.sh` renomme `[Unreleased]` automatiquement
-- Fichier maintenu en place, **jamais de fichiers datés**
-- **Exception** : PRs `chore` / `ci` / `docs` sans impact utilisateur visible — pas de mise à jour PATCH_NOTES
-
----
-
 ## Audits
 
 Dans **pivot-docs** — un fichier par catégorie, mis à jour en place. **Jamais de fichiers datés.**
@@ -565,7 +553,7 @@ Charger `skill-pr-reviewer` avant d'écrire le commentaire.
 | Architecture (Controller/Service/Repository/DTO, JavaDoc) | /25 | |
 | Traçabilité AC (AC → test, coverage Gate 2) | /25 | |
 | Sécurité (isolation tenant, secrets, test cross-tenant) | /25 | |
-| Qualité (Checkstyle/SpotBugs verts, PATCH_NOTES) | /25 | |
+| Qualité (Checkstyle/SpotBugs verts) | /25 | |
 
 ### Traçabilité AC
 | AC | Implémentation | Test | Statut |
