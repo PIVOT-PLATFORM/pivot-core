@@ -233,6 +233,27 @@ class AccountControllerTest {
     }
 
     @Test
+    void ac0212_02_updateProfile_treatsNonStringPreferredLanguageAsAbsent() {
+        final User user = buildUser(1L);
+        setAuthentication(user);
+        when(cookieHelper.clientIp(request)).thenReturn("127.0.0.1");
+        when(request.getHeader("User-Agent")).thenReturn("test-agent");
+        // A non-string JSON value (e.g. a number) for preferredLanguage is not a valid
+        // fr/en value to validate — asString() treats it the same as an absent key
+        // (no-op), never a 400. See AccountController#asString javadoc.
+        final Map<String, Object> body =
+                Map.of("firstName", "Bob", "lastName", "Dupont", "preferredLanguage", 42);
+        final ProfileDto dto = new ProfileDto("Bob", "Dupont", "alice@pivot.test", null, "fr");
+        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null))))
+                .thenReturn(dto);
+
+        final ResponseEntity<ProfileDto> response = controller.updateProfile(body, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(profileService).updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null)));
+    }
+
+    @Test
     void ac0212_err_updateProfile_propagatesInvalidPreferredLanguage() {
         final User user = buildUser(1L);
         setAuthentication(user);
