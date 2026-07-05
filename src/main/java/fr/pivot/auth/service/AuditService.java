@@ -112,4 +112,6 @@ public class AuditService {
     public static final String MODULE_DEACTIVATED = "module.deactivated";
     public static final String PROFILE_UPDATED = "account.profile_updated";
     public static final String AVATAR_UPDATED = "account.avatar_updated";
+    /** RGPD Art. 20 — logged when a user requests a personal-data export (US02.3.1). */
+    public static final String DATA_EXPORT_REQUESTED = "account.data_export_requested";
 }

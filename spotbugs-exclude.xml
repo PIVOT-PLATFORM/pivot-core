@@ -40,9 +40,17 @@
                  beans singleton constructeur-injectés (ProfileService, AuditService,
                  CookieHelper, UserRepository, AvatarStorageService, AvatarStorageProperties —
                  record de configuration immuable). -->
+            <!-- Export de données personnelles (RGPD Art. 20, US02.3.1) : DataExportRequest est
+                 une entité JPA (getters/setters mutables requis par Hibernate) ; le service et le
+                 contrôleur stockent des beans singleton constructeur-injectés (repositories,
+                 AuditService, EmailService, ExportArchiveBuilder, ExportStorageService,
+                 CookieHelper) ; ExportBundle est un porteur de données interne (record) qui
+                 expose des listes déjà considérées immuables côté appelant. -->
             <Package name="fr.pivot.account.controller"/>
             <Package name="fr.pivot.account.service"/>
             <Package name="fr.pivot.account.config"/>
+            <Package name="fr.pivot.account.entity"/>
+            <Package name="fr.pivot.account.scheduler"/>
         </Or>
     </Match>
 

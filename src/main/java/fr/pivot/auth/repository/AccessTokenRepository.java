@@ -160,4 +160,13 @@ public interface AccessTokenRepository extends JpaRepository<AccessToken, Long> 
         @Param("currentId") Long currentId,
         @Param("active") TokenStatus active,
         @Param("revoked") TokenStatus revoked);
+
+    /**
+     * Returns all sessions (any status) for a user, most recent first — feeds the "sessions"
+     * section of the RGPD Art. 20 personal-data export (US02.3.1).
+     *
+     * @param userId the export owner
+     * @return every session ever issued for this user
+     */
+    List<AccessToken> findByUserIdOrderByCreatedAtDesc(Long userId);
 }
