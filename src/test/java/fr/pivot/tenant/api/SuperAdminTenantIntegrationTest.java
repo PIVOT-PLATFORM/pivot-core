@@ -1,6 +1,12 @@
 package fr.pivot.tenant.api;
 
 import fr.pivot.AbstractIntegrationTest;
+import fr.pivot.auth.entity.User;
+import fr.pivot.auth.exception.RateLimitException;
+import fr.pivot.auth.repository.AuditEventRepository;
+import fr.pivot.auth.repository.UserRepository;
+import fr.pivot.auth.service.AuditService;
+import fr.pivot.auth.service.RateLimiterService;
 import fr.pivot.tenant.entity.Tenant;
 import fr.pivot.tenant.repository.TenantRepository;
 import java.util.List;
@@ -27,13 +33,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Tests d'intégration (PostgreSQL via Testcontainers, contexte Spring réel) pour
- * {@code GET /api/superadmin/tenants} — traçabilité US06.2.3.
+ * Tests d'intégration (PostgreSQL + Redis réels, contexte Spring réel) pour {@code GET
+ * /api/superadmin/tenants} (US06.2.3), {@code POST /api/superadmin/tenants} et {@code GET
+ * /api/superadmin/tenants/check-slug} (US06.2.1).
  *
  * <p>Exerce {@link SuperAdminTenantService} au travers du proxy Spring Method Security réel
  * ({@code @EnableMethodSecurity} dans {@code SecurityConfig}), même motif que
- * {@code AdminModuleActivationIntegrationTest} : {@code @PreAuthorize} n'est significatif
- * que si le bean est résolu via {@code @Autowired} (proxifié), jamais instancié directement.
+ * {@code AdminModuleActivationIntegrationTest} : {@code @PreAuthorize} n'est significatif que si
+ * le bean est résolu via {@code @Autowired} (proxifié), jamais instancié directement.
+ *
+ * <p>Le rate limiter Redis n'est pas mocké ici (contrairement à {@code
+ * SuperAdminTenantServiceTest}) — le bucket du super admin de seed est explicitement remis à
+ * zéro avant/après chaque test pour rester déterministe malgré l'instance Redis partagée entre
+ * classes de test.
  *
  * <table>
  *   <caption>Traçabilité AC → test</caption>
@@ -59,11 +71,31 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *           {@link #ac_security_http_deniesWith403_whenCallerUnauthenticated()}</td></tr>
  *   <tr><td>Pageable.size plafonné ({@code PaginationConfig})</td>
  *       <td>{@link #ac_pageSize_isCappedAtGlobalMaximum_whenCallerRequestsExcessiveSize()}</td></tr>
+ *   <tr><td>Crée un tenant avec is_active: true</td>
+ *       <td>{@link #ac_create_persistsTenant_withIsActiveTrue()}</td></tr>
+ *   <tr><td>Réponse retourne l'ID et une URL d'invitation</td>
+ *       <td>{@link #ac_create_returnsIdAndInvitationUrl()}</td></tr>
+ *   <tr><td>Audit event TenantCreated</td>
+ *       <td>{@link #ac_create_logsTenantCreatedAuditEvent()}</td></tr>
+ *   <tr><td>Slug unique (409 si doublon)</td>
+ *       <td>{@link #ac_slugUnique_throwsConflict_onDuplicate()}</td></tr>
+ *   <tr><td>Slug réservé → 422</td>
+ *       <td>{@link #ac_reservedSlug_throwsUnprocessable()}</td></tr>
+ *   <tr><td>Rate limit 10/heure → 429 + audit</td>
+ *       <td>{@link #ac_rateLimit_after10CreationsInHour_throwsAndLogsAudit()}</td></tr>
+ *   <tr><td>check-slug disponible/réservé/pris</td>
+ *       <td>{@link #ac_checkSlug_available_whenFreeAndValid()},
+ *           {@link #ac_checkSlug_reserved_whenSlugIsReservedWord()},
+ *           {@link #ac_checkSlug_taken_whenSlugAlreadyExists()}</td></tr>
+ *   <tr><td>check-slug requiert ROLE_SUPER_ADMIN</td>
+ *       <td>{@link #ac_checkSlug_deniesAccess_whenCallerIsRoleAdmin()}</td></tr>
  * </table>
  */
 class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
 
     private static final String ENDPOINT = "/superadmin/tenants";
+    private static final String IP = "127.0.0.1";
+    private static final String USER_AGENT = "junit-it";
 
     @Autowired
     private SuperAdminTenantService superAdminTenantService;
@@ -72,10 +104,19 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
     private TenantRepository tenantRepository;
 
     @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private AuditEventRepository auditEventRepository;
+
+    @Autowired
+    private RateLimiterService rateLimiterService;
+
+    @Autowired
     private WebApplicationContext webApplicationContext;
 
     private Tenant pivotSaas;
-
+    private User superAdmin;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -88,16 +129,29 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .apply(springSecurity())
                 .build();
+        superAdmin = userRepository
+                .findByTenantIdAndEmailAndDeletedAtIsNull(pivotSaas.getId(), "super_admin@pivot.test")
+                .orElseThrow();
+        rateLimiterService.reset(rateLimiterService.tenantCreationBucket(String.valueOf(superAdmin.getId())));
     }
 
     @AfterEach
     void tearDown() {
+        // Tenant-scoped audit events must be deleted before their tenant (fk_audit_tenant is
+        // ON DELETE RESTRICT — RGPD Art. 5.2 accountability, no cascading delete by design).
         // IT-created tenants must not leak into other test methods of this class (no per-tenant
         // isolation query here by design — the endpoint is deliberately cross-tenant) nor into
         // other IT classes reusing the same Testcontainers instance across the module.
-        tenantRepository.findAll().stream()
+        final List<Tenant> createdByThisTest = tenantRepository.findAll().stream()
                 .filter(tenant -> !tenant.getId().equals(pivotSaas.getId()))
-                .forEach(tenantRepository::delete);
+                .toList();
+        final List<Long> createdIds = createdByThisTest.stream().map(Tenant::getId).toList();
+        auditEventRepository.findAll().stream()
+                .filter(event -> event.getTenant() != null && createdIds.contains(event.getTenant().getId()))
+                .forEach(auditEventRepository::delete);
+        tenantRepository.deleteAll(createdByThisTest);
+
+        rateLimiterService.reset(rateLimiterService.tenantCreationBucket(String.valueOf(superAdmin.getId())));
         SecurityContextHolder.clearContext();
     }
 
@@ -112,6 +166,10 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> superAdminTenantService.listTenants(
                 null, null, null, null, PageRequest.of(0, 20)))
                 .isInstanceOf(AccessDeniedException.class);
+
+        assertThatThrownBy(() -> superAdminTenantService.createTenant(
+                requestFor("rbac-it-denied"), superAdmin, IP, USER_AGENT))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     @Test
@@ -122,6 +180,19 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
                 null, null, null, null, PageRequest.of(0, 20));
 
         assertThat(result).isNotNull();
+
+        final CreateTenantResponse response =
+                superAdminTenantService.createTenant(requestFor("rbac-it-allowed"), superAdmin, IP, USER_AGENT);
+
+        assertThat(response).isNotNull();
+    }
+
+    @Test
+    void ac_checkSlug_deniesAccess_whenCallerIsRoleAdmin() {
+        setAuthentication("ROLE_ADMIN");
+
+        assertThatThrownBy(() -> superAdminTenantService.checkSlugAvailability("some-slug"))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     // ----------------------------------------------------------------
@@ -299,6 +370,126 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
     }
 
     // ----------------------------------------------------------------
+    // Création — champs, is_active, URL d'invitation, audit
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac_create_persistsTenant_withIsActiveTrue() {
+        setAuthentication("ROLE_SUPER_ADMIN");
+
+        final CreateTenantResponse response =
+                superAdminTenantService.createTenant(requestFor("active-it-tenant"), superAdmin, IP, USER_AGENT);
+
+        final Tenant persisted = tenantRepository.findById(response.id()).orElseThrow();
+        assertThat(persisted.isActive()).isTrue();
+        assertThat(persisted.getSlug()).isEqualTo("active-it-tenant");
+        assertThat(persisted.getAuthMode()).isEqualTo("LOCAL");
+        assertThat(persisted.getPlan()).isEqualTo("SAAS");
+    }
+
+    @Test
+    void ac_create_returnsIdAndInvitationUrl() {
+        setAuthentication("ROLE_SUPER_ADMIN");
+
+        final CreateTenantResponse response =
+                superAdminTenantService.createTenant(requestFor("invite-it-tenant"), superAdmin, IP, USER_AGENT);
+
+        assertThat(response.id()).isNotNull();
+        assertThat(response.invitationUrl()).contains("invite-it-tenant");
+    }
+
+    @Test
+    void ac_create_logsTenantCreatedAuditEvent() {
+        setAuthentication("ROLE_SUPER_ADMIN");
+
+        final CreateTenantResponse response =
+                superAdminTenantService.createTenant(requestFor("audit-it-tenant"), superAdmin, IP, USER_AGENT);
+
+        final boolean found = auditEventRepository.findAll().stream()
+                .anyMatch(event -> AuditService.TENANT_CREATED.equals(event.getEventType())
+                        && event.getTenant() != null
+                        && event.getTenant().getId().equals(response.id()));
+        assertThat(found).isTrue();
+    }
+
+    // ----------------------------------------------------------------
+    // Slug — unicité (409) et réservé (422)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac_slugUnique_throwsConflict_onDuplicate() {
+        setAuthentication("ROLE_SUPER_ADMIN");
+        superAdminTenantService.createTenant(requestFor("dup-it-tenant"), superAdmin, IP, USER_AGENT);
+
+        assertThatThrownBy(() -> superAdminTenantService.createTenant(
+                requestFor("dup-it-tenant"), superAdmin, IP, USER_AGENT))
+                .isInstanceOf(TenantSlugAlreadyExistsException.class);
+    }
+
+    @Test
+    void ac_reservedSlug_throwsUnprocessable() {
+        setAuthentication("ROLE_SUPER_ADMIN");
+
+        assertThatThrownBy(() -> superAdminTenantService.createTenant(
+                requestFor("system"), superAdmin, IP, USER_AGENT))
+                .isInstanceOf(ReservedTenantSlugException.class);
+    }
+
+    // ----------------------------------------------------------------
+    // Rate limit — 10/heure, 429 + audit (Redis réel)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac_rateLimit_after10CreationsInHour_throwsAndLogsAudit() {
+        setAuthentication("ROLE_SUPER_ADMIN");
+        for (int i = 0; i < 10; i++) {
+            superAdminTenantService.createTenant(requestFor("rl-it-tenant-" + i), superAdmin, IP, USER_AGENT);
+        }
+
+        assertThatThrownBy(() -> superAdminTenantService.createTenant(
+                requestFor("rl-it-tenant-eleventh"), superAdmin, IP, USER_AGENT))
+                .isInstanceOf(RateLimitException.class);
+
+        final boolean rateLimitAuditLogged = auditEventRepository.findAll().stream()
+                .anyMatch(event -> AuditService.TENANT_CREATION_RATE_LIMIT_EXCEEDED.equals(event.getEventType()));
+        assertThat(rateLimitAuditLogged).isTrue();
+    }
+
+    // ----------------------------------------------------------------
+    // check-slug
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac_checkSlug_available_whenFreeAndValid() {
+        setAuthentication("ROLE_SUPER_ADMIN");
+
+        final SlugAvailabilityResponse response = superAdminTenantService.checkSlugAvailability("brand-new-it-slug");
+
+        assertThat(response.available()).isTrue();
+    }
+
+    @Test
+    void ac_checkSlug_reserved_whenSlugIsReservedWord() {
+        setAuthentication("ROLE_SUPER_ADMIN");
+
+        final SlugAvailabilityResponse response = superAdminTenantService.checkSlugAvailability("auth");
+
+        assertThat(response.available()).isFalse();
+        assertThat(response.reason()).isEqualTo("RESERVED");
+    }
+
+    @Test
+    void ac_checkSlug_taken_whenSlugAlreadyExists() {
+        setAuthentication("ROLE_SUPER_ADMIN");
+        superAdminTenantService.createTenant(requestFor("taken-it-slug"), superAdmin, IP, USER_AGENT);
+
+        final SlugAvailabilityResponse response = superAdminTenantService.checkSlugAvailability("taken-it-slug");
+
+        assertThat(response.available()).isFalse();
+        assertThat(response.reason()).isEqualTo("TAKEN");
+    }
+
+    // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
 
@@ -311,6 +502,10 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
         tenant.setAuthMode(authMode);
         tenant.setActive(active);
         return tenantRepository.save(tenant);
+    }
+
+    private static CreateTenantRequest requestFor(final String slug) {
+        return new CreateTenantRequest("IT Tenant " + slug, slug, "SAAS", "LOCAL");
     }
 
     private void setAuthentication(final String role) {

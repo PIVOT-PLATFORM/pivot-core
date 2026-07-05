@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,6 +35,7 @@ class AuditServiceTest {
     @Mock private AuditService self;
     @Mock private User user;
     @Mock private Tenant tenant;
+    @Mock private Tenant otherTenant;
 
     private AuditService service;
 
@@ -98,5 +100,37 @@ class AuditServiceTest {
     void log_convenience_handlesNullUser() {
         service.log(null, AuditService.LOGIN_FAILED, "3.4.5.6", "ua");
         verify(self).log(isNull(), isNull(), eq(AuditService.LOGIN_FAILED), eq("3.4.5.6"), eq("ua"), isNull());
+    }
+
+    // ----------------------------------------------------------------
+    // log(User, Tenant, eventType, ip, userAgent) — explicit-tenant overload (US06.2.1)
+    // ----------------------------------------------------------------
+
+    @Test
+    void log_explicitTenant_usesGivenTenant_notUsersOwnTenant_whenNoActiveTransaction() {
+        service.log(user, otherTenant, AuditService.TENANT_CREATED, "1.2.3.4", "ua");
+
+        // otherTenant, not user.getTenant() (== tenant) — the whole point of this overload.
+        verify(self).log(eq(user), eq(otherTenant), eq(AuditService.TENANT_CREATED), eq("1.2.3.4"), eq("ua"), isNull());
+    }
+
+    @Test
+    void log_explicitTenant_registersAfterCommit_whenInActiveTransaction() {
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+
+        service.log(user, otherTenant, AuditService.TENANT_CREATED, "2.3.4.5", "ua");
+
+        verify(self, never()).log(any(), any(), any(), any(), any(), any());
+
+        // Invoke the registered afterCompletion hook (simulates transaction commit) — dispatch is
+        // deferred to afterCompletion(int), not afterCommit(), so the write still happens even if
+        // the enclosing transaction rolls back (see AuditService#log(User, Tenant, String, String,
+        // String) JavaDoc). This is what lets a REQUIRES_NEW write see a row (here, otherTenant)
+        // inserted earlier in the same, still-open enclosing transaction.
+        new ArrayList<>(TransactionSynchronizationManager.getSynchronizations())
+            .forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+
+        verify(self).log(eq(user), eq(otherTenant), eq(AuditService.TENANT_CREATED), eq("2.3.4.5"), eq("ua"), isNull());
     }
 }

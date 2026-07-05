@@ -93,4 +93,7 @@ public class RateLimiterService {
     public String changePasswordIpBucket(String ip) { return "change-password:ip:" + ip; }
     public String emailChangeUserBucket(String userId) { return "email-change:user:" + userId; }
     public String emailChangeConfirmIpBucket(String ip) { return "email-change-confirm:ip:" + ip; }
+
+    /** Bucket for POST /api/superadmin/tenants — keyed by SUPER_ADMIN account id (US06.2.1). */
+    public String tenantCreationBucket(String superAdminId) { return "tenant-creation:superadmin:" + superAdminId; }
 }

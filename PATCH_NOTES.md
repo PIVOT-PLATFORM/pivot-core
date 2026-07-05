@@ -1,5 +1,15 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Gestion des tenants
+
+- **Création de tenant par un super administrateur** : les super administrateurs de la plateforme peuvent désormais créer un nouveau tenant (nom, identifiant unique, plan, mode d'authentification) — le tenant est immédiatement actif et une URL d'invitation pour son premier administrateur est fournie en retour
+- **Identifiant de tenant protégé** : l'identifiant choisi ne peut pas entrer en conflit avec un tenant existant, ni reprendre un terme réservé de la plateforme (`api`, `admin`, `superadmin`, `auth`, `actuator`, `health`, `system`, `pivot`) — une vérification de disponibilité en temps réel est disponible pendant la saisie
+- **Protection contre les abus** : la création de tenants est limitée à 10 par heure et par compte super administrateur, avec un événement tracé dans le journal d'audit en cas de dépassement
+
+---
+
 ## [0.13.0] — 5 juillet 2026
 
 ### Export de vos données personnelles
