@@ -208,17 +208,25 @@ class AccountEmailControllerIntegrationTest extends AbstractIntegrationTest {
     void ac0222_requestChange_unexpectedUserIdField_isIgnoredOrRejected_neverAppliedAsIdentity() throws Exception {
         // No matter how Jackson handles the unknown field, the identity used must remain the
         // bearer-token user (testUser), never the spoofed id — asserted via the DB side effect.
-        mockMvc.perform(post(REQUEST_URL)
+        // Since fail-on-unknown-properties=true is enabled globally (see AccountPasswordService /
+        // US02.2.1), the request is rejected outright (400) rather than silently ignored (2xx) —
+        // both are acceptable here, the only unacceptable outcome is the spoofed id being applied.
+        final int status = mockMvc.perform(post(REQUEST_URL)
                 .header(AUTHORIZATION_HEADER, BEARER_PREFIX + rawToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"newEmail":"spoofed@pivot.test","currentPassword":"%s","userId":999}
                     """.formatted(CURRENT_PASSWORD)))
-            .andExpect(status().is2xxSuccessful());
+            .andReturn().getResponse().getStatus();
 
         final java.util.List<EmailChangeRequest> requests = emailChangeRepo.findAllByUserId(testUser.getId());
-        assertThat(requests).hasSize(1);
-        assertThat(requests.get(0).getUser().getId()).isEqualTo(testUser.getId());
+        if (status >= 200 && status < 300) {
+            assertThat(requests).hasSize(1);
+            assertThat(requests.get(0).getUser().getId()).isEqualTo(testUser.getId());
+        } else {
+            assertThat(status).isEqualTo(400);
+            assertThat(requests).isEmpty();
+        }
     }
 
     // ---------------- POST /account/email — authentication required ----------------
