@@ -40,3 +40,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_der_token_hash ON data_export_requests (to
 -- Purge planifiée des archives expirées (ExportCleanupScheduler)
 CREATE INDEX IF NOT EXISTS idx_der_status_expires ON data_export_requests (status, expires_at)
     WHERE status = 'ready';
+
+-- Ferme la fenêtre TOCTOU applicative : deux POST /api/account/export quasi simultanés
+-- pourraient tous deux passer le check "pas de pending/processing" (DataExportService
+-- #createPendingRequest) avant que l'un des deux inserts ne commit. Cette contrainte
+-- partielle garantit au plus une ligne pending/processing par utilisateur au niveau BDD ;
+-- le second INSERT concurrent lève DataIntegrityViolationException, traduite en 409 côté service.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_der_user_one_active ON data_export_requests (user_id)
+    WHERE status IN ('pending', 'processing');
