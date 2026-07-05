@@ -2,8 +2,10 @@ package fr.pivot.tenant.api;
 
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.RateLimitException;
+import fr.pivot.auth.service.AuditService;
 import fr.pivot.auth.web.GlobalExceptionHandler;
 import fr.pivot.config.CookieHelper;
+import fr.pivot.tenant.entity.Tenant;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -27,13 +29,16 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -41,13 +46,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Tests unitaires (dispatch HTTP complet via MockMvc standalone, sans contexte Spring) pour
- * {@link SuperAdminTenantController} — US06.2.3 « Super admin liste tous les tenants » et
- * US06.2.1 « Super admin crée un tenant ».
+ * {@link SuperAdminTenantController} — US06.2.3 « Super admin liste tous les tenants »,
+ * US06.2.1 « Super admin crée un tenant » et US06.2.2 « Super admin désactive un tenant ».
  *
  * <p>Vérifie : liaison des paramètres de requête (filtres + pagination) vers le service, forme
  * JSON de l'enveloppe {@link TenantPageResponse}, validation bean (400), mapping exception →
- * statut (409, 422, 429 via {@link GlobalExceptionHandler}), le repli 401 quand le contexte de
- * sécurité ne porte aucun détail {@link User}, et le happy path (201/200).
+ * statut (404, 409, 422, 429 via {@link GlobalExceptionHandler} ou des handlers locaux), le
+ * repli 401 quand le contexte de sécurité ne porte aucun détail {@link User}, et le happy path
+ * (201/200).
  *
  * <p>Le RBAC ({@code @PreAuthorize} porté par {@link SuperAdminTenantService}) n'est pas exercé
  * ici (service mocké, hors proxy Spring Security) — couvert par
@@ -62,6 +68,9 @@ class SuperAdminTenantControllerTest {
     private SuperAdminTenantService superAdminTenantService;
 
     @Mock
+    private AuditService auditService;
+
+    @Mock
     private CookieHelper cookieHelper;
 
     private MockMvc mockMvc;
@@ -69,7 +78,7 @@ class SuperAdminTenantControllerTest {
     @BeforeEach
     void setUp() {
         final SuperAdminTenantController controller =
-                new SuperAdminTenantController(superAdminTenantService, cookieHelper);
+                new SuperAdminTenantController(superAdminTenantService, auditService, cookieHelper);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -286,6 +295,99 @@ class SuperAdminTenantControllerTest {
     }
 
     // ----------------------------------------------------------------
+    // PATCH /superadmin/tenants/{tenantId}/status — désactivation (US06.2.2)
+    // ----------------------------------------------------------------
+
+    @Test
+    void updateStatus_returns401_whenNoAuthenticatedUserInSecurityContext() throws Exception {
+        SecurityContextHolder.clearContext();
+
+        mockMvc.perform(patch("/superadmin/tenants/{tenantId}/status", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isUnauthorized());
+
+        verify(superAdminTenantService, never()).updateStatus(any(), any());
+    }
+
+    @Test
+    void updateStatus_returns200_andLogsAuditWithTenantIdAndActorId_whenSuccessful() throws Exception {
+        setAuthenticatedActor(99L);
+        final Tenant tenant = mockTenant(7L);
+        when(superAdminTenantService.updateStatus(7L, "INACTIVE")).thenReturn(tenant);
+        when(cookieHelper.clientIp(any())).thenReturn("127.0.0.1");
+
+        mockMvc.perform(patch("/superadmin/tenants/{tenantId}/status", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tenantId").value(7))
+                .andExpect(jsonPath("$.status").value("INACTIVE"));
+
+        verify(superAdminTenantService).updateStatus(7L, "INACTIVE");
+        verify(auditService).log(any(User.class), eq(tenant), eq(AuditService.TENANT_DEACTIVATED),
+                eq("127.0.0.1"), any(), contains("\"tenantId\":7"));
+        verify(auditService).log(any(User.class), eq(tenant), eq(AuditService.TENANT_DEACTIVATED),
+                anyString(), any(), contains("\"actorId\":99"));
+    }
+
+    @Test
+    void updateStatus_returns400_whenStatusFieldIsBlank() throws Exception {
+        setAuthenticatedActor(1L);
+
+        mockMvc.perform(patch("/superadmin/tenants/{tenantId}/status", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(superAdminTenantService, never()).updateStatus(any(), any());
+    }
+
+    @Test
+    void updateStatus_returns404_withExplicitError_whenTenantNotFound() throws Exception {
+        setAuthenticatedActor(1L);
+        when(superAdminTenantService.updateStatus(7L, "INACTIVE"))
+                .thenThrow(new TenantNotFoundException(7L));
+
+        mockMvc.perform(patch("/superadmin/tenants/{tenantId}/status", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("TENANT_NOT_FOUND"));
+
+        verify(auditService, never()).log(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateStatus_returns403_withExplicitMessage_whenTargetIsSystemTenant() throws Exception {
+        setAuthenticatedActor(1L);
+        when(superAdminTenantService.updateStatus(1L, "INACTIVE"))
+                .thenThrow(new SystemTenantProtectedException(1L));
+
+        mockMvc.perform(patch("/superadmin/tenants/{tenantId}/status", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("SYSTEM_TENANT_PROTECTED"))
+                .andExpect(jsonPath("$.message").isNotEmpty());
+
+        verify(auditService, never()).log(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateStatus_returns400_whenStatusValueUnsupported() throws Exception {
+        setAuthenticatedActor(1L);
+        when(superAdminTenantService.updateStatus(7L, "ACTIVE"))
+                .thenThrow(new UnsupportedTenantStatusException("ACTIVE"));
+
+        mockMvc.perform(patch("/superadmin/tenants/{tenantId}/status", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("UNSUPPORTED_TENANT_STATUS"));
+    }
+
+    // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
 
@@ -300,5 +402,23 @@ class SuperAdminTenantControllerTest {
                 "super-admin-test", null, List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN")));
         auth.setDetails(user);
         SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
+    private static void setAuthenticatedActor(final Long actorId) {
+        final User actor = mock(User.class);
+        // Lenient: only the success path actually reads getId() (for the audit meta) —
+        // error-path tests authenticate a valid actor without exercising that call.
+        lenient().when(actor.getId()).thenReturn(actorId);
+
+        final UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                "super-admin@pivot.test", null, List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN")));
+        auth.setDetails(actor);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
+    private static Tenant mockTenant(final Long tenantId) {
+        final Tenant tenant = mock(Tenant.class);
+        when(tenant.getId()).thenReturn(tenantId);
+        return tenant;
     }
 }

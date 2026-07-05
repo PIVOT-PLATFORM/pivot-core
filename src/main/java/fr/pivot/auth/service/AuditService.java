@@ -137,4 +137,7 @@ public class AuditService {
     public static final String DATA_EXPORT_REQUESTED = "account.data_export_requested";
     public static final String TENANT_CREATED = "tenant.created";
     public static final String TENANT_CREATION_RATE_LIMIT_EXCEEDED = "tenant.creation_rate_limit_exceeded";
+
+    /** Audit event US06.2.2 — a super admin deactivated a tenant (bulk session revocation). */
+    public static final String TENANT_DEACTIVATED = "tenant.deactivated";
 }

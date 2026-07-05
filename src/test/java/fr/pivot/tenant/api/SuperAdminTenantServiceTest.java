@@ -39,7 +39,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * Tests unitaires pour {@link SuperAdminTenantService} — US06.2.3 « Super admin liste tous les
- * tenants » et US06.2.1 « Super admin crée un tenant ».
+ * tenants », US06.2.1 « Super admin crée un tenant » et US06.2.2 « Super admin désactive un
+ * tenant ».
  *
  * <p>Le RBAC ({@code @PreAuthorize}) n'est pas exercé ici (service instancié directement, hors
  * proxy Spring) — couvert par {@link SuperAdminTenantIntegrationTest}. Rate limiting exercé avec
@@ -74,6 +75,12 @@ import static org.mockito.Mockito.when;
  *       <td>{@link #checkSlugAvailability_returnsTaken_whenSlugAlreadyExists()}</td></tr>
  *   <tr><td>check-slug — format invalide</td>
  *       <td>{@link #checkSlugAvailability_returnsInvalidFormat_whenSlugFailsRegex()}</td></tr>
+ *   <tr><td>Désactivation — révocation bulk + timestamp posé</td>
+ *       <td>{@link #updateStatus_shouldDeactivateTenant_andStampInvalidationTimestamp()}</td></tr>
+ *   <tr><td>Désactivation — tenant introuvable → 404</td>
+ *       <td>{@link #updateStatus_shouldThrowTenantNotFound_whenTenantMissing()}</td></tr>
+ *   <tr><td>Désactivation — protection du tenant système → 403</td>
+ *       <td>{@link #updateStatus_shouldThrowSystemTenantProtected_whenTargetIsSystemTenant()}</td></tr>
  * </table>
  */
 @ExtendWith(MockitoExtension.class)
@@ -85,6 +92,8 @@ class SuperAdminTenantServiceTest {
     private static final String AUTH_MODE_LOCAL = "LOCAL";
     private static final String IP = "127.0.0.1";
     private static final String USER_AGENT = "junit";
+    private static final Long TENANT_ID = 42L;
+    private static final String SYSTEM_SLUG = "pivot-saas";
 
     @Mock private TenantRepository tenantRepository;
     @Mock private UserRepository userRepository;
@@ -96,7 +105,8 @@ class SuperAdminTenantServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SuperAdminTenantService(tenantRepository, userRepository, rateLimiter, auditService, APP_URL);
+        service = new SuperAdminTenantService(
+                tenantRepository, userRepository, rateLimiter, auditService, APP_URL, SYSTEM_SLUG);
         superAdmin = new User();
         when(rateLimiter.tenantCreationBucket(any())).thenCallRealMethod();
         when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);
@@ -291,6 +301,80 @@ class SuperAdminTenantServiceTest {
         assertThat(response.available()).isFalse();
         assertThat(response.reason()).isEqualTo("INVALID_FORMAT");
     }
+
+    // ----------------------------------------------------------------
+    // updateStatus — US06.2.2
+    // ----------------------------------------------------------------
+
+    @Test
+    void updateStatus_shouldDeactivateTenant_andStampInvalidationTimestamp() {
+        final Tenant tenant = new Tenant();
+        tenant.setSlug("acme");
+        tenant.setActive(true);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(tenant));
+        when(tenantRepository.saveAndFlush(tenant)).thenReturn(tenant);
+
+        final Tenant result = service.updateStatus(TENANT_ID, "INACTIVE");
+
+        assertThat(result.isActive()).isFalse();
+        assertThat(result.getTenantInvalidationTimestamp()).isNotNull();
+        verify(tenantRepository).saveAndFlush(tenant);
+    }
+
+    @Test
+    void updateStatus_shouldThrowTenantNotFound_whenTenantMissing() {
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateStatus(TENANT_ID, "INACTIVE"))
+                .isInstanceOf(TenantNotFoundException.class);
+
+        verify(tenantRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void updateStatus_shouldThrowSystemTenantProtected_whenTargetIsSystemTenant() {
+        final Tenant systemTenant = new Tenant();
+        systemTenant.setSlug(SYSTEM_SLUG);
+        systemTenant.setActive(true);
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(systemTenant));
+
+        assertThatThrownBy(() -> service.updateStatus(TENANT_ID, "INACTIVE"))
+                .isInstanceOf(SystemTenantProtectedException.class);
+
+        verify(tenantRepository, never()).saveAndFlush(any());
+        // Untouched by the rejected attempt.
+        assertThat(systemTenant.isActive()).isTrue();
+        assertThat(systemTenant.getTenantInvalidationTimestamp()).isNull();
+    }
+
+    @Test
+    void updateStatus_shouldMatchSystemTenantSlug_caseInsensitively() {
+        final Tenant systemTenant = new Tenant();
+        systemTenant.setSlug(SYSTEM_SLUG.toUpperCase());
+        when(tenantRepository.findById(TENANT_ID)).thenReturn(Optional.of(systemTenant));
+
+        assertThatThrownBy(() -> service.updateStatus(TENANT_ID, "INACTIVE"))
+                .isInstanceOf(SystemTenantProtectedException.class);
+    }
+
+    @Test
+    void updateStatus_shouldThrowUnsupportedStatus_whenStatusIsNotInactive() {
+        assertThatThrownBy(() -> service.updateStatus(TENANT_ID, "ACTIVE"))
+                .isInstanceOf(UnsupportedTenantStatusException.class);
+
+        // Rejected before even looking up the tenant.
+        verify(tenantRepository, never()).findById(any());
+    }
+
+    @Test
+    void updateStatus_shouldThrowUnsupportedStatus_whenStatusIsBlankOrUnknown() {
+        assertThatThrownBy(() -> service.updateStatus(TENANT_ID, "deleted"))
+                .isInstanceOf(UnsupportedTenantStatusException.class);
+    }
+
+    // ----------------------------------------------------------------
+    // Helpers
+    // ----------------------------------------------------------------
 
     private static Tenant buildTenant(final Long id, final String slug, final String name) {
         final Tenant tenant = new Tenant();
