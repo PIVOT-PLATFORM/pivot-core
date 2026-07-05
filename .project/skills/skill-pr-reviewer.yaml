@@ -47,10 +47,6 @@ review_dimensions:
       - "Pas de code mort (imports inutilisés, méthodes non appelées)"
       - "Pas de magic string — constantes nommées"
 
-  patch_notes:
-    rule: "PATCH_NOTES.md mis à jour si changement visible utilisateur (section [Unreleased])"
-    exception: "PRs chore/ci/docs sans impact utilisateur exemptées"
-
 ---
 
 gate_scoring:
@@ -65,7 +61,7 @@ gate_scoring:
     architecture_25pts: "Controller/Service/Repository/DTO respectés, JavaDoc présente"
     ac_traceability_25pts: "Tous les ACs tracés, tests nommés avec identifiant AC"
     security_25pts: "Isolation tenant, pas de secret, endpoints admin protégés, test cross-tenant"
-    quality_25pts: "Checkstyle/SpotBugs verts, pas de TODO, PATCH_NOTES à jour"
+    quality_25pts: "Checkstyle/SpotBugs verts, pas de TODO"
     thresholds:
       merge_autonome: "≥ 85 — merge sans intervention humaine"
       merge_documente: "60–84 — merge avec commentaire breakdown obligatoire"
@@ -95,7 +91,6 @@ gate_checklist:
     - "Aucun AC orphelin (dans l'US mais absent des tests)"
     - "tenantId/userId jamais dans body ou header custom"
     - "Test TI cross-tenant présent sur chaque endpoint admin"
-    - "PATCH_NOTES.md mis à jour si changement utilisateur"
     - "Gitleaks clean"
     - "Checkstyle + SpotBugs verts"
     - "Score Gate 4 posté en commentaire PR (jamais de fichier committé)"
