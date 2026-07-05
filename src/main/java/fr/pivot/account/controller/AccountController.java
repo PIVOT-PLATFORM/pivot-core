@@ -49,7 +49,7 @@ import org.springframework.web.multipart.MultipartFile;
  * {@code anyRequest().authenticated()} — no {@code @PreAuthorize} role restriction needed,
  * any authenticated user may view/edit their own profile).
  */
-@RestController
+@RestController("accountProfileController")
 @RequestMapping("/account")
 public class AccountController {
 
