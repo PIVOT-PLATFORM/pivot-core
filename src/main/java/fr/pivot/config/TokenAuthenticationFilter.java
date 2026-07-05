@@ -34,9 +34,23 @@ import java.util.List;
  *
  * <p>Requests with no or invalid token proceed unauthenticated — route-level security
  * is enforced by {@link SecurityConfig#filterChain}.
+ *
+ * <p>The {@link fr.pivot.auth.entity.AccessToken} id resolved while validating the request is
+ * also exposed as the {@value #CURRENT_TOKEN_ID_ATTRIBUTE} request attribute, so downstream
+ * controllers that need to know "which session is this request using" (e.g. the active-sessions
+ * self-service screen) can read it directly instead of re-validating the same bearer token a
+ * second time against the database.
  */
 @Component
 public class TokenAuthenticationFilter extends OncePerRequestFilter {
+
+    /**
+     * Request attribute carrying the {@link fr.pivot.auth.entity.AccessToken#getId()} of the
+     * token that authenticated the current request, once this filter has run. Absent (never set)
+     * when the request has no valid bearer token.
+     */
+    public static final String CURRENT_TOKEN_ID_ATTRIBUTE =
+        TokenAuthenticationFilter.class.getName() + ".currentTokenId";
 
     private static final Logger LOG = LoggerFactory.getLogger(TokenAuthenticationFilter.class);
 
@@ -65,6 +79,7 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
         if (rawToken != null) {
             tokenService.validate(rawToken).ifPresent(token -> {
                 authenticateRequest(token.getUser());
+                request.setAttribute(CURRENT_TOKEN_ID_ATTRIBUTE, token.getId());
 
                 // Inline rotation when remaining TTL < admin-configured threshold.
                 // rotate() returns empty if the token was already revoked by a concurrent

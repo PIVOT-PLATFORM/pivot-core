@@ -1,11 +1,9 @@
 package fr.pivot.auth.controller;
 
 import fr.pivot.auth.dto.SessionDto;
-import fr.pivot.auth.entity.AccessToken;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.service.SessionService;
-import fr.pivot.auth.service.TokenService;
-import fr.pivot.config.CookieHelper;
+import fr.pivot.config.TokenAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,9 +31,10 @@ import java.util.List;
  * {@link fr.pivot.config.TokenAuthenticationFilter}), never from a path/query/body value.
  *
  * <p>The current session's {@link fr.pivot.auth.entity.AccessToken} id is not carried by the
- * {@link Authentication} populated by the filter (only the resolved {@link User} is), so it is
- * re-resolved here from the same {@code Authorization: Bearer} header via
- * {@link TokenService#validate(String)} — an extra DB read, on this low-traffic screen only.
+ * {@link Authentication} populated by the filter (only the resolved {@link User} is). Rather than
+ * re-validating the same bearer token a second time against the database, it is read from the
+ * {@value TokenAuthenticationFilter#CURRENT_TOKEN_ID_ATTRIBUTE} request attribute that
+ * {@link TokenAuthenticationFilter} already populates while authenticating the request.
  */
 @RestController
 @RequestMapping("/api/account/sessions")
@@ -44,23 +43,14 @@ public class SessionController {
     private static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
     private final SessionService sessionService;
-    private final TokenService tokenService;
-    private final CookieHelper cookieHelper;
 
     /**
-     * Constructs the controller with its required service collaborators.
+     * Constructs the controller with its required service collaborator.
      *
      * @param sessionService manages listing and revocation of active sessions
-     * @param tokenService   resolves the current request's {@link fr.pivot.auth.entity.AccessToken}
-     * @param cookieHelper   shared Bearer-token extraction helper
      */
-    public SessionController(
-            final SessionService sessionService,
-            final TokenService tokenService,
-            final CookieHelper cookieHelper) {
+    public SessionController(final SessionService sessionService) {
         this.sessionService = sessionService;
-        this.tokenService = tokenService;
-        this.cookieHelper = cookieHelper;
     }
 
     /**
@@ -127,13 +117,14 @@ public class SessionController {
     }
 
     /**
-     * Resolves the {@link fr.pivot.auth.entity.AccessToken} id backing the current request,
-     * or {@code null} if it cannot be resolved (never fails the request — used on the read path
+     * Resolves the {@link fr.pivot.auth.entity.AccessToken} id backing the current request from
+     * the {@link TokenAuthenticationFilter#CURRENT_TOKEN_ID_ATTRIBUTE} request attribute, or
+     * {@code null} if it cannot be resolved (never fails the request — used on the read path
      * where a missing {@code isCurrent} flag is preferable to a hard error).
      */
     private Long resolveCurrentTokenId(final HttpServletRequest http) {
-        final String rawToken = cookieHelper.extractBearerToken(http);
-        return tokenService.validate(rawToken).map(AccessToken::getId).orElse(null);
+        final Object attribute = http.getAttribute(TokenAuthenticationFilter.CURRENT_TOKEN_ID_ATTRIBUTE);
+        return attribute instanceof Long tokenId ? tokenId : null;
     }
 
     /**
