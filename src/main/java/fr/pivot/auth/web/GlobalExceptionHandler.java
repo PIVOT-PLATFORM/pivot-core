@@ -1,6 +1,8 @@
 package fr.pivot.auth.web;
 
 import fr.pivot.auth.exception.ChangePasswordRateLimitException;
+import fr.pivot.auth.exception.EmailChangeTargetTakenException;
+import fr.pivot.auth.exception.EmailChangeTokenException;
 import fr.pivot.auth.exception.InvalidCurrentPasswordException;
 import fr.pivot.auth.exception.RateLimitException;
 import fr.pivot.core.modules.UnknownModuleException;
@@ -77,5 +79,33 @@ public class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.NOT_FOUND)
             .body(Map.of("code", "MODULE_NOT_FOUND"));
+    }
+
+    /**
+     * Translates a rejected {@code GET /account/email/confirm} token (US02.2.2) to its HTTP
+     * status and {@code code} — {@link EmailChangeTokenException.Reason#ALREADY_USED} maps to
+     * 410 Gone per AC ("second click → 410 Gone"), the other two reasons to 400. The frontend
+     * uses the {@code code} to pick the right screen (e.g. a dedicated "link expired, request a
+     * new one" page for {@code EMAIL_CHANGE_TOKEN_EXPIRED}).
+     */
+    @ExceptionHandler(EmailChangeTokenException.class)
+    public ResponseEntity<Map<String, Object>> handleEmailChangeToken(final EmailChangeTokenException ex) {
+        final HttpStatus status = ex.getReason() == EmailChangeTokenException.Reason.ALREADY_USED
+            ? HttpStatus.GONE
+            : HttpStatus.BAD_REQUEST;
+        return ResponseEntity
+            .status(status)
+            .body(Map.of("code", "EMAIL_CHANGE_TOKEN_" + ex.getReason().name()));
+    }
+
+    /**
+     * Returns 409 when the new address was claimed by a different account between the
+     * confirmation link being issued and clicked (see {@link EmailChangeTargetTakenException}).
+     */
+    @ExceptionHandler(EmailChangeTargetTakenException.class)
+    public ResponseEntity<Map<String, Object>> handleEmailChangeTargetTaken(final EmailChangeTargetTakenException ex) {
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(Map.of("code", "EMAIL_CHANGE_TARGET_TAKEN"));
     }
 }

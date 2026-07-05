@@ -50,8 +50,12 @@ public class SecurityConfig {
     /**
      * Configures the security filter chain.
      *
-     * <p>Public routes: actuator health/info, CORS preflight, all {@code /auth/**} endpoints.
-     * All other routes require a valid opaque token validated by {@link TokenAuthenticationFilter}.
+     * <p>Public routes: actuator health/info, CORS preflight, all {@code /auth/**} endpoints,
+     * and {@code GET /account/email/confirm} — the email-change confirmation link (US02.2.2)
+     * is opened from an emailed link and must work even without an active PIVOT session on
+     * that device; identity there comes solely from the single-use token, never from a bearer
+     * token. All other routes require a valid opaque token validated by
+     * {@link TokenAuthenticationFilter}.
      *
      * @param http Spring Security HTTP configuration
      * @return configured {@link SecurityFilterChain}
@@ -72,6 +76,7 @@ public class SecurityConfig {
                     .requestMatchers("/actuator/health", "/actuator/info", "/error").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/auth/**").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/account/email/confirm").permitAll()
                     .requestMatchers(HttpMethod.POST, "/contact").permitAll()
                     // US02.1.1 — avatar images served as a public static resource (unguessable
                     // UUID filename, see AvatarWebConfig) so a plain <img src> works with no

@@ -82,6 +82,7 @@ pivot:
     session-cookie-name: pivot_session
     device-cookie-name: pivot_device
     verification-ttl-hours: 24
+    email-change-ttl-hours: 24
     secure-cookie: false
     # TTL reset mdp, TTL OTP appareil, durée confiance appareil : table feature_flags
   cleanup:

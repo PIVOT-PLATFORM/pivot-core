@@ -91,4 +91,6 @@ public class RateLimiterService {
     public String contactIpBucket(String ip) { return "contact:ip:" + ip; }
     public String changePasswordUserBucket(String userId) { return "change-password:user:" + userId; }
     public String changePasswordIpBucket(String ip) { return "change-password:ip:" + ip; }
+    public String emailChangeUserBucket(String userId) { return "email-change:user:" + userId; }
+    public String emailChangeConfirmIpBucket(String ip) { return "email-change-confirm:ip:" + ip; }
 }
