@@ -12,6 +12,7 @@ import fr.pivot.auth.util.CryptoUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -172,8 +173,12 @@ public class EmailChangeService {
      * @param userAgent browser user-agent — audit
      * @throws RateLimitException             429 if the per-IP rate limit is exceeded
      * @throws EmailChangeTokenException      400/410 on invalid, expired or already-used token
-     * @throws EmailChangeTargetTakenException 409 if the address was claimed by someone else
-     *                                          in the meantime
+     * @throws EmailChangeTargetTakenException 409 if the address was claimed by someone else in
+     *                                          the meantime — including the narrow race where
+     *                                          two concurrent confirmations both pass the
+     *                                          existsBy pre-check and only one wins the
+     *                                          {@code idx_users_tenant_email} unique constraint
+     *                                          on flush
      */
     @Transactional
     public void confirmEmailChange(final String rawToken, final String ip, final String userAgent) {
@@ -214,7 +219,19 @@ public class EmailChangeService {
         }
 
         user.setEmail(newEmail);
-        userRepo.save(user);
+        try {
+            // Flushed immediately (not deferred to commit) so a concurrent confirmation that
+            // also raced past the existsBy check above — two links for the same target,
+            // confirmed within the same instant — surfaces here as a catchable exception instead
+            // of failing the transaction commit after this method has already returned. The
+            // unique index idx_users_tenant_email (tenant_id, email) is the actual source of
+            // truth; the existsBy check above is only a fast path that narrows the race window.
+            userRepo.saveAndFlush(user);
+        } catch (final DataIntegrityViolationException ex) {
+            LOG.warn("event=EMAIL_CHANGE_TARGET_TAKEN_RACE userId={}", user.getId());
+            auditService.log(user, AuditService.EMAIL_CHANGE_TARGET_TAKEN, ip, userAgent);
+            throw new EmailChangeTargetTakenException();
+        }
 
         emailService.sendEmailChangedNotificationEmail(
             oldEmail, user.getFirstName(), oldEmail, newEmail, now, ip, EmailService.toLocale(user.getLocale()));

@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
@@ -306,9 +307,27 @@ class EmailChangeServiceTest {
         service.confirmEmailChange("tok", "ip", "ua");
 
         verify(user).setEmail(NEW_EMAIL);
-        verify(userRepo).save(user);
+        verify(userRepo).saveAndFlush(user);
         verify(emailService).sendEmailChangedNotificationEmail(
             eq("old@x.com"), eq("Alice"), eq("old@x.com"), eq(NEW_EMAIL), any(Instant.class), eq("ip"), eq(Locale.FRENCH));
         verify(auditService).log(user, AuditService.EMAIL_CHANGE_CONFIRMED, "ip", "ua");
+    }
+
+    @Test
+    void confirmEmailChange_throwsTargetTaken_whenConcurrentConfirmationWinsUniqueConstraintRace() {
+        // Two confirmations for the same target address both pass the existsBy pre-check
+        // (TOCTOU window) — only one wins the idx_users_tenant_email unique constraint on
+        // flush. The loser must get the same clean 409 as the pre-check branch, not a raw 500.
+        final EmailChangeRequest ecr = pendingRequest("tok", Instant.now().plusSeconds(600));
+        when(emailChangeRepo.findByTokenHash(CryptoUtils.sha256("tok"))).thenReturn(Optional.of(ecr));
+        when(emailChangeRepo.markUsed(any(), any())).thenReturn(1);
+        when(userRepo.existsByTenantIdAndEmailAndDeletedAtIsNull(TENANT_ID, NEW_EMAIL)).thenReturn(false);
+        when(userRepo.saveAndFlush(user)).thenThrow(new DataIntegrityViolationException("idx_users_tenant_email"));
+
+        assertThatThrownBy(() -> service.confirmEmailChange("tok", "ip", "ua"))
+            .isInstanceOf(EmailChangeTargetTakenException.class);
+
+        verify(emailService, never()).sendEmailChangedNotificationEmail(any(), any(), any(), any(), any(), any(), any());
+        verify(auditService).log(user, AuditService.EMAIL_CHANGE_TARGET_TAKEN, "ip", "ua");
     }
 }
