@@ -116,6 +116,12 @@ public class GoogleAuthService {
                 byEmail.setGoogleId(googleId);
                 user = userRepo.save(byEmail);
                 auditService.log(user, AuditService.GOOGLE_LINKED, ip, userAgent);
+            } else if (userRepo.existsByTenantIdAndEmail(tenant.getId(), email)) {
+                // A row already holds this (tenant, email) but is soft-deleted (US02.2.4
+                // PENDING_DELETION or already purged) — never resurrect it under a fresh row.
+                // The idx_users_tenant_email unique index is not partial, so falling through to
+                // the INSERT below would otherwise throw a raw DataIntegrityViolationException.
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Compte désactivé");
             } else {
                 user = new User();
                 user.setTenant(tenant);

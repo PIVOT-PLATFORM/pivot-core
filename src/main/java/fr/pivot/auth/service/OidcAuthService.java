@@ -166,7 +166,16 @@ public class OidcAuthService {
                     throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Provisionnement automatique désactivé pour ce tenant");
                 }
-                return createOidcUser(tenant, subject, email.toLowerCase(), firstName, lastName,
+                final String normalizedEmail = email.toLowerCase();
+                if (userRepo.existsByTenantIdAndEmail(tenant.getId(), normalizedEmail)) {
+                    // A row already holds this (tenant, email) but is soft-deleted (US02.2.4
+                    // PENDING_DELETION or already purged) — never resurrect it under a fresh
+                    // JIT-provisioned row. idx_users_tenant_email is not partial, so falling
+                    // through to the INSERT below would otherwise throw a raw
+                    // DataIntegrityViolationException instead of a clean 403.
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Compte désactivé");
+                }
+                return createOidcUser(tenant, subject, normalizedEmail, firstName, lastName,
                     config.getDefaultRole(), avatarUrl);
             });
 
