@@ -626,6 +626,21 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void ac0614Sec03_throwsAccessDenied_whenCallerIsRoleUser() {
+        // Symétrique de ac0613Sec04 (US06.1.3) : @PreAuthorize("hasRole('ADMIN')") est porté par
+        // AdminUserService#updateStatus lui-même, effectivement évalué par le proxy Spring Method
+        // Security — un porteur ROLE_USER est rejeté avant toute lecture en base.
+        final User target = createUser(tenantAId, "victim-status@tenant-a.test", "Victim", "One", "ROLE_USER", true, false);
+        setAuthentication("ROLE_USER");
+
+        assertThatThrownBy(() ->
+                adminUserService.updateStatus(tenantAId, 999L, target.getId(), AssignableStatus.INACTIVE))
+                .isInstanceOf(AccessDeniedException.class);
+
+        assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
     void ac0615_01_reactivatesInactiveUser_persistsActive() {
         final User admin = createUser(tenantAId, "admin-status4@tenant-a.test", "Admin", "Four", "ROLE_ADMIN", true, false);
         final User target = createUser(tenantAId, "target-status4@tenant-a.test", "Target", "Four", "ROLE_USER", false, false);
