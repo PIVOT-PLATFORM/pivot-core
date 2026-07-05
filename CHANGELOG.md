@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.9.0...v0.10.0) (2026-07-05)
+
+
+### Features
+
+* **api:** voir et éditer son profil (US02.1.1) ([#129](https://github.com/PIVOT-PLATFORM/pivot-core/issues/129)) ([08416bd](https://github.com/PIVOT-PLATFORM/pivot-core/commit/08416bd09297e70dea1cf74d0ff044152e200d38)), closes [ProfileService#updateAvatar](https://github.com/ProfileService/issues/updateAvatar) [#128](https://github.com/PIVOT-PLATFORM/pivot-core/issues/128)
+
 # [0.9.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.8.0...v0.9.0) (2026-07-05)
 
 
