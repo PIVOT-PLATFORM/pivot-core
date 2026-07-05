@@ -137,6 +137,11 @@ pivot:
     rate-limit-hours: ${PIVOT_EXPORT_RATE_LIMIT_HOURS:24}
     download-ttl-hours: ${PIVOT_EXPORT_DOWNLOAD_TTL_HOURS:24}
     cleanup-cron: "0 30 2 * * *"  # Nightly 02:30 — overridable via env PIVOT_EXPORT_CLEANUP_CRON
+  tenant:
+    # Slug of the tenant hosting ROLE_SUPER_ADMIN accounts (US06.2.2). This tenant can never
+    # be deactivated via PATCH /api/superadmin/tenants/{id}/status — configurable rather than
+    # a hardcoded id so a self-hosted deployment can rename/re-provision it.
+    system-tenant-slug: ${PIVOT_SYSTEM_TENANT_SLUG:pivot-saas}
 
 modules:
   cache:

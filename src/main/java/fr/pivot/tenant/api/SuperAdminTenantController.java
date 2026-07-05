@@ -1,7 +1,9 @@
 package fr.pivot.tenant.api;
 
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.service.AuditService;
 import fr.pivot.config.CookieHelper;
+import fr.pivot.tenant.entity.Tenant;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Map;
@@ -17,6 +19,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,19 +30,12 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * REST controller de gestion plateforme des tenants — {@code GET /api/superadmin/tenants}
  * (US06.2.3 « Super admin liste tous les tenants »), {@code POST /api/superadmin/tenants} et
- * {@code GET /api/superadmin/tenants/check-slug} (US06.2.1 « Super admin crée un tenant »).
+ * {@code GET /api/superadmin/tenants/check-slug} (US06.2.1 « Super admin crée un tenant ») et
+ * {@code PATCH /api/superadmin/tenants/{tenantId}/status} (US06.2.2 « Super admin désactive un
+ * tenant »).
  *
  * <p>Mapping {@code /superadmin/tenants} (sans préfixe {@code /api}, ajouté par {@code
- * server.servlet.context-path=/api}) — même convention que le contrôleur de US06.2.3 ({@code GET
- * /api/superadmin/tenants}, liste paginée, PR #126, déjà fusionnée ici) et celui de US06.2.2
- * ({@code PATCH /api/superadmin/tenants/{tenantId}/status}, désactivation, PR #135, encore
- * ouverte). Cette classe porte donc pour l'instant {@code list()} + {@code create()}/{@code
- * checkSlug()} — la fusion avec {@code updateStatus()} (PR #135) se réglera en résolution de
- * conflit Git à son intégration, pas dans le code de cette PR. PR #135 crée en outre sa propre
- * migration {@code V4__tenant_invalidation_timestamp.sql}, qui collisionne avec la migration
- * {@code V6__tenant_auth_mode_creation_values.sql} de cette PR (déjà renumérotée depuis {@code
- * V4} au moment de cette fusion) — sa propre renumérotation restera nécessaire à son tour,
- * aucun changement de contrat, juste une réconciliation de fichiers côté mainteneur.
+ * server.servlet.context-path=/api}).
  *
  * <p>Aucune logique métier ici — délégation intégrale à {@link SuperAdminTenantService}, qui
  * porte le {@code @PreAuthorize("hasRole('SUPER_ADMIN')")} (RBAC porté par le service, même
@@ -48,7 +45,10 @@ import org.springframework.web.bind.annotation.RestController;
  * ni n'applique aucun {@code TenantContext} (voir CLAUDE.md : {@code ROLE_SUPER_ADMIN} est un
  * rôle plateforme, distinct de {@code ROLE_ADMIN} qui est cantonné au tenant courant). Le seul
  * identifiant extrait du contexte de sécurité est celui du super admin appelant (pour le rate
- * limiting et l'audit) — jamais un {@code tenantId} accepté depuis le corps de la requête.
+ * limiting et l'audit) — jamais un {@code tenantId} accepté depuis le corps de la requête. Pour
+ * {@code updateStatus}, le {@code tenantId} ciblé provient exclusivement du
+ * {@code @PathVariable} — jamais du corps de requête ni d'un en-tête. Le corps ne porte que le
+ * {@code status} demandé.
  */
 @RestController
 @RequestMapping("/superadmin/tenants")
@@ -57,17 +57,22 @@ public class SuperAdminTenantController {
     private static final Logger LOG = LoggerFactory.getLogger(SuperAdminTenantController.class);
 
     private final SuperAdminTenantService superAdminTenantService;
+    private final AuditService auditService;
     private final CookieHelper cookieHelper;
 
     /**
      * Construit le contrôleur avec ses collaborateurs.
      *
-     * @param superAdminTenantService service de supervision/création/vérification des tenants
+     * @param superAdminTenantService service de supervision/création/vérification/désactivation des tenants
+     * @param auditService            journal d'audit applicatif
      * @param cookieHelper            résolution de l'IP client, partagée avec les autres contrôleurs
      */
     public SuperAdminTenantController(
-            final SuperAdminTenantService superAdminTenantService, final CookieHelper cookieHelper) {
+            final SuperAdminTenantService superAdminTenantService,
+            final AuditService auditService,
+            final CookieHelper cookieHelper) {
         this.superAdminTenantService = superAdminTenantService;
+        this.auditService = auditService;
         this.cookieHelper = cookieHelper;
     }
 
@@ -142,6 +147,41 @@ public class SuperAdminTenantController {
         return ResponseEntity.ok(superAdminTenantService.checkSlugAvailability(slug));
     }
 
+    /**
+     * Désactive un tenant : révoque en masse (O(1)) les sessions de tous ses utilisateurs et
+     * enregistre l'audit event {@code TenantDeactivated}.
+     *
+     * @param tenantId    identifiant du tenant ciblé (path variable — jamais le corps)
+     * @param request     corps de requête — {@code { "status": "INACTIVE" } }
+     * @param httpRequest requête HTTP (résolution IP/User-Agent pour l'audit)
+     * @return {@code 200} avec {@link TenantStatusResponse} une fois la révocation bulk
+     *     confirmée en base · {@code 401} si le contexte d'authentification est invalide ·
+     *     {@code 403} si l'appelant n'a pas {@code ROLE_SUPER_ADMIN}, ou si {@code tenantId}
+     *     désigne le tenant système · {@code 404} si {@code tenantId} n'existe pas ·
+     *     {@code 400} si {@code status} n'est pas {@code "INACTIVE"}
+     */
+    @PatchMapping("/{tenantId}/status")
+    public ResponseEntity<TenantStatusResponse> updateStatus(
+            @PathVariable("tenantId") final Long tenantId,
+            @Valid @RequestBody final TenantStatusRequest request,
+            final HttpServletRequest httpRequest) {
+
+        final User actor = resolveActor();
+        if (actor == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        final Tenant tenant = superAdminTenantService.updateStatus(tenantId, request.status());
+
+        auditService.log(actor, tenant, AuditService.TENANT_DEACTIVATED,
+                cookieHelper.clientIp(httpRequest), httpRequest.getHeader("User-Agent"),
+                "{\"tenantId\":" + tenant.getId() + ",\"actorId\":" + actor.getId() + "}");
+
+        LOG.info("event=SUPERADMIN_TENANT_DEACTIVATED tenantId={} actorId={}",
+                tenant.getId(), actor.getId());
+        return ResponseEntity.ok(new TenantStatusResponse(tenant.getId(), "INACTIVE"));
+    }
+
     // ----------------------------------------------------------------
     // Exception handling — local à ce contrôleur (pas de handler global)
     // ----------------------------------------------------------------
@@ -168,6 +208,49 @@ public class SuperAdminTenantController {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "error", "TENANT_SLUG_RESERVED",
                 "message", "Ce slug est réservé et ne peut pas être utilisé"));
+    }
+
+    /**
+     * Traduit un {@code tenantId} inexistant en {@code 404 Not Found}.
+     *
+     * @param ex l'exception levée par le service
+     * @return corps d'erreur {@code 404}
+     */
+    @ExceptionHandler(TenantNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleTenantNotFound(final TenantNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "TENANT_NOT_FOUND",
+                "message", "Ce tenant n'existe pas"));
+    }
+
+    /**
+     * Traduit une tentative de désactivation du tenant système en {@code 403 Forbidden} avec
+     * un message explicite (US06.2.2, critère de protection du tenant système).
+     *
+     * @param ex l'exception levée par le service
+     * @return corps d'erreur {@code 403}
+     */
+    @ExceptionHandler(SystemTenantProtectedException.class)
+    public ResponseEntity<Map<String, Object>> handleSystemTenantProtected(
+            final SystemTenantProtectedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "SYSTEM_TENANT_PROTECTED",
+                "message", "Le tenant système hébergeant les comptes super-administrateur "
+                        + "ne peut pas être désactivé"));
+    }
+
+    /**
+     * Traduit une valeur de {@code status} non supportée en {@code 400 Bad Request}.
+     *
+     * @param ex l'exception levée par le service
+     * @return corps d'erreur {@code 400}
+     */
+    @ExceptionHandler(UnsupportedTenantStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleUnsupportedStatus(
+            final UnsupportedTenantStatusException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", "UNSUPPORTED_TENANT_STATUS",
+                "message", "Seul le statut INACTIVE est actuellement supporté"));
     }
 
     // ----------------------------------------------------------------
@@ -200,6 +283,26 @@ public class SuperAdminTenantController {
                     auth == null || auth.getDetails() == null ? "null" : auth.getDetails().getClass().getName());
             return null;
         }
+        return user;
+    }
+
+    /**
+     * Résout l'utilisateur super-admin authentifié depuis le contexte de sécurité — utilisé
+     * uniquement pour l'audit ({@code actorId}), le RBAC lui-même étant porté par
+     * {@link SuperAdminTenantService#updateStatus}.
+     *
+     * @return l'utilisateur authentifié, ou {@code null} si le contexte d'authentification
+     *     est invalide
+     */
+    private User resolveActor() {
+        final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || !(auth.getDetails() instanceof User user)) {
+            LOG.warn("event=SUPERADMIN_TENANT_STATUS_REJECTED reason=invalid_auth_details type={}",
+                    auth == null || auth.getDetails() == null ? "null" : auth.getDetails().getClass().getName());
+            return null;
+        }
+
         return user;
     }
 }

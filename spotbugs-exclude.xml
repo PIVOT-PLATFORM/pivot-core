@@ -51,7 +51,7 @@
             <Package name="fr.pivot.account.config"/>
             <Package name="fr.pivot.account.entity"/>
             <Package name="fr.pivot.account.scheduler"/>
-            <!-- Gestion plateforme des tenants (SuperAdminTenantController, US06.2.1/US06.2.3) :
+            <!-- Gestion plateforme des tenants (SuperAdminTenantController, US06.2.1/US06.2.2/US06.2.3) :
                  stocke des beans singleton constructeur-injectés (SuperAdminTenantService,
                  CookieHelper, TenantRepository, UserRepository, RateLimiterService,
                  AuditService). -->
