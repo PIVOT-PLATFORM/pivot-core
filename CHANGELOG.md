@@ -1,3 +1,10 @@
+# [0.16.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.15.0...v0.16.0) (2026-07-05)
+
+
+### Features
+
+* **api:** préférence de langue du profil (US02.1.2) ([#130](https://github.com/PIVOT-PLATFORM/pivot-core/issues/130)) ([aec73cf](https://github.com/PIVOT-PLATFORM/pivot-core/commit/aec73cfdac0e79c5b0f7c22401e99cdf8b5b1077)), closes [#1](https://github.com/PIVOT-PLATFORM/pivot-core/issues/1) [#2](https://github.com/PIVOT-PLATFORM/pivot-core/issues/2) [AccountController#asString](https://github.com/AccountController/issues/asString) [#128](https://github.com/PIVOT-PLATFORM/pivot-core/issues/128)
+
 # [0.15.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.14.0...v0.15.0) (2026-07-05)
 
 
