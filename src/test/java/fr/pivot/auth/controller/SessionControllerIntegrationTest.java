@@ -124,6 +124,21 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void list_serializesTimestamps_asIso8601Strings() throws Exception {
+        // Locks the frontend contract: createdAt/expiresAt are ISO-8601 strings (Jackson
+        // default with JavaTimeModule), never epoch millis.
+        final String raw = issueToken(userAlice, "Chrome", "203.0.113.1");
+
+        mockMvc.perform(get("/api/account/sessions")
+                .header("Authorization", "Bearer " + raw))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].createdAt",
+                org.hamcrest.Matchers.matchesPattern("^\\d{4}-\\d{2}-\\d{2}T.*Z$")))
+            .andExpect(jsonPath("$[0].expiresAt",
+                org.hamcrest.Matchers.matchesPattern("^\\d{4}-\\d{2}-\\d{2}T.*Z$")));
+    }
+
+    @Test
     void list_excludesRevokedSessions() throws Exception {
         final String revokedRaw = issueToken(userAlice, "Old device", "203.0.113.9");
         tokenService.revokeByRawToken(revokedRaw);
