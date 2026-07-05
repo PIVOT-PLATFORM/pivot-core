@@ -2,6 +2,8 @@ package fr.pivot.tenant.entity;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Unit tests for {@link Tenant} accessors and defaults. */
@@ -15,6 +17,8 @@ class TenantTest {
         assertThat(t.isActive()).isTrue();
         assertThat(t.getCreatedAt()).isNotNull();
         assertThat(t.getUpdatedAt()).isNotNull();
+        // Never deactivated by default — must never block a legitimate token (US06.2.2).
+        assertThat(t.getTenantInvalidationTimestamp()).isNull();
     }
 
     @Test
@@ -32,5 +36,15 @@ class TenantTest {
         assertThat(t.getAuthMode()).isEqualTo("OIDC");
         assertThat(t.isActive()).isFalse();
         assertThat(t.getId()).isNull();
+    }
+
+    @Test
+    void tenantInvalidationTimestamp_roundTrip() {
+        final Tenant t = new Tenant();
+        final Instant now = Instant.now();
+
+        t.setTenantInvalidationTimestamp(now);
+
+        assertThat(t.getTenantInvalidationTimestamp()).isEqualTo(now);
     }
 }
