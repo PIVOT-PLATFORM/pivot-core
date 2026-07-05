@@ -1,9 +1,12 @@
 package fr.pivot.auth.service;
 
 import fr.pivot.auth.dto.AdminUserDto;
+import fr.pivot.auth.dto.AssignableRole;
 import fr.pivot.auth.dto.UserStatus;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
+import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
 import fr.pivot.auth.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -25,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -46,11 +51,14 @@ class AdminUserServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private TokenService tokenService;
+
     private AdminUserService service;
 
     @BeforeEach
     void setUp() {
-        service = new AdminUserService(userRepository);
+        service = new AdminUserService(userRepository, tokenService);
     }
 
     // ----------------------------------------------------------------
@@ -201,6 +209,52 @@ class AdminUserServiceTest {
         assertThat(dto.role()).isEqualTo("ROLE_USER");
         assertThat(dto.status()).isEqualTo(UserStatus.ACTIVE);
         assertThat(dto.createdAt()).isEqualTo(createdAt);
+    }
+
+    // ----------------------------------------------------------------
+    // AC06.1.3 : modification de rôle
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0613_01_updatesRoleAndRevokesAllTokens_whenTargetBelongsToTenant() {
+        final User target = mock(User.class);
+        when(target.getId()).thenReturn(99L);
+        when(target.getEmail()).thenReturn("bob@pivot.test");
+        when(target.getFirstName()).thenReturn("Bob");
+        when(target.getLastName()).thenReturn("Dupont");
+        when(target.getRole()).thenReturn("ROLE_ADMIN");
+        when(target.isActive()).thenReturn(true);
+        when(target.isBlocked()).thenReturn(false);
+        when(target.getCreatedAt()).thenReturn(Instant.parse("2026-01-01T00:00:00Z"));
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(99L, TENANT_ID))
+                .thenReturn(Optional.of(target));
+
+        final AdminUserDto dto = service.updateRole(TENANT_ID, 1L, 99L, AssignableRole.ROLE_ADMIN);
+
+        verify(target).setRole("ROLE_ADMIN");
+        verify(userRepository).save(target);
+        verify(tokenService).revokeAllForUser(99L);
+        assertThat(dto.id()).isEqualTo(99L);
+        assertThat(dto.role()).isEqualTo("ROLE_ADMIN");
+    }
+
+    @Test
+    void ac0613Sec01_throwsSelfRoleChangeForbidden_whenTargetIsCaller() {
+        assertThatThrownBy(() -> service.updateRole(TENANT_ID, 1L, 1L, AssignableRole.ROLE_USER))
+                .isInstanceOf(SelfRoleChangeForbiddenException.class);
+
+        verifyNoInteractions(userRepository, tokenService);
+    }
+
+    @Test
+    void ac0613Sec02_throwsAdminUserNotFound_whenTargetNotInTenant() {
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(123L, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateRole(TENANT_ID, 1L, 123L, AssignableRole.ROLE_USER))
+                .isInstanceOf(AdminUserNotFoundException.class);
+
+        verify(tokenService, never()).revokeAllForUser(any());
     }
 
     // ----------------------------------------------------------------

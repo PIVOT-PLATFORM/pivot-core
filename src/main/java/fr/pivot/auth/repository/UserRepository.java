@@ -22,6 +22,21 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
     Optional<User> findByTenantIdAndOidcSubjectAndDeletedAtIsNull(Long tenantId, String oidcSubject);
     boolean existsByTenantIdAndEmailAndDeletedAtIsNull(Long tenantId, String email);
 
+    /**
+     * Recherche un utilisateur par identifiant, scopé au tenant courant — utilisé par les
+     * endpoints d'administration ({@code PATCH /api/admin/users/{userId}/...}, US06.1.3 et
+     * suivantes) pour vérifier l'appartenance tenant avant tout traitement. Un {@code id} qui
+     * existe mais appartient à un autre tenant, ou qui désigne un compte soft-supprimé, doit
+     * renvoyer un résultat vide ici — jamais révéler son existence à l'appelant (404, pas 403).
+     *
+     * @param id       identifiant technique de l'utilisateur ciblé (path variable, non fiable)
+     * @param tenantId identifiant du tenant de l'administrateur appelant, résolu depuis le
+     *                 token porteur — jamais depuis le corps ou un paramètre de requête
+     * @return l'utilisateur s'il existe, appartient à {@code tenantId} et n'est pas
+     *     soft-supprimé, vide sinon
+     */
+    Optional<User> findByIdAndTenantIdAndDeletedAtIsNull(Long id, Long tenantId);
+
     @Modifying
     @Query("UPDATE User u SET u.lastLoginAt = CURRENT_TIMESTAMP WHERE u.id = :id")
     void updateLastLoginAt(Long id);

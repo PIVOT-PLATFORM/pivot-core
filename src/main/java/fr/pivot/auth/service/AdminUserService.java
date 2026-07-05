@@ -1,9 +1,12 @@
 package fr.pivot.auth.service;
 
 import fr.pivot.auth.dto.AdminUserDto;
+import fr.pivot.auth.dto.AssignableRole;
 import fr.pivot.auth.dto.UserStatus;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
+import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
 import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.repository.UserSpecifications;
 import org.springframework.data.domain.Page;
@@ -49,14 +52,18 @@ public class AdminUserService {
             Set.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN", "ROLE_USER", "ROLE_GUEST");
 
     private final UserRepository userRepository;
+    private final TokenService tokenService;
 
     /**
-     * Construit le service avec son collaborateur.
+     * Construit le service avec ses collaborateurs.
      *
      * @param userRepository accès aux utilisateurs, avec support {@link Specification}
+     * @param tokenService   révocation des tokens actifs — US06.1.3 : un changement de rôle doit
+     *                       invalider immédiatement toute session portant l'ancien rôle en cache
      */
-    public AdminUserService(final UserRepository userRepository) {
+    public AdminUserService(final UserRepository userRepository, final TokenService tokenService) {
         this.userRepository = userRepository;
+        this.tokenService = tokenService;
     }
 
     /**
@@ -101,6 +108,61 @@ public class AdminUserService {
                 .and(UserSpecifications.matchingSearch(search));
 
         return userRepository.findAll(spec, pageable).map(AdminUserDto::from);
+    }
+
+    /**
+     * Modifie le rôle d'un utilisateur du tenant courant (US06.1.3 — {@code PATCH
+     * /api/admin/users/{userId}/role}) et révoque immédiatement tous ses tokens actifs.
+     *
+     * <p><strong>Isolation tenant :</strong> {@code targetUserId} est vérifié appartenir à
+     * {@code tenantId} — résolu exclusivement depuis le token porteur de l'appelant — avant tout
+     * traitement. Un {@code targetUserId} inexistant ou d'un autre tenant lève
+     * {@link AdminUserNotFoundException}, traduite en {@code 404} (jamais {@code 403}).
+     *
+     * <p><strong>Auto-rétrogradation :</strong> {@code targetUserId == callerUserId} est rejeté
+     * avant toute lecture en base — un admin ne peut jamais changer son propre rôle par ce
+     * endpoint, qu'il s'agisse d'une rétrogradation ou d'une re-promotion.
+     *
+     * <p><strong>Révocation de session :</strong> le rôle Spring Security n'est jamais mis en
+     * cache côté token — {@link fr.pivot.auth.service.TokenService#validate} le résout depuis la
+     * BDD à chaque requête via l'entité {@link User} rechargée. La révocation ci-dessous est donc
+     * une défense en profondeur : elle garantit qu'un token émis avant le changement ne peut plus
+     * être {@linkplain fr.pivot.auth.service.TokenService#validate validé} du tout après ce point,
+     * plutôt que de dépendre uniquement de la fraîcheur du rôle résolu à la volée.
+     *
+     * @param tenantId     identifiant du tenant de l'administrateur appelant
+     * @param callerUserId identifiant de l'administrateur appelant — jamais égal à
+     *                     {@code targetUserId}
+     * @param targetUserId identifiant de l'utilisateur dont le rôle doit changer (path variable)
+     * @param role         nouveau rôle, restreint par construction à {@link AssignableRole}
+     * @return le {@link AdminUserDto} de l'utilisateur après modification
+     * @throws SelfRoleChangeForbiddenException si {@code targetUserId} désigne l'appelant lui-même
+     * @throws AdminUserNotFoundException       si {@code targetUserId} n'existe pas dans
+     *                                           {@code tenantId}
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public AdminUserDto updateRole(
+            final Long tenantId,
+            final Long callerUserId,
+            final Long targetUserId,
+            final AssignableRole role) {
+        if (targetUserId.equals(callerUserId)) {
+            throw new SelfRoleChangeForbiddenException(callerUserId);
+        }
+
+        final User target = userRepository.findByIdAndTenantIdAndDeletedAtIsNull(targetUserId, tenantId)
+                .orElseThrow(() -> new AdminUserNotFoundException(targetUserId));
+
+        target.setRole(role.name());
+        userRepository.save(target);
+
+        // Défense en profondeur : voir JavaDoc ci-dessus. Aucune session de la cible ne doit
+        // survivre au changement de rôle, même si un futur appelant du token oublie de relire
+        // le rôle depuis la BDD.
+        tokenService.revokeAllForUser(target.getId());
+
+        return AdminUserDto.from(target);
     }
 
     /**

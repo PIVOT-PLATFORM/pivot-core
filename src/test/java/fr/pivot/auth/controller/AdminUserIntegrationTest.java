@@ -2,11 +2,22 @@ package fr.pivot.auth.controller;
 
 import fr.pivot.AbstractIntegrationTest;
 import fr.pivot.auth.dto.AdminUserDto;
+import fr.pivot.auth.dto.AssignableRole;
 import fr.pivot.auth.dto.UserStatus;
+import fr.pivot.auth.entity.AccessToken;
+import fr.pivot.auth.entity.AuditEvent;
+import fr.pivot.auth.entity.AuthMethod;
+import fr.pivot.auth.entity.TokenStatus;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
+import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.repository.AccessTokenRepository;
+import fr.pivot.auth.repository.AuditEventRepository;
 import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.service.AdminUserService;
+import fr.pivot.auth.service.AuditService;
+import fr.pivot.auth.service.TokenService;
 import fr.pivot.tenant.entity.Tenant;
 import fr.pivot.tenant.repository.TenantRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -16,17 +27,26 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
 import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tests d'intégration (PostgreSQL via Testcontainers, contexte Spring réel) pour
@@ -58,20 +78,43 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private TenantRepository tenantRepository;
 
+    @Autowired
+    private TokenService tokenService;
+
+    @Autowired
+    private AccessTokenRepository accessTokenRepository;
+
+    @Autowired
+    private AuditEventRepository auditEventRepository;
+
+    @Autowired
+    private WebApplicationContext webApplicationContext;
+
     private Long tenantAId;
     private Long tenantBId;
+    private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         tenantAId = createTenant("admin-users-it-tenant-a");
         tenantBId = createTenant("admin-users-it-tenant-b");
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
+                .apply(springSecurity())
+                .build();
     }
 
     @AfterEach
     void tearDown() {
         final Specification<User> ofTestTenants =
                 (root, query, cb) -> root.get("tenant").get("id").in(tenantAId, tenantBId);
-        userRepository.deleteAll(userRepository.findAll(ofTestTenants));
+        final List<User> testUsers = userRepository.findAll(ofTestTenants);
+        // audit_events.user_id has no ON DELETE CASCADE (unlike access_tokens) — the audit
+        // trail of a deleted user is intentionally kept in production; test cleanup must
+        // therefore purge it explicitly before deleting the user row itself (FK violation
+        // otherwise), for the new PATCH .../role tests which log UserRoleChanged events.
+        testUsers.forEach(u -> auditEventRepository.deleteAll(
+                auditEventRepository.findByUserIdOrderByCreatedAtDesc(u.getId())));
+        userRepository.deleteAll(testUsers);
         tenantRepository.deleteById(tenantAId);
         tenantRepository.deleteById(tenantBId);
         SecurityContextHolder.clearContext();
@@ -298,8 +341,205 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
     }
 
     // ----------------------------------------------------------------
+    // US06.1.3 : modification de rôle — service (BDD réelle)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0613_01_updatesRole_persistsChange_andReturnsUpdatedDto() {
+        final User admin = createUser(tenantAId, "admin1@tenant-a.test", "Admin", "One", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "target1@tenant-a.test", "Target", "One", "ROLE_USER", true, false);
+        setAuthentication("ROLE_ADMIN");
+
+        final AdminUserDto dto =
+                adminUserService.updateRole(tenantAId, admin.getId(), target.getId(), AssignableRole.ROLE_ADMIN);
+
+        assertThat(dto.id()).isEqualTo(target.getId());
+        assertThat(dto.role()).isEqualTo("ROLE_ADMIN");
+        assertThat(userRepository.findById(target.getId()).orElseThrow().getRole()).isEqualTo("ROLE_ADMIN");
+    }
+
+    @Test
+    void ac0613Sec01_throwsSelfRoleChangeForbidden_whenAdminTargetsOwnId() {
+        final User admin = createUser(tenantAId, "admin2@tenant-a.test", "Admin", "Two", "ROLE_ADMIN", true, false);
+        setAuthentication("ROLE_ADMIN");
+
+        assertThatThrownBy(() ->
+                adminUserService.updateRole(tenantAId, admin.getId(), admin.getId(), AssignableRole.ROLE_USER))
+                .isInstanceOf(SelfRoleChangeForbiddenException.class);
+
+        assertThat(userRepository.findById(admin.getId()).orElseThrow().getRole()).isEqualTo("ROLE_ADMIN");
+    }
+
+    @Test
+    void ac0613Sec02_throwsAdminUserNotFound_whenTargetBelongsToAnotherTenant() {
+        final User admin = createUser(tenantAId, "admin3@tenant-a.test", "Admin", "Three", "ROLE_ADMIN", true, false);
+        final User targetInB = createUser(tenantBId, "target-b@tenant-b.test", "Target", "B", "ROLE_USER", true, false);
+        setAuthentication("ROLE_ADMIN");
+
+        assertThatThrownBy(() ->
+                adminUserService.updateRole(tenantAId, admin.getId(), targetInB.getId(), AssignableRole.ROLE_ADMIN))
+                .isInstanceOf(AdminUserNotFoundException.class);
+
+        // Isolation tenant : la ressource d'un autre tenant reste intacte, jamais modifiée.
+        assertThat(userRepository.findById(targetInB.getId()).orElseThrow().getRole()).isEqualTo("ROLE_USER");
+    }
+
+    @Test
+    void ac0613Sec03_throwsAdminUserNotFound_whenTargetDoesNotExist() {
+        final User admin = createUser(tenantAId, "admin4@tenant-a.test", "Admin", "Four", "ROLE_ADMIN", true, false);
+        setAuthentication("ROLE_ADMIN");
+
+        assertThatThrownBy(() ->
+                adminUserService.updateRole(tenantAId, admin.getId(), 999_999_999L, AssignableRole.ROLE_ADMIN))
+                .isInstanceOf(AdminUserNotFoundException.class);
+    }
+
+    @Test
+    void ac0613Sec04_throwsAccessDenied_whenCallerIsRoleUser() {
+        final User target = createUser(tenantAId, "victim@tenant-a.test", "Victim", "One", "ROLE_USER", true, false);
+        setAuthentication("ROLE_USER");
+
+        assertThatThrownBy(() ->
+                adminUserService.updateRole(tenantAId, 999L, target.getId(), AssignableRole.ROLE_ADMIN))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    // ----------------------------------------------------------------
+    // US06.1.3 : bout-en-bout HTTP (token réel, filtre de sécurité réel)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0613Http01_returns200_andPersistsRole_whenCallerIsAdminOfSameTenant() throws Exception {
+        final User adminA = createUser(tenantAId, "http-admin1@tenant-a.test", "Admin", "A", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "http-target1@tenant-a.test", "Target", "A", "ROLE_USER", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/role", target.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ROLE_ADMIN\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(target.getId()))
+                .andExpect(jsonPath("$.role").value("ROLE_ADMIN"));
+
+        assertThat(userRepository.findById(target.getId()).orElseThrow().getRole()).isEqualTo("ROLE_ADMIN");
+    }
+
+    @Test
+    void ac0613Http02_returns404_whenUserIdBelongsToAnotherTenant_crossTenantIsolation() throws Exception {
+        final User adminA = createUser(tenantAId, "http-admin2@tenant-a.test", "Admin", "A", "ROLE_ADMIN", true, false);
+        final User targetB = createUser(tenantBId, "http-target-b@tenant-b.test", "Target", "B", "ROLE_USER", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/role", targetB.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ROLE_ADMIN\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("USER_NOT_FOUND"));
+
+        assertThat(userRepository.findById(targetB.getId()).orElseThrow().getRole()).isEqualTo("ROLE_USER");
+    }
+
+    @Test
+    void ac0613Http03_returns403_whenAdminTargetsOwnRole_selfDemotionForbidden() throws Exception {
+        final User adminA = createUser(tenantAId, "http-self-admin@tenant-a.test", "Self", "Admin", "ROLE_ADMIN", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/role", adminA.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ROLE_USER\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("SELF_ROLE_CHANGE_FORBIDDEN"));
+
+        assertThat(userRepository.findById(adminA.getId()).orElseThrow().getRole()).isEqualTo("ROLE_ADMIN");
+    }
+
+    @Test
+    void ac0613Http04_logsUserRoleChangedAuditEvent_onSuccessfulChange() throws Exception {
+        final User adminA = createUser(tenantAId, "http-audit-admin@tenant-a.test", "Admin", "Au", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "http-audit-target@tenant-a.test", "Target", "Au", "ROLE_USER", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/role", target.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ROLE_ADMIN\"}"))
+                .andExpect(status().isOk());
+
+        final List<AuditEvent> events = auditEventRepository.findByUserIdOrderByCreatedAtDesc(adminA.getId());
+        assertThat(events).anySatisfy(e -> assertThat(e.getEventType()).isEqualTo(AuditService.USER_ROLE_CHANGED));
+    }
+
+    /**
+     * AC — « Après modification de rôle, tous les tokens actifs de l'utilisateur concerné sont
+     * révoqués immédiatement (...) Test TI valide qu'un appel admin avec l'ancien token retourne
+     * 401 dans les 100ms suivant la révocation ».
+     *
+     * <p><strong>Écart assumé avec le texte de l'AC :</strong> ce backend ne configure aucun
+     * {@code AuthenticationEntryPoint} personnalisé (voir {@code SecurityConfig}) — le
+     * comportement par défaut de Spring Security pour toute requête non authentifiée (token
+     * absent, invalide, expiré ou révoqué) est {@code 403 Forbidden}, jamais {@code 401}. C'est
+     * la convention déjà établie et documentée sur chaque endpoint authentifié de cette
+     * application (voir {@code SessionControllerIntegrationTest#list_returns403_whenNoBearerToken}).
+     * Introduire un {@code 401} spécifique à cet unique endpoint casserait cette cohérence
+     * transversale pour un gain nul côté client (Angular traite déjà {@code 401}/{@code 403}
+     * de façon identique : déconnexion + redirection login). L'intention de l'AC — la révocation
+     * est immédiate et rend l'ancien token inutilisable — est donc vérifiée ici par la
+     * combinaison : (a) la requête HTTP avec l'ancien token échoue ({@code 403}, cohérent avec le
+     * reste de l'API) et (b) une assertion BDD directe prouve que l'échec est bien dû à une ligne
+     * {@code REVOKED} (révocation réelle), pas à un hasard de résolution de rôle. Signalé au
+     * mainteneur dans la PR pour arbitrage (introduire un {@code AuthenticationEntryPoint} global
+     * 401 serait un changement transversal hors périmètre de cette US).
+     *
+     * <p>La cible est initialement {@code ROLE_ADMIN} et rétrogradée en {@code ROLE_USER} —
+     * précisément pour que ce test ne puisse pas être confondu avec une simple perte de droit
+     * (qui donnerait aussi {@code 403} si le token n'était que "réévalué" sans être révoqué) :
+     * seule l'assertion BDD tranche. Aucun minuteur n'est nécessaire : l'appel avec l'ancien
+     * token a lieu immédiatement après la réponse {@code 200} du PATCH, dans le même thread de
+     * test — largement sous la barre des 100ms évoquée par l'AC.
+     */
+    @Test
+    void ac0613Http05_oldTokenRevoked_rejectedImmediatelyAfterRoleChange() throws Exception {
+        final User adminA = createUser(tenantAId, "http-revoke-admin@tenant-a.test", "Admin", "R", "ROLE_ADMIN", true, false);
+        final User targetAdmin =
+                createUser(tenantAId, "http-revoke-target@tenant-a.test", "Target", "R", "ROLE_ADMIN", true, false);
+        final String adminToken = issueToken(adminA);
+        final String targetOldToken = issueToken(targetAdmin);
+
+        // Sanity check: the target's token is valid for an admin-only endpoint before the change.
+        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetOldToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/role", targetAdmin.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ROLE_USER\"}"))
+                .andExpect(status().isOk());
+
+        // Rejected immediately — see JavaDoc above for why 403 (not 401) is the correct/expected
+        // status in this codebase.
+        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetOldToken))
+                .andExpect(status().isForbidden());
+
+        // Proves the 403 above is caused by an actual revoked row (not a role/authorization
+        // side effect) — the definitive check for "tokens are revoked", independent of HTTP
+        // status code conventions.
+        final List<AccessToken> tokens = accessTokenRepository.findByUserIdOrderByCreatedAtDesc(targetAdmin.getId());
+        assertThat(tokens).hasSize(1);
+        assertThat(tokens.get(0).getStatus()).isEqualTo(TokenStatus.REVOKED);
+        assertThat(tokens.get(0).getRevokedAt()).isNotNull();
+    }
+
+    // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
+
+    private String issueToken(final User user) {
+        return tokenService.issue(user, "fp-" + user.getId() + "-" + System.nanoTime(), "Test device",
+                "Mozilla/5.0 (test)", "203.0.113.1", AuthMethod.PASSWORD, false).rawToken();
+    }
 
     private Long createTenant(final String slugPrefix) {
         final Tenant tenant = new Tenant();
