@@ -56,7 +56,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <tr><td>Requiert ROLE_SUPER_ADMIN — bout-en-bout HTTP (pas seulement le proxy service)</td>
  *       <td>{@link #ac_security_http_deniesWith403_whenCallerHasRoleAdmin()},
  *           {@link #ac_security_http_allowsWith200_whenCallerHasRoleSuperAdmin()},
- *           {@link #ac_security_http_deniesWith401_whenCallerUnauthenticated()}</td></tr>
+ *           {@link #ac_security_http_deniesWith403_whenCallerUnauthenticated()}</td></tr>
  *   <tr><td>Pageable.size plafonné ({@code PaginationConfig})</td>
  *       <td>{@link #ac_pageSize_isCappedAtGlobalMaximum_whenCallerRequestsExcessiveSize()}</td></tr>
  * </table>
@@ -146,9 +146,14 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void ac_security_http_deniesWith401_whenCallerUnauthenticated() throws Exception {
+    void ac_security_http_deniesWith403_whenCallerUnauthenticated() throws Exception {
+        // No AuthenticationEntryPoint is registered in SecurityConfig (httpBasic/formLogin both
+        // disabled — stateless opaque-token auth only), so Spring Security's ExceptionTranslationFilter
+        // falls back to Http403ForbiddenEntryPoint for an unauthenticated request: 403, not 401.
+        // This is existing, application-wide SecurityConfig behaviour, not specific to this
+        // endpoint — asserted here as observed reality, not prescribed by this US.
         mockMvc.perform(get(ENDPOINT))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isForbidden());
     }
 
     // ----------------------------------------------------------------
