@@ -12,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
@@ -63,17 +64,34 @@ class AuditServiceTest {
     }
 
     @Test
-    void log_convenience_registersAfterCommit_whenInActiveTransaction() {
+    void log_convenience_dispatchesOnCompletion_whenSurroundingTransactionCommits() {
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
 
         service.log(user, AuditService.REGISTER, "2.3.4.5", "ua");
 
-        // Invoke the registered afterCommit hook (simulates transaction commit)
+        // Invoke the registered afterCompletion hook (simulates transaction commit)
         new ArrayList<>(TransactionSynchronizationManager.getSynchronizations())
-            .forEach(s -> s.afterCommit());
+            .forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
 
         verify(self).log(eq(user), eq(tenant), eq(AuditService.REGISTER), eq("2.3.4.5"), eq("ua"), isNull());
+    }
+
+    @Test
+    void log_convenience_dispatchesOnCompletion_whenSurroundingTransactionRollsBack() {
+        // Regression test: a failure event (e.g. LOGIN_FAILED, CHANGE_PASSWORD_FAILED) is logged
+        // by a @Transactional method that then throws, rolling back its own transaction —
+        // afterCommit() would never fire on that path, so the event must not depend on it.
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+
+        service.log(user, AuditService.CHANGE_PASSWORD_FAILED, "6.7.8.9", "ua");
+
+        new ArrayList<>(TransactionSynchronizationManager.getSynchronizations())
+            .forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+
+        verify(self).log(
+            eq(user), eq(tenant), eq(AuditService.CHANGE_PASSWORD_FAILED), eq("6.7.8.9"), eq("ua"), isNull());
     }
 
     @Test
