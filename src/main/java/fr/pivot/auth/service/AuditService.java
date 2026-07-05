@@ -149,4 +149,18 @@ public class AuditService {
 
     /** Audit event US06.1.5 — a tenant admin reactivated a user account ({@code UserReactivated}). */
     public static final String USER_REACTIVATED = "user.reactivated";
+
+    /**
+     * RGPD Art. 17 — logged the moment a user's account-deletion request is confirmed (US02.2.4):
+     * all sessions revoked, account moved to PENDING_DELETION, grace period started. This is the
+     * AC-mandated {@code AccountDeleted} event — the account is not yet anonymized at this point,
+     * see {@link #ACCOUNT_ANONYMIZED} for the purge completion event.
+     */
+    public static final String ACCOUNT_DELETED = "account.deleted";
+    /** US02.2.4 — an OTP was emailed to confirm account deletion (no local password). */
+    public static final String ACCOUNT_DELETION_OTP_SENT = "account.deletion_otp_sent";
+    /** US02.2.4 — the user cancelled a pending deletion via the emailed link before purge. */
+    public static final String ACCOUNT_DELETION_CANCELLED = "account.deletion_cancelled";
+    /** US02.2.4 — the grace period elapsed; {@code AccountDeletionScheduler} anonymized the row. */
+    public static final String ACCOUNT_ANONYMIZED = "account.anonymized";
 }

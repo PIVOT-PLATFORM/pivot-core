@@ -94,6 +94,9 @@ public class RateLimiterService {
     public String emailChangeUserBucket(String userId) { return "email-change:user:" + userId; }
     public String emailChangeConfirmIpBucket(String ip) { return "email-change-confirm:ip:" + ip; }
 
+    /** Bucket for POST /account/deletion/otp — US02.2.4 (OIDC/no-local-password accounts). */
+    public String accountDeletionOtpBucket(String userId) { return "account-deletion-otp:user:" + userId; }
+
     /** Bucket for POST /api/superadmin/tenants — keyed by SUPER_ADMIN account id (US06.2.1). */
     public String tenantCreationBucket(String superAdminId) { return "tenant-creation:superadmin:" + superAdminId; }
 }
