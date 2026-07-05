@@ -7,6 +7,7 @@ import fr.pivot.auth.service.TokenService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,6 +52,25 @@ class TokenAuthenticationFilterTest {
         SecurityContextHolder.clearContext();
         when(user.getEmail()).thenReturn("alice@pivot.app");
         when(user.getRole()).thenReturn("ROLE_USER");
+    }
+
+    @AfterEach
+    void tearDown() {
+        // Several tests above call filter.doFilterInternal() with a valid mocked token, which
+        // populates the (static, thread-local) SecurityContextHolder via the real
+        // authenticateRequest() code path — with a Mockito @Mock User whose getTenant() is
+        // unstubbed (returns null). Without this cleanup, that polluted context survives past
+        // this class (Surefire reuses the same JVM/thread for all test classes) and can leak
+        // into a *later* test class's real HTTP requests. Concretely: it was leaking into
+        // AccountProfileIntegrationTest#ac0211_sec_auth_uploadAvatar_returns403_whenNoToken,
+        // which sends no Authorization header at all and expects Spring Security to deny with
+        // 403 before any controller/service code runs — instead it observed the leftover mock
+        // User (tenant == null) as if it were an authenticated principal, reached
+        // ProfileService#updateAvatar, and threw an NPE on user.getTenant().getId() instead of
+        // ever getting a 403. See the sibling *IntegrationTest classes in this codebase
+        // (AdminModuleActivationIntegrationTest, ModuleStatusEndpointIntegrationTest) which
+        // follow the same clearContext()-in-@AfterEach convention for the same reason.
+        SecurityContextHolder.clearContext();
     }
 
     // ----------------------------------------------------------------

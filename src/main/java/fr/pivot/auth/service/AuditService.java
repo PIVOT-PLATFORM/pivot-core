@@ -106,4 +106,6 @@ public class AuditService {
     public static final String OIDC_LOGIN = "auth.oidc_login";
     public static final String MODULE_ACTIVATED = "module.activated";
     public static final String MODULE_DEACTIVATED = "module.deactivated";
+    public static final String PROFILE_UPDATED = "account.profile_updated";
+    public static final String AVATAR_UPDATED = "account.avatar_updated";
 }

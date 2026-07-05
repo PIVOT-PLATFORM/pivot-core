@@ -36,6 +36,13 @@
                  AdminModuleActivationService, ModuleActivationService, ModuleRegistry, AuditService,
                  CookieHelper). -->
             <Package name="fr.pivot.modules.api"/>
+            <!-- US02.1.1 — AccountController/ProfileService/AvatarStorageService stockent des
+                 beans singleton constructeur-injectés (ProfileService, AuditService,
+                 CookieHelper, UserRepository, AvatarStorageService, AvatarStorageProperties —
+                 record de configuration immuable). -->
+            <Package name="fr.pivot.account.controller"/>
+            <Package name="fr.pivot.account.service"/>
+            <Package name="fr.pivot.account.config"/>
         </Or>
     </Match>
 
