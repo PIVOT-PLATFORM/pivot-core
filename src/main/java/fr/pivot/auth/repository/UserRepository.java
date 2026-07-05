@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -36,6 +37,29 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
      *     soft-supprimé, vide sinon
      */
     Optional<User> findByIdAndTenantIdAndDeletedAtIsNull(Long id, Long tenantId);
+
+    /**
+     * Existence check ignoring soft-delete state — used to prevent Google/OIDC JIT provisioning
+     * from resurrecting a {@code PENDING_DELETION} account under a new row (US02.2.4). The
+     * {@code idx_users_tenant_email} unique index is NOT partial (covers every row regardless of
+     * {@code deleted_at}), so a naive "no live user with this email" check followed by an insert
+     * would otherwise throw a raw {@link org.springframework.dao.DataIntegrityViolationException}
+     * instead of a clean 403 for an email still held by a soft-deleted row awaiting purge.
+     *
+     * @param tenantId the tenant to check within
+     * @param email    the candidate email address, already lower-cased by the caller
+     * @return {@code true} if any row — deleted or not — already holds this (tenantId, email)
+     */
+    boolean existsByTenantIdAndEmail(Long tenantId, String email);
+
+    /**
+     * Accounts whose grace period has elapsed and are still awaiting anonymization — feeds
+     * {@code AccountDeletionScheduler} (US02.2.4, RGPD Art. 17).
+     *
+     * @param before cutoff instant, normally {@code Instant.now()}
+     * @return accounts due for anonymization, unordered
+     */
+    List<User> findByDeletedAtIsNotNullAndAnonymizedAtIsNullAndScheduledDeletionAtBefore(Instant before);
 
     @Modifying
     @Query("UPDATE User u SET u.lastLoginAt = CURRENT_TIMESTAMP WHERE u.id = :id")
