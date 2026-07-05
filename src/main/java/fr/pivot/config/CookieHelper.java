@@ -16,13 +16,17 @@ import java.util.Arrays;
  * that were copied verbatim across {@code AuthController}, {@code OidcAuthController},
  * {@code GoogleAuthController} and {@code TokenAuthenticationFilter} (DRY), guaranteeing a
  * single source of truth for the {@code HttpOnly}/{@code Secure}/{@code SameSite}/path
- * cookie attributes.
+ * cookie attributes. Also centralises {@code Authorization: Bearer} header extraction, shared
+ * by {@link fr.pivot.config.TokenAuthenticationFilter} and controllers that need to resolve
+ * the current request's raw token (e.g. {@code SessionController}, US02.2.3).
  */
 @Component
 public class CookieHelper {
 
     private static final String COOKIE_PATH = "/api/auth";
     private static final String SAME_SITE = "Strict";
+    private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final String BEARER_PREFIX = "Bearer ";
 
     private final String sessionCookieName;
     private final boolean secureCookie;
@@ -93,6 +97,21 @@ public class CookieHelper {
      */
     public String clientIp(final HttpServletRequest req) {
         return req.getRemoteAddr();
+    }
+
+    /**
+     * Extracts the raw opaque token from the {@code Authorization: Bearer <token>} header.
+     *
+     * @param req incoming request
+     * @return the raw token, or {@code null} if the header is absent, malformed, or blank
+     */
+    public String extractBearerToken(final HttpServletRequest req) {
+        final String header = req.getHeader(AUTHORIZATION_HEADER);
+        if (header != null && header.startsWith(BEARER_PREFIX)) {
+            final String token = header.substring(BEARER_PREFIX.length()).trim();
+            return token.isBlank() ? null : token;
+        }
+        return null;
     }
 
     private Cookie baseCookie(final String value) {

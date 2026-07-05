@@ -7,6 +7,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.util.CryptoUtils;
+import fr.pivot.auth.util.HtmlStripper;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +51,13 @@ public class TokenService {
     private static final int DEFAULT_TTL_REMEMBER_ME_SECONDS = 2_592_000;
     private static final double DEFAULT_REFRESH_THRESHOLD = 0.15;
     private static final int DEFAULT_ROTATION_GRACE_SECONDS = 30;
+
+    /**
+     * Max length of the persisted {@code device_name} — US02.2.3 (active sessions screen).
+     * Applied together with {@link HtmlStripper} before every insert so the value stored in
+     * {@code access_tokens} is always safe to render as plain text.
+     */
+    private static final int DEVICE_NAME_MAX_LENGTH = 200;
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final HexFormat HEX = HexFormat.of();
@@ -170,7 +178,7 @@ public class TokenService {
         token.setUser(user);
         token.setTokenHash(CryptoUtils.sha256(rawToken));
         token.setDeviceFingerprint(deviceFingerprint);
-        token.setDeviceName(deviceName);
+        token.setDeviceName(HtmlStripper.stripAndTruncate(deviceName, DEVICE_NAME_MAX_LENGTH));
         token.setUserAgent(userAgent);
         token.setIpAddress(ipAddress);
         token.setAuthMethod(authMethod);

@@ -17,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -126,6 +127,31 @@ class TokenAuthenticationFilterTest {
         assertThat(auth.getName()).isEqualTo("alice@pivot.app");
         assertThat(auth.getAuthorities()).extracting(Object::toString).contains("ROLE_USER");
         verify(chain).doFilter(request, response);
+    }
+
+    @Test
+    void doFilter_validToken_setsCurrentTokenIdRequestAttribute() throws Exception {
+        // US02.2.3: SessionController reads this attribute instead of re-validating the same
+        // bearer token a second time against the database.
+        final String raw = "valid-raw-token";
+        final AccessToken token = activeToken();
+        ReflectionTestUtils.setField(token, "id", 42L);
+        when(request.getHeader("Authorization")).thenReturn("Bearer " + raw);
+        when(tokenService.validate(raw)).thenReturn(Optional.of(token));
+        when(tokenService.getRefreshThreshold()).thenReturn(0.5);
+
+        filter.doFilterInternal(request, response, chain);
+
+        verify(request).setAttribute(TokenAuthenticationFilter.CURRENT_TOKEN_ID_ATTRIBUTE, 42L);
+    }
+
+    @Test
+    void doFilter_noToken_neverSetsCurrentTokenIdRequestAttribute() throws Exception {
+        when(request.getHeader("Authorization")).thenReturn(null);
+
+        filter.doFilterInternal(request, response, chain);
+
+        verify(request, never()).setAttribute(Mockito.eq(TokenAuthenticationFilter.CURRENT_TOKEN_ID_ATTRIBUTE), any());
     }
 
     @Test

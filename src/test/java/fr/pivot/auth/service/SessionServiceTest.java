@@ -3,10 +3,13 @@ package fr.pivot.auth.service;
 import fr.pivot.auth.dto.DeviceOtpRequest;
 import fr.pivot.auth.dto.LoginRequest;
 import fr.pivot.auth.dto.LoginResult;
+import fr.pivot.auth.dto.SessionDto;
 import fr.pivot.auth.entity.AccessToken;
 import fr.pivot.auth.entity.AuthMethod;
 import fr.pivot.auth.entity.DeviceVerifyToken;
+import fr.pivot.auth.entity.TokenStatus;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.DeviceVerifyTokenRepository;
 import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.repository.UserRepository;
@@ -17,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -25,6 +29,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -33,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +60,7 @@ class SessionServiceTest {
     @Mock private RateLimiterService rateLimiter;
     @Mock private TrustedDeviceService trustedDeviceService;
     @Mock private AuditService auditService;
+    @Mock private AccessTokenRepository tokenRepo;
     @Mock private User user;
     @Mock private Tenant tenant;
 
@@ -66,7 +73,7 @@ class SessionServiceTest {
         when(featureFlagRepo.getInt("DEVICE_VERIFY_TTL_MINUTES", 15)).thenReturn(15);
         service = new SessionService(userRepo, tenantRepo, featureFlagRepo, deviceVerifyRepo,
             passwordEncoder, tokenService, emailService, rateLimiter, trustedDeviceService,
-            auditService, OTP_SECRET);
+            auditService, OTP_SECRET, tokenRepo);
 
         when(rateLimiter.loginIpBucket(anyString())).thenReturn("login:ip");
         when(rateLimiter.loginEmailBucket(anyString())).thenReturn("login:email");
@@ -330,6 +337,124 @@ class SessionServiceTest {
     void logout_isSilent_whenTokenNull() {
         service.logout(null);
         verify(tokenService).revokeByRawToken(null);
+    }
+
+    // ---------------- listSessions ----------------
+
+    @Test
+    void listSessions_mapsTokensToDto_mostRecentFirst_flaggingCurrentSession() {
+        final AccessToken current = mockToken(1L, "Chrome", "1.2.3.4");
+        final AccessToken other = mockToken(2L, "Firefox", "5.6.7.8");
+        when(tokenRepo.findByUserIdAndStatusOrderByCreatedAtDesc(7L, TokenStatus.ACTIVE))
+            .thenReturn(List.of(current, other));
+
+        final List<SessionDto> sessions = service.listSessions(user, 1L);
+
+        assertThat(sessions).hasSize(2);
+        assertThat(sessions.get(0).id()).isEqualTo(1L);
+        assertThat(sessions.get(0).device()).isEqualTo("Chrome");
+        assertThat(sessions.get(0).ip()).isEqualTo("1.2.3.4");
+        assertThat(sessions.get(0).isCurrent()).isTrue();
+        assertThat(sessions.get(1).id()).isEqualTo(2L);
+        assertThat(sessions.get(1).isCurrent()).isFalse();
+    }
+
+    @Test
+    void listSessions_returnsEmptyList_whenNoActiveSessions() {
+        when(tokenRepo.findByUserIdAndStatusOrderByCreatedAtDesc(7L, TokenStatus.ACTIVE))
+            .thenReturn(List.of());
+
+        assertThat(service.listSessions(user, 1L)).isEmpty();
+    }
+
+    @Test
+    void listSessions_noSessionFlaggedCurrent_whenCurrentTokenIdUnresolved() {
+        final AccessToken token = mockToken(1L, "Chrome", "1.2.3.4");
+        when(tokenRepo.findByUserIdAndStatusOrderByCreatedAtDesc(7L, TokenStatus.ACTIVE))
+            .thenReturn(List.of(token));
+
+        final List<SessionDto> sessions = service.listSessions(user, null);
+
+        assertThat(sessions.get(0).isCurrent()).isFalse();
+    }
+
+    @Test
+    void listSessions_stripsHtmlAndTruncatesDeviceName_defenceInDepth() {
+        final AccessToken token = mockToken(1L, "<script>evil()</script>Chrome", "1.2.3.4");
+        when(tokenRepo.findByUserIdAndStatusOrderByCreatedAtDesc(7L, TokenStatus.ACTIVE))
+            .thenReturn(List.of(token));
+
+        final List<SessionDto> sessions = service.listSessions(user, null);
+
+        assertThat(sessions.get(0).device()).isEqualTo("evil()Chrome");
+    }
+
+    // ---------------- revokeSession ----------------
+
+    @Test
+    void revokeSession_throws404_whenTokenNotOwnedByUser() {
+        when(tokenRepo.findByIdAndUserId(99L, 7L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.revokeSession(user, 99L, 1L))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.NOT_FOUND);
+        verify(tokenService, never()).revoke(any());
+    }
+
+    @Test
+    void revokeSession_throws404_whenTokenAlreadyRevoked() {
+        final AccessToken token = mockToken(5L, "Chrome", "1.2.3.4");
+        when(token.getStatus()).thenReturn(TokenStatus.REVOKED);
+        when(tokenRepo.findByIdAndUserId(5L, 7L)).thenReturn(Optional.of(token));
+
+        assertThatThrownBy(() -> service.revokeSession(user, 5L, 1L))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.NOT_FOUND);
+        verify(tokenService, never()).revoke(any());
+    }
+
+    @Test
+    void revokeSession_throws403_whenTokenIsCurrentSession() {
+        final AccessToken token = mockToken(1L, "Chrome", "1.2.3.4");
+        when(tokenRepo.findByIdAndUserId(1L, 7L)).thenReturn(Optional.of(token));
+
+        assertThatThrownBy(() -> service.revokeSession(user, 1L, 1L))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.FORBIDDEN);
+        verify(tokenService, never()).revoke(any());
+    }
+
+    @Test
+    void revokeSession_revokesToken_whenOwnedAndNotCurrent() {
+        final AccessToken token = mockToken(5L, "Chrome", "1.2.3.4");
+        when(tokenRepo.findByIdAndUserId(5L, 7L)).thenReturn(Optional.of(token));
+
+        service.revokeSession(user, 5L, 1L);
+
+        verify(tokenService).revoke(token);
+    }
+
+    // ---------------- revokeAllSessionsExceptCurrent ----------------
+
+    @Test
+    void revokeAllSessionsExceptCurrent_delegatesToRepository() {
+        service.revokeAllSessionsExceptCurrent(user, 1L);
+
+        verify(tokenRepo).revokeAllForUserExceptToken(7L, 1L, TokenStatus.ACTIVE, TokenStatus.REVOKED);
+    }
+
+    private AccessToken mockToken(final Long id, final String deviceName, final String ip) {
+        final AccessToken token = Mockito.mock(AccessToken.class);
+        Mockito.lenient().when(token.getId()).thenReturn(id);
+        Mockito.lenient().when(token.getDeviceName()).thenReturn(deviceName);
+        Mockito.lenient().when(token.getIpAddress()).thenReturn(ip);
+        Mockito.lenient().when(token.getCreatedAt()).thenReturn(Instant.EPOCH);
+        Mockito.lenient().when(token.getExpiresAt()).thenReturn(Instant.EPOCH.plusSeconds(3600));
+        Mockito.lenient().when(token.getStatus()).thenReturn(TokenStatus.ACTIVE);
+        return token;
     }
 
     private static <T> T eq(final T value) {
