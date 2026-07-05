@@ -77,6 +77,11 @@ public class SecurityConfig {
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/auth/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/account/email/confirm").permitAll()
+                    // US02.2.4 — the account-deletion cancellation link is opened from an emailed
+                    // link, and every session was revoked the moment the deletion was requested,
+                    // so there is by definition no active PIVOT session on any device at that
+                    // point. Identity comes solely from the single-use cancellation token.
+                    .requestMatchers(HttpMethod.POST, "/account/deletion/cancel").permitAll()
                     .requestMatchers(HttpMethod.POST, "/contact").permitAll()
                     // US02.1.1 — avatar images served as a public static resource (unguessable
                     // UUID filename, see AvatarWebConfig) so a plain <img src> works with no
