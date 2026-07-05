@@ -1,3 +1,10 @@
+# [0.12.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.11.0...v0.12.0) (2026-07-05)
+
+
+### Features
+
+* **api:** active sessions self-service - GET/DELETE /api/account/sessions (US02.2.3) ([#132](https://github.com/PIVOT-PLATFORM/pivot-core/issues/132)) ([0ed8585](https://github.com/PIVOT-PLATFORM/pivot-core/commit/0ed8585e2edf6ddab732dd6f44dcccc9a98f503d)), closes [TokenService#validate](https://github.com/TokenService/issues/validate)
+
 # [0.11.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.10.0...v0.11.0) (2026-07-05)
 
 
