@@ -163,6 +163,19 @@ class AccountControllerTest {
     }
 
     @Test
+    void ac0211_sec_updateProfile_throwsEmailFieldNotAllowed_whenBodyContainsEmailKeyWithDifferentCasing() {
+        final User user = buildUser(1L);
+        setAuthentication(user);
+        final Map<String, Object> body =
+                Map.of("firstName", "Bob", "lastName", "Dupont", "Email", "hacker@evil.test");
+
+        assertThatThrownBy(() -> controller.updateProfile(body, request))
+                .isInstanceOf(fr.pivot.account.exception.EmailFieldNotAllowedException.class);
+
+        verify(profileService, never()).updateProfile(any(), any());
+    }
+
+    @Test
     void handleInvalidName_shouldReturn400WithBody() {
         final ResponseEntity<java.util.Map<String, Object>> response =
                 controller.handleInvalidName(new InvalidProfileNameException("blank"));

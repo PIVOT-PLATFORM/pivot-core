@@ -98,8 +98,10 @@ public class AccountController {
      * {@link ProfileUpdateRequest} — specifically so an {@code email} property can be detected
      * and rejected with {@code 400} regardless of the JSON mapper's own unknown-property
      * leniency (see {@link ProfileUpdateRequest} javadoc for why the more obvious
-     * {@code @JsonIgnoreProperties} approach does not work here). Email changes are out of
-     * scope (US02.2.2) and must never be silently accepted or ignored. Any other unexpected
+     * {@code @JsonIgnoreProperties} approach does not work here). The key lookup is
+     * case-insensitive ({@code "Email"}/{@code "EMAIL"}/... all trigger the same rejection) so
+     * the check cannot be bypassed by varying the JSON property casing. Email changes are out
+     * of scope (US02.2.2) and must never be silently accepted or ignored. Any other unexpected
      * property is silently dropped (only {@code firstName}/{@code lastName} are read) — not a
      * security concern, since nothing but those two fields is ever passed to the service.
      *
@@ -117,7 +119,7 @@ public class AccountController {
         if (user == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        if (body.containsKey("email")) {
+        if (body.keySet().stream().anyMatch("email"::equalsIgnoreCase)) {
             throw new EmailFieldNotAllowedException();
         }
 

@@ -165,6 +165,19 @@ class AccountProfileIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void ac0211_sec_email_patchProfile_rejectsWithEmailFieldDifferentCasing_returns400() throws Exception {
+        mockMvc.perform(patch("/account/profile")
+                        .header("Authorization", "Bearer " + rawToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"firstName\":\"Alicia\",\"lastName\":\"Martinez\",\"Email\":\"hacker@evil.test\"}"))
+                .andExpect(status().isBadRequest());
+
+        final User reloaded = userRepository.findById(testUser.getId()).orElseThrow();
+        assertThat(reloaded.getEmail()).isEqualTo("user@pivot.test");
+        assertThat(reloaded.getFirstName()).isEqualTo(originalFirstName);
+    }
+
+    @Test
     void ac0211_xss_patchProfile_stripsHtmlFromNames() throws Exception {
         mockMvc.perform(patch("/account/profile")
                         .header("Authorization", "Bearer " + rawToken)
