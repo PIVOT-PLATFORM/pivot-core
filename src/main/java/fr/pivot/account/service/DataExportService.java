@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -128,8 +129,18 @@ public class DataExportService {
      * committed and visible before {@link #generateArchive} (an {@code @Async} method running on
      * a separate thread) reads it back.
      *
+     * <p>The {@code isInProgress()} check above and the insert below are not atomic: two
+     * near-simultaneous requests for the same user could both read "no pending/processing row"
+     * before either commits. The partial unique index {@code idx_der_user_one_active} (migration
+     * V4) closes this window at the database level — the losing insert raises {@link
+     * DataIntegrityViolationException}, caught here and translated to the same {@code 409} the
+     * application-level check already returns, so the race is invisible to the caller.
+     *
      * @param user the export owner
      * @return the persisted {@code PENDING} request
+     * @throws ResponseStatusException {@code 409} if a request is already pending/processing,
+     *                                 whether observed by the check above or by the DB constraint
+     *                                 rejecting a concurrent insert
      */
     @Transactional
     public DataExportRequest createPendingRequest(final User user) {
@@ -148,7 +159,11 @@ public class DataExportService {
         final DataExportRequest request = new DataExportRequest();
         request.setUser(user);
         request.setStatus(DataExportStatus.PENDING);
-        exportRepo.save(request);
+        try {
+            exportRepo.saveAndFlush(request);
+        } catch (final DataIntegrityViolationException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Un export est déjà en cours de génération");
+        }
         LOG.info("event=DATA_EXPORT_REQUESTED userId={} requestId={}", user.getId(), request.getId());
         return request;
     }

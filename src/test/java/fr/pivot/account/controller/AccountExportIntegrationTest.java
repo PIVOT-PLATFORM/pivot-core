@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -171,6 +172,28 @@ class AccountExportIntegrationTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> controller.requestExport(fakeRequest()))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    /**
+     * Direct DB-level proof for the TOCTOU race Gate 4 review flagged: two near-simultaneous
+     * {@code POST /api/account/export} calls could both pass the application-level
+     * "no pending/processing row" check before either insert commits. This test bypasses that
+     * application check entirely — inserting two {@code PENDING} rows back-to-back for the same
+     * user, exactly as two racing requests would — and asserts the partial unique index
+     * {@code idx_der_user_one_active} (migration V4) rejects the second one at the database
+     * level, independently of the service-level check in {@code createPendingRequest}.
+     */
+    @Test
+    void schema_shouldRejectConcurrentPendingRow_forSameUser() {
+        final DataExportRequest first = new DataExportRequest();
+        first.setUser(owner);
+        exportRepo.saveAndFlush(first);
+
+        final DataExportRequest concurrent = new DataExportRequest();
+        concurrent.setUser(owner);
+
+        assertThatThrownBy(() -> exportRepo.saveAndFlush(concurrent))
+            .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test

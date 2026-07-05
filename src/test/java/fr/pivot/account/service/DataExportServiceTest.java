@@ -25,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -96,14 +97,14 @@ class DataExportServiceTest {
     void createPendingRequest_succeeds_whenNoPreviousRequestExists() {
         when(user.getId()).thenReturn(1L);
         when(exportRepo.findFirstByUserIdOrderByRequestedAtDesc(1L)).thenReturn(Optional.empty());
-        when(exportRepo.save(any(DataExportRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(exportRepo.saveAndFlush(any(DataExportRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
         final DataExportRequest result = service.createPendingRequest(user);
 
         assertThat(result.getStatus()).isEqualTo(DataExportStatus.PENDING);
         assertThat(result.getUser()).isEqualTo(user);
         final ArgumentCaptor<DataExportRequest> captor = ArgumentCaptor.forClass(DataExportRequest.class);
-        verify(exportRepo).save(captor.capture());
+        verify(exportRepo).saveAndFlush(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(DataExportStatus.PENDING);
     }
 
@@ -117,7 +118,7 @@ class DataExportServiceTest {
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT));
-        verify(exportRepo, never()).save(any());
+        verify(exportRepo, never()).saveAndFlush(any());
     }
 
     @Test
@@ -130,7 +131,7 @@ class DataExportServiceTest {
         assertThatThrownBy(() -> service.createPendingRequest(user))
             .isInstanceOf(RateLimitException.class)
             .satisfies(ex -> assertThat(((RateLimitException) ex).getRetryAfterSeconds()).isGreaterThan(0));
-        verify(exportRepo, never()).save(any());
+        verify(exportRepo, never()).saveAndFlush(any());
     }
 
     @Test
@@ -139,11 +140,27 @@ class DataExportServiceTest {
         when(previous.isInProgress()).thenReturn(false);
         when(previous.getRequestedAt()).thenReturn(Instant.now().minus(25, ChronoUnit.HOURS));
         when(exportRepo.findFirstByUserIdOrderByRequestedAtDesc(1L)).thenReturn(Optional.of(previous));
-        when(exportRepo.save(any(DataExportRequest.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(exportRepo.saveAndFlush(any(DataExportRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
         final DataExportRequest result = service.createPendingRequest(user);
 
         assertThat(result.getStatus()).isEqualTo(DataExportStatus.PENDING);
+    }
+
+    @Test
+    void createPendingRequest_throws409_whenConcurrentInsertRaceLosesToDbConstraint() {
+        // Simulates the TOCTOU race: the application-level check above passed (no previous
+        // request read), but a concurrent request's insert committed first, so the partial
+        // unique index (idx_der_user_one_active, migration V4) rejects this insert.
+        when(user.getId()).thenReturn(1L);
+        when(exportRepo.findFirstByUserIdOrderByRequestedAtDesc(1L)).thenReturn(Optional.empty());
+        when(exportRepo.saveAndFlush(any(DataExportRequest.class)))
+            .thenThrow(new DataIntegrityViolationException("idx_der_user_one_active"));
+
+        assertThatThrownBy(() -> service.createPendingRequest(user))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT));
     }
 
     // ----------------------------------------------------------------
