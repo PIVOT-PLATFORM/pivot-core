@@ -244,6 +244,16 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(InvalidUserFilterException.class);
     }
 
+    @Test
+    void ac0611Err02_throwsInvalidUserFilter_whenRoleUnknown() {
+        // Symétrique de ac0611Err01 : un rôle inconnu doit échouer explicitement (400 au
+        // niveau contrôleur) plutôt que de retourner silencieusement une page vide.
+        setAuthentication("ROLE_ADMIN");
+
+        assertThatThrownBy(() -> adminUserService.listUsers(tenantAId, 0, 20, "ROLE_BOGUS", null, null))
+                .isInstanceOf(InvalidUserFilterException.class);
+    }
+
     // ----------------------------------------------------------------
     // AC : filtre search (email ou nom)
     // ----------------------------------------------------------------

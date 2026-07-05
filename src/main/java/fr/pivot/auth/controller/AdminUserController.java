@@ -62,12 +62,14 @@ public class AdminUserController {
      * @param page   numéro de page (0-indexed), défaut {@code 0}
      * @param size   taille de page demandée, défaut {@code 20} — plafonnée à 100 par
      *               {@link AdminUserService}
-     * @param role   filtre optionnel sur le rôle exact (ex. {@code ROLE_ADMIN})
+     * @param role   filtre optionnel sur le rôle exact parmi les rôles connus de la plateforme
+     *               (ex. {@code ROLE_ADMIN})
      * @param status filtre optionnel sur le statut ({@code ACTIVE}, {@code INACTIVE},
      *               {@code BLOCKED})
      * @param search filtre optionnel plein-texte (e-mail, prénom ou nom)
      * @return {@code 200} avec une page Spring Data de {@link AdminUserDto} · {@code 401} si le
-     *     contexte d'authentification est invalide · {@code 400} si {@code status} est invalide
+     *     contexte d'authentification est invalide · {@code 400} si {@code role} ou
+     *     {@code status} est invalide
      */
     @GetMapping
     public ResponseEntity<Page<AdminUserDto>> list(

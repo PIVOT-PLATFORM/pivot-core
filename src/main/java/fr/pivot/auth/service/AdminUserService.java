@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Service d'administration exposant la liste paginée des utilisateurs du tenant courant
@@ -38,6 +39,14 @@ public class AdminUserService {
 
     /** Taille de page maximale — toute valeur supérieure est silencieusement plafonnée. */
     public static final int MAX_PAGE_SIZE = 100;
+
+    /**
+     * Rôles connus de la plateforme (voir CLAUDE.md « Schéma de rôles ») — seules valeurs
+     * acceptées par le filtre {@code role}. La colonne {@code role} reste une {@code VARCHAR(50)}
+     * libre en base (pas d'énumération SQL), mais le référentiel applicatif des rôles est fermé.
+     */
+    static final Set<String> KNOWN_ROLES =
+            Set.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN", "ROLE_USER", "ROLE_GUEST");
 
     private final UserRepository userRepository;
 
@@ -64,8 +73,10 @@ public class AdminUserService {
      * @param search   filtre optionnel plein-texte (e-mail, prénom ou nom), ou {@code null}/vide
      *                 pour ne pas filtrer
      * @return page de {@link AdminUserDto} — jamais les entités {@link User} directement
-     * @throws InvalidUserFilterException si {@code status} est fourni mais ne correspond à
-     *                                     aucune valeur de {@link UserStatus}
+     * @throws InvalidUserFilterException si {@code role} est fourni mais ne correspond à aucun
+     *                                     rôle connu de la plateforme, ou si {@code status} est
+     *                                     fourni mais ne correspond à aucune valeur de
+     *                                     {@link UserStatus}
      */
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional(readOnly = true)
@@ -76,6 +87,7 @@ public class AdminUserService {
             final String role,
             final String status,
             final String search) {
+        final String roleFilter = validateRole(role);
         final UserStatus statusFilter = parseStatus(status);
         final Pageable pageable = PageRequest.of(
                 Math.max(page, 0),
@@ -84,7 +96,7 @@ public class AdminUserService {
 
         final Specification<User> spec = Specification.<User>where(UserSpecifications.forTenant(tenantId))
                 .and(UserSpecifications.notDeleted())
-                .and(UserSpecifications.withRole(role))
+                .and(UserSpecifications.withRole(roleFilter))
                 .and(UserSpecifications.withStatus(statusFilter))
                 .and(UserSpecifications.matchingSearch(search));
 
@@ -103,6 +115,26 @@ public class AdminUserService {
             return DEFAULT_PAGE_SIZE;
         }
         return Math.min(size, MAX_PAGE_SIZE);
+    }
+
+    /**
+     * Valide le filtre {@code role} contre le référentiel fermé des rôles connus de la
+     * plateforme ({@link #KNOWN_ROLES}) — symétrique de {@link #parseStatus(String)} : une
+     * valeur inconnue lève une erreur plutôt que de retourner silencieusement une page vide.
+     *
+     * @param role valeur brute du paramètre de requête, ou {@code null}/vide
+     * @return {@code null} si aucun filtre fourni, sinon {@code role} inchangé (comparaison
+     *     stricte, cf. {@link UserSpecifications#withRole(String)})
+     * @throws InvalidUserFilterException si la valeur ne correspond à aucun rôle connu
+     */
+    static String validateRole(final String role) {
+        if (role == null || role.isBlank()) {
+            return null;
+        }
+        if (!KNOWN_ROLES.contains(role)) {
+            throw new InvalidUserFilterException("role", role);
+        }
+        return role;
     }
 
     /**

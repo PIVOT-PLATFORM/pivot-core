@@ -139,6 +139,38 @@ class AdminUserServiceTest {
     }
 
     // ----------------------------------------------------------------
+    // AC06.1.1-SEC-03 : filtre role invalide (symétrique du filtre status)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0611Sec02_throwsInvalidUserFilter_whenRoleUnknown() {
+        assertThatThrownBy(() -> service.listUsers(TENANT_ID, 0, 20, "ROLE_BOGUS", null, null))
+                .isInstanceOf(InvalidUserFilterException.class)
+                .hasFieldOrPropertyWithValue("field", "role")
+                .hasFieldOrPropertyWithValue("value", "ROLE_BOGUS");
+
+        verify(userRepository, never()).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    @Test
+    void ac0611_09_ignoresRoleFilter_whenBlank() {
+        stubEmptyPage();
+
+        service.listUsers(TENANT_ID, 0, 20, "  ", null, null);
+
+        verify(userRepository).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    @Test
+    void ac0611_10_acceptsRoleFilter_whenKnownRole() {
+        stubEmptyPage();
+
+        service.listUsers(TENANT_ID, 0, 20, "ROLE_ADMIN", null, null);
+
+        verify(userRepository).findAll(any(Specification.class), any(Pageable.class));
+    }
+
+    // ----------------------------------------------------------------
     // AC06.1.1-02 : mapping DTO — jamais l'entité JPA exposée
     // ----------------------------------------------------------------
 
