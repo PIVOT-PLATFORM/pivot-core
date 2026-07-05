@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.8.0...v0.9.0) (2026-07-05)
+
+
+### Features
+
+* **api:** US02.2.1 - Changer son mot de passe ([#128](https://github.com/PIVOT-PLATFORM/pivot-core/issues/128)) ([1e149d7](https://github.com/PIVOT-PLATFORM/pivot-core/commit/1e149d71cdaccf1a80c5b1abe1afc1d1b9718997))
+
 # [0.8.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.7.0...v0.8.0) (2026-07-05)
 
 
