@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.10.0...v0.11.0) (2026-07-05)
+
+
+### Features
+
+* **api:** US02.2.2 - Changer son e-mail ([#131](https://github.com/PIVOT-PLATFORM/pivot-core/issues/131)) ([0c7bb76](https://github.com/PIVOT-PLATFORM/pivot-core/commit/0c7bb7642a03c830a53817b701ec06dc70482c2e)), closes [PasswordEncoder#matches](https://github.com/PasswordEncoder/issues/matches) [EmailChangeService#confirmEmailChange](https://github.com/EmailChangeService/issues/confirmEmailChange) [#128](https://github.com/PIVOT-PLATFORM/pivot-core/issues/128)
+
 # [0.10.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.9.0...v0.10.0) (2026-07-05)
 
 
