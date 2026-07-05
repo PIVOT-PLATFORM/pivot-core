@@ -301,6 +301,65 @@ public class EmailService {
      * @param message the message body
      * @param locale  the sender's preferred locale (used as notification context)
      */
+    /**
+     * RGPD Art. 17 — confirms an account-deletion request immediately after it is confirmed
+     * (US02.2.4). States the effective purge date and carries the single-use cancellation link
+     * (the only way to abort the deletion once tokens have already been revoked).
+     *
+     * @param to           the account's email address (not yet anonymized at this point)
+     * @param firstName    the account holder's first name (may be {@code null})
+     * @param effectiveAt  the instant the grace period elapses and anonymization runs
+     * @param cancelToken  raw single-use cancellation token (SHA-256-hashed in DB)
+     * @param locale       the account holder's preferred locale
+     */
+    @Async
+    public void sendAccountDeletionConfirmationEmail(
+            String to, String firstName, Instant effectiveAt, String cancelToken, Locale locale) {
+        final String pattern = messageSource.getMessage("email.account-deletion.date-format", null, locale);
+        final String formattedDate = buildDateFormatter(pattern).format(effectiveAt);
+        send(to, subject("email.subject.account-deletion-confirm", locale),
+            "email/account-deletion-confirm",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
+                   "effectiveDate", formattedDate,
+                   "cancelUrl", appUrl + "/account/deletion/cancel?token=" + cancelToken),
+            locale);
+    }
+
+    /**
+     * Emails the 6-digit OTP confirming an account-deletion request for an account with no
+     * local password (auth_mode OIDC / Google-only) — US02.2.4.
+     *
+     * @param to        the account's email address
+     * @param firstName the account holder's first name (may be {@code null})
+     * @param otp       the 6-digit one-time code (TTL {@code ACCOUNT_DELETION_OTP_TTL_MINUTES})
+     * @param locale    the account holder's preferred locale
+     */
+    @Async
+    public void sendAccountDeletionOtpEmail(String to, String firstName, String otp, Locale locale) {
+        send(to, subject("email.subject.account-deletion-otp", locale),
+            "email/account-deletion-otp",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale), "otp", otp),
+            locale);
+    }
+
+    /**
+     * Confirms that a pending account deletion was cancelled before the grace period elapsed
+     * (US02.2.4) — the account is immediately usable again (a fresh login is still required,
+     * every session was revoked when the deletion was requested).
+     *
+     * @param to        the account's email address
+     * @param firstName the account holder's first name (may be {@code null})
+     * @param locale    the account holder's preferred locale
+     */
+    @Async
+    public void sendAccountDeletionCancelledEmail(String to, String firstName, Locale locale) {
+        send(to, subject("email.subject.account-deletion-cancelled", locale),
+            "email/account-deletion-cancelled",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
+                   "loginUrl", appUrl + "/auth/login"),
+            locale);
+    }
+
     @Async
     public void sendContactNotification(String to, String from, String message, Locale locale) {
         send(to, subject("email.subject.contact-notification", locale),
