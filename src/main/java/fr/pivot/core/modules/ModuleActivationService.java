@@ -99,8 +99,10 @@ public class ModuleActivationService {
 
     private ModuleActivation changeState(final Long tenantId, final String moduleId, final boolean enabled) {
         if (!moduleRegistry.isRegistered(moduleId)) {
-            LOG.warn("event=MODULE_ACTIVATION_REJECTED reason=unknown_module tenantId={} moduleId={}",
-                    tenantId, sanitizeForLog(moduleId));
+            if (LOG.isWarnEnabled()) {
+                LOG.warn("event=MODULE_ACTIVATION_REJECTED reason=unknown_module tenantId={} moduleId={}",
+                        tenantId, sanitizeForLog(moduleId));
+            }
             throw new UnknownModuleException(moduleId);
         }
 
@@ -114,10 +116,12 @@ public class ModuleActivationService {
             final ModuleLifecycleEvent event = enabled
                     ? new ModuleActivatedEvent(tenantId, moduleId, Instant.now())
                     : new ModuleDeactivatedEvent(tenantId, moduleId, Instant.now());
-            LOG.info("event={} tenantId={} moduleId={}",
-                    enabled ? "MODULE_ACTIVATED" : "MODULE_DEACTIVATED", tenantId, sanitizeForLog(moduleId));
+            if (LOG.isInfoEnabled()) {
+                LOG.info("event={} tenantId={} moduleId={}",
+                        enabled ? "MODULE_ACTIVATED" : "MODULE_DEACTIVATED", tenantId, sanitizeForLog(moduleId));
+            }
             eventPublisher.publishEvent(event);
-        } else {
+        } else if (LOG.isInfoEnabled()) {
             LOG.info("event=MODULE_ACTIVATION_NOOP tenantId={} moduleId={} enabled={}",
                     tenantId, sanitizeForLog(moduleId), enabled);
         }
