@@ -50,6 +50,7 @@ public class SuperAdminTenantController {
      * @param plan     filtre optionnel — plan exact (paramètre {@code plan})
      * @param authMode filtre optionnel — mode d'authentification exact (paramètre {@code auth_mode})
      * @param pageable pagination — défaut {@code page=0}, {@code size=20}, tri {@code createdAt DESC}
+     *     · {@code size} plafonné globalement par {@link fr.pivot.config.PaginationConfig}
      * @return {@code 200} avec l'enveloppe {@link TenantPageResponse} · {@code 403} si l'appelant
      *     n'a pas {@code ROLE_SUPER_ADMIN}
      */
