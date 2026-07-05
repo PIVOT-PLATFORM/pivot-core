@@ -1,5 +1,7 @@
 package fr.pivot.auth.web;
 
+import fr.pivot.auth.exception.ChangePasswordRateLimitException;
+import fr.pivot.auth.exception.InvalidCurrentPasswordException;
 import fr.pivot.auth.exception.RateLimitException;
 import fr.pivot.core.modules.UnknownModuleException;
 import org.springframework.http.HttpHeaders;
@@ -30,6 +32,36 @@ public class GlobalExceptionHandler {
                 "code", "RATE_LIMITED",
                 "retryAfterSeconds", ex.getRetryAfterSeconds()
             ));
+    }
+
+    /**
+     * Returns 429 with {@code Retry-After} header for the change-password endpoint.
+     *
+     * <p>Unlike {@link #handleRateLimit}, the body deliberately carries only a generic
+     * {@code message} field — never a {@code "code":"RATE_LIMITED"} marker — so it cannot be
+     * distinguished from a "current password incorrect" 401 body by content alone
+     * (anti-enumeration, see {@link ChangePasswordRateLimitException}).
+     */
+    @ExceptionHandler(ChangePasswordRateLimitException.class)
+    public ResponseEntity<Map<String, Object>> handleChangePasswordRateLimit(final ChangePasswordRateLimitException ex) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()));
+        return ResponseEntity
+            .status(HttpStatus.TOO_MANY_REQUESTS)
+            .headers(headers)
+            .body(Map.of("message", ex.getMessage()));
+    }
+
+    /**
+     * Returns 401 with body {@code {"message": "..."}} for a wrong current password on the
+     * change-password endpoint — same body shape as {@link #handleChangePasswordRateLimit},
+     * only the status code and the (absent) {@code Retry-After} header differ.
+     */
+    @ExceptionHandler(InvalidCurrentPasswordException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidCurrentPassword(final InvalidCurrentPasswordException ex) {
+        return ResponseEntity
+            .status(HttpStatus.UNAUTHORIZED)
+            .body(Map.of("message", ex.getMessage()));
     }
 
     /**

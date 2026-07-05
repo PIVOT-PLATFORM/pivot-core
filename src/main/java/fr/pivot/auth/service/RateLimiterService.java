@@ -89,4 +89,6 @@ public class RateLimiterService {
     public String resendVerificationBucket(String ip) { return "resend-verification:ip:" + ip; }
     public String deviceOtpBucket(String userId) { return "device-otp:user:" + userId; }
     public String contactIpBucket(String ip) { return "contact:ip:" + ip; }
+    public String changePasswordUserBucket(String userId) { return "change-password:user:" + userId; }
+    public String changePasswordIpBucket(String ip) { return "change-password:ip:" + ip; }
 }
