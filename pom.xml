@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>fr.pivot</groupId>
 	<artifactId>pivot-core</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>0.16.1</version>
 	<name>pivot-core</name>
 	<description>PIVOT collaborative suite — backend</description>
 	<url>https://github.com/PIVOT-PLATFORM/pivot-core</url>
@@ -28,7 +28,7 @@
 		<testcontainers.version>1.21.4</testcontainers.version>
 		<!-- Build reproductible : timestamp d'entrées d'archive figé → même source = même
 		     digest de JAR. Sous-tend la vérification de digest sur reprise (release.yml). -->
-		<project.build.outputTimestamp>2026-06-25T00:00:00Z</project.build.outputTimestamp>
+		<project.build.outputTimestamp>2026-07-05T16:55:06Z</project.build.outputTimestamp>
 
 	</properties>
 
