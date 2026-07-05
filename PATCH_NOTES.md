@@ -1,6 +1,6 @@
 # Notes de version — PIVOT Core
 
-## [Unreleased]
+## [0.13.0] — 5 juillet 2026
 
 ### Export de vos données personnelles
 

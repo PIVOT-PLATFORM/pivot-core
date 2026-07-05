@@ -1,3 +1,10 @@
+# [0.13.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.12.0...v0.13.0) (2026-07-05)
+
+
+### Features
+
+* export de données personnelles RGPD Art. 20 (US02.3.1) ([#133](https://github.com/PIVOT-PLATFORM/pivot-core/issues/133)) ([c8d5f8c](https://github.com/PIVOT-PLATFORM/pivot-core/commit/c8d5f8c86dcb3966f5839b8d1241d807fb4cde1c)), closes [DataExportService#createPendingRequest](https://github.com/DataExportService/issues/createPendingRequest) [#131](https://github.com/PIVOT-PLATFORM/pivot-core/issues/131)
+
 # [0.12.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.11.0...v0.12.0) (2026-07-05)
 
 
