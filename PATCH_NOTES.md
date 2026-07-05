@@ -1,5 +1,16 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Export de vos données personnelles
+
+- **Demander un export de vos données** : depuis votre espace compte, vous pouvez désormais demander une archive complète de vos données personnelles (profil, sessions actives, historique d'activité) — conformément à votre droit à la portabilité
+- **Génération en arrière-plan** : la demande est traitée immédiatement en arrière-plan, sans bloquer votre navigation ; un email contenant le lien de téléchargement vous est envoyé dès que l'archive est prête
+- **Téléchargement sécurisé** : le lien de téléchargement n'est valable que 24 heures et nécessite d'être connecté à votre compte — il ne peut pas être utilisé par quelqu'un d'autre
+- **Une demande à la fois** : une nouvelle demande d'export ne peut être faite que toutes les 24 heures
+
+---
+
 ## [0.12.0] — 5 juillet 2026
 
 ### Sécurité du compte
