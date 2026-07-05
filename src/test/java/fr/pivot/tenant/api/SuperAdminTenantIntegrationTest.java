@@ -14,9 +14,17 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tests d'intégration (PostgreSQL via Testcontainers, contexte Spring réel) pour
@@ -45,9 +53,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *   <tr><td>Filtre auth_mode</td><td>{@link #ac_filter_byAuthMode()}</td></tr>
  *   <tr><td>userCount via jointure/agrégation</td>
  *       <td>{@link #ac_userCount_reflectsActualUserCountPerTenant()}</td></tr>
+ *   <tr><td>Requiert ROLE_SUPER_ADMIN — bout-en-bout HTTP (pas seulement le proxy service)</td>
+ *       <td>{@link #ac_security_http_deniesWith403_whenCallerHasRoleAdmin()},
+ *           {@link #ac_security_http_allowsWith200_whenCallerHasRoleSuperAdmin()},
+ *           {@link #ac_security_http_deniesWith401_whenCallerUnauthenticated()}</td></tr>
+ *   <tr><td>Pageable.size plafonné ({@code PaginationConfig})</td>
+ *       <td>{@link #ac_pageSize_isCappedAtGlobalMaximum_whenCallerRequestsExcessiveSize()}</td></tr>
  * </table>
  */
 class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
+
+    private static final String ENDPOINT = "/superadmin/tenants";
 
     @Autowired
     private SuperAdminTenantService superAdminTenantService;
@@ -55,11 +71,23 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private TenantRepository tenantRepository;
 
+    @Autowired
+    private WebApplicationContext webApplicationContext;
+
     private Tenant pivotSaas;
+
+    private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         pivotSaas = tenantRepository.findBySlug("pivot-saas").orElseThrow();
+        // Full Spring context + real Spring Security filter chain (springSecurity()) — unlike
+        // the service-level tests below, this exercises RBAC through an actual HTTP round-trip
+        // (ExceptionTranslationFilter turning AccessDeniedException into a real 403 response),
+        // not just the @PreAuthorize AOP proxy called directly.
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
+                .apply(springSecurity())
+                .build();
     }
 
     @AfterEach
@@ -94,6 +122,47 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
                 null, null, null, null, PageRequest.of(0, 20));
 
         assertThat(result).isNotNull();
+    }
+
+    // ----------------------------------------------------------------
+    // Security — bout-en-bout HTTP (dispatch réel via MockMvc + filtre Spring Security réel,
+    // pas seulement le proxy Spring Method Security autour du service ci-dessus)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac_security_http_deniesWith403_whenCallerHasRoleAdmin() throws Exception {
+        mockMvc.perform(get(ENDPOINT)
+                        .with(user("http-it-admin").authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ac_security_http_allowsWith200_whenCallerHasRoleSuperAdmin() throws Exception {
+        mockMvc.perform(get(ENDPOINT)
+                        .with(user("http-it-super-admin")
+                                .authorities(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray());
+    }
+
+    @Test
+    void ac_security_http_deniesWith401_whenCallerUnauthenticated() throws Exception {
+        mockMvc.perform(get(ENDPOINT))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ----------------------------------------------------------------
+    // Pageable.size — plafond global (PaginationConfig)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac_pageSize_isCappedAtGlobalMaximum_whenCallerRequestsExcessiveSize() throws Exception {
+        mockMvc.perform(get(ENDPOINT)
+                        .param("size", "999999")
+                        .with(user("http-it-super-admin")
+                                .authorities(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(100));
     }
 
     // ----------------------------------------------------------------
