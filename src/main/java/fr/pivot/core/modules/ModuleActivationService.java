@@ -99,8 +99,10 @@ public class ModuleActivationService {
 
     private ModuleActivation changeState(final Long tenantId, final String moduleId, final boolean enabled) {
         if (!moduleRegistry.isRegistered(moduleId)) {
-            LOG.warn("event=MODULE_ACTIVATION_REJECTED reason=unknown_module tenantId={} moduleId={}",
-                    tenantId, moduleId);
+            if (LOG.isWarnEnabled()) {
+                LOG.warn("event=MODULE_ACTIVATION_REJECTED reason=unknown_module tenantId={} moduleId={}",
+                        tenantId, sanitizeForLog(moduleId));
+            }
             throw new UnknownModuleException(moduleId);
         }
 
@@ -114,13 +116,32 @@ public class ModuleActivationService {
             final ModuleLifecycleEvent event = enabled
                     ? new ModuleActivatedEvent(tenantId, moduleId, Instant.now())
                     : new ModuleDeactivatedEvent(tenantId, moduleId, Instant.now());
-            LOG.info("event={} tenantId={} moduleId={}",
-                    enabled ? "MODULE_ACTIVATED" : "MODULE_DEACTIVATED", tenantId, moduleId);
+            if (LOG.isInfoEnabled()) {
+                LOG.info("event={} tenantId={} moduleId={}",
+                        enabled ? "MODULE_ACTIVATED" : "MODULE_DEACTIVATED", tenantId, sanitizeForLog(moduleId));
+            }
             eventPublisher.publishEvent(event);
-        } else {
+        } else if (LOG.isInfoEnabled()) {
             LOG.info("event=MODULE_ACTIVATION_NOOP tenantId={} moduleId={} enabled={}",
-                    tenantId, moduleId, enabled);
+                    tenantId, sanitizeForLog(moduleId), enabled);
         }
         return saved;
+    }
+
+    /**
+     * Neutralise les caractères de contrôle CR/LF d'une valeur avant de la loguer.
+     *
+     * <p>{@code moduleId} provient in fine d'un {@code @PathVariable}/body de la couche
+     * appelante — donnée utilisateur non fiable. Sans neutralisation, un identifiant
+     * contenant {@code \r} ou {@code \n} permettrait d'injecter de fausses lignes de log
+     * (CWE-117 / log forging) dans un fichier de log en texte brut. La valeur n'est jamais
+     * utilisée ailleurs que dans un message de log — la logique métier continue d'utiliser
+     * l'identifiant d'origine.
+     *
+     * @param value valeur potentiellement non fiable à journaliser
+     * @return valeur sans retour chariot ni saut de ligne, sûre pour un message de log
+     */
+    private static String sanitizeForLog(final String value) {
+        return value == null ? "null" : value.replaceAll("[\r\n]", "_");
     }
 }

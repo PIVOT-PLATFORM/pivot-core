@@ -97,6 +97,11 @@ jobs:
           server-username: GITHUB_ACTOR
           server-password: GITHUB_TOKEN
 
+      # Le pom.xml modifié ici est committé plus bas par "Semantic Release" (`pom.xml`
+      # dans les assets de @semantic-release/git, .releaserc.json) — même checkout, aucun
+      # git checkout/reset entre les deux ne l'efface. Sans ce commit, SonarCloud ne voit
+      # jamais de changement de sonar.projectVersion et le "new code" (mode "previous
+      # version") reste figé indéfiniment sur la première analyse.
       - name: Set Maven version = release
         run: mvn --no-transfer-progress -B versions:set -DnewVersion="$VERSION" -DgenerateBackupPoms=false
 

@@ -1,13 +1,17 @@
 package fr.pivot.core.modules;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import fr.pivot.core.modules.event.ModuleActivatedEvent;
 import fr.pivot.core.modules.event.ModuleDeactivatedEvent;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.Optional;
@@ -16,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -44,9 +49,18 @@ class ModuleActivationServiceTest {
 
     private ModuleActivationService service;
 
+    private Level originalLevel;
+
     @BeforeEach
     void setUp() {
         service = new ModuleActivationService(moduleRegistry, repository, eventPublisher);
+    }
+
+    @AfterEach
+    void restoreLogLevel() {
+        if (originalLevel != null) {
+            ((Logger) LoggerFactory.getLogger(ModuleActivationService.class)).setLevel(originalLevel);
+        }
     }
 
     // ----------------------------------------------------------------
@@ -189,5 +203,39 @@ class ModuleActivationServiceTest {
         when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
 
         assertThat(service.isEnabled(TENANT_ID, MODULE_ID)).isFalse();
+    }
+
+    // ----------------------------------------------------------------
+    // Logging désactivé — sanitizeForLog() gardé par isWarnEnabled()/isInfoEnabled()
+    // (java:S2629) : vérifie que le comportement métier est inchangé, quel que
+    // soit le niveau de log, sur les 3 branches gardées (rejet, transition,
+    // no-op).
+    // ----------------------------------------------------------------
+
+    @Test
+    void changeState_shouldBehaveIdentically_whenLoggingDisabled() {
+        final Logger logger = (Logger) LoggerFactory.getLogger(ModuleActivationService.class);
+        originalLevel = logger.getLevel();
+        logger.setLevel(Level.OFF);
+
+        when(moduleRegistry.isRegistered("ghost")).thenReturn(false);
+        assertThatThrownBy(() -> service.activate(TENANT_ID, "ghost"))
+                .isInstanceOf(UnknownModuleException.class);
+
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+        when(repository.save(any(ModuleActivation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        final ModuleActivation activated = service.activate(TENANT_ID, MODULE_ID);
+        assertThat(activated.isEnabled()).isTrue();
+        verify(eventPublisher, times(1)).publishEvent(any(ModuleActivatedEvent.class));
+
+        final ModuleActivation alreadyEnabled = new ModuleActivation(TENANT_ID, MODULE_ID);
+        alreadyEnabled.setEnabled(true);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.of(alreadyEnabled));
+        when(repository.save(alreadyEnabled)).thenReturn(alreadyEnabled);
+
+        service.activate(TENANT_ID, MODULE_ID);
+        verify(eventPublisher, times(1)).publishEvent(any(ModuleActivatedEvent.class));
     }
 }
