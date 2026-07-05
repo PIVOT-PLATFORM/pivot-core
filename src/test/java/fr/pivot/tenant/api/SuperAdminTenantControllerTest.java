@@ -1,7 +1,12 @@
 package fr.pivot.tenant.api;
 
+import fr.pivot.auth.entity.User;
+import fr.pivot.auth.exception.RateLimitException;
+import fr.pivot.auth.web.GlobalExceptionHandler;
+import fr.pivot.config.CookieHelper;
 import java.time.Instant;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,30 +18,40 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Tests unitaires (dispatch HTTP complet via MockMvc standalone, sans contexte Spring ni
- * proxy de sécurité) pour {@link SuperAdminTenantController} — US06.2.3.
+ * Tests unitaires (dispatch HTTP complet via MockMvc standalone, sans contexte Spring) pour
+ * {@link SuperAdminTenantController} — US06.2.3 « Super admin liste tous les tenants » et
+ * US06.2.1 « Super admin crée un tenant ».
  *
- * <p>Vérifie : liaison des paramètres de requête (filtres + pagination) vers le service,
- * forme JSON de l'enveloppe {@link TenantPageResponse} conforme au contrat AC
- * ({@code content, totalElements, totalPages, number, size}), et tri par défaut
- * {@code createdAt DESC} / taille 20 quand aucun paramètre de pagination n'est fourni.
+ * <p>Vérifie : liaison des paramètres de requête (filtres + pagination) vers le service, forme
+ * JSON de l'enveloppe {@link TenantPageResponse}, validation bean (400), mapping exception →
+ * statut (409, 422, 429 via {@link GlobalExceptionHandler}), le repli 401 quand le contexte de
+ * sécurité ne porte aucun détail {@link User}, et le happy path (201/200).
  *
- * <p>Le RBAC ({@code @PreAuthorize} porté par {@link SuperAdminTenantService}) n'est pas
- * exercé ici (service mocké, hors proxy Spring Security) — couvert par
- * {@code SuperAdminTenantIntegrationTest}.
+ * <p>Le RBAC ({@code @PreAuthorize} porté par {@link SuperAdminTenantService}) n'est pas exercé
+ * ici (service mocké, hors proxy Spring Security) — couvert par
+ * {@link SuperAdminTenantIntegrationTest}.
  */
 @ExtendWith(MockitoExtension.class)
 class SuperAdminTenantControllerTest {
@@ -46,15 +61,31 @@ class SuperAdminTenantControllerTest {
     @Mock
     private SuperAdminTenantService superAdminTenantService;
 
+    @Mock
+    private CookieHelper cookieHelper;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        final SuperAdminTenantController controller = new SuperAdminTenantController(superAdminTenantService);
+        final SuperAdminTenantController controller =
+                new SuperAdminTenantController(superAdminTenantService, cookieHelper);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+                .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+        lenient().when(cookieHelper.clientIp(any())).thenReturn("127.0.0.1");
+        authenticateAsSuperAdmin();
     }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+    // ----------------------------------------------------------------
+    // GET /superadmin/tenants — US06.2.3
+    // ----------------------------------------------------------------
 
     @Test
     void ac_list_shouldReturn200WithPageEnvelope_whenCalledWithNoParams() throws Exception {
@@ -123,5 +154,151 @@ class SuperAdminTenantControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.number").value(2))
                 .andExpect(jsonPath("$.size").value(5));
+    }
+
+    // ----------------------------------------------------------------
+    // POST /superadmin/tenants — US06.2.1
+    // ----------------------------------------------------------------
+
+    @Test
+    void create_returns201_onValidPayload() throws Exception {
+        when(superAdminTenantService.createTenant(any(), any(), anyString(), any()))
+                .thenReturn(new CreateTenantResponse(1L, "acme-corp", "https://app.pivot.test/auth/register?tenant=acme-corp"));
+
+        mockMvc.perform(post(ENDPOINT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPayload()))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.slug").value("acme-corp"))
+                .andExpect(jsonPath("$.invitationUrl").value("https://app.pivot.test/auth/register?tenant=acme-corp"));
+    }
+
+    @Test
+    void create_returns400_onBlankName() throws Exception {
+        mockMvc.perform(post(ENDPOINT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"\",\"slug\":\"acme-corp\",\"plan\":\"SAAS\",\"authMode\":\"LOCAL\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(superAdminTenantService, never()).createTenant(any(), any(), anyString(), any());
+    }
+
+    @Test
+    void create_returns400_onMalformedSlug() throws Exception {
+        mockMvc.perform(post(ENDPOINT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Acme\",\"slug\":\"AB\",\"plan\":\"SAAS\",\"authMode\":\"LOCAL\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(superAdminTenantService, never()).createTenant(any(), any(), anyString(), any());
+    }
+
+    @Test
+    void create_returns400_onUnknownAuthMode() throws Exception {
+        mockMvc.perform(post(ENDPOINT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Acme\",\"slug\":\"acme-corp\",\"plan\":\"SAAS\",\"authMode\":\"BOGUS\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void create_returns409_onDuplicateSlug() throws Exception {
+        when(superAdminTenantService.createTenant(any(), any(), anyString(), any()))
+                .thenThrow(new TenantSlugAlreadyExistsException("acme-corp"));
+
+        mockMvc.perform(post(ENDPOINT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPayload()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("TENANT_SLUG_ALREADY_EXISTS"));
+    }
+
+    @Test
+    void create_returns422_onReservedSlug() throws Exception {
+        when(superAdminTenantService.createTenant(any(), any(), anyString(), any()))
+                .thenThrow(new ReservedTenantSlugException("admin"));
+
+        mockMvc.perform(post(ENDPOINT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPayload()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("TENANT_SLUG_RESERVED"));
+    }
+
+    @Test
+    void create_returns429_withRetryAfterHeader_whenRateLimited() throws Exception {
+        when(superAdminTenantService.createTenant(any(), any(), anyString(), any()))
+                .thenThrow(new RateLimitException(1800L));
+
+        mockMvc.perform(post(ENDPOINT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPayload()))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "1800"))
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    }
+
+    @Test
+    void create_returns401_whenSecurityContextHasNoUserDetails() throws Exception {
+        SecurityContextHolder.clearContext();
+
+        mockMvc.perform(post(ENDPOINT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validPayload()))
+                .andExpect(status().isUnauthorized());
+
+        verify(superAdminTenantService, never()).createTenant(any(), any(), anyString(), any());
+    }
+
+    // ----------------------------------------------------------------
+    // GET /superadmin/tenants/check-slug — US06.2.1
+    // ----------------------------------------------------------------
+
+    @Test
+    void checkSlug_returns200_withAvailability() throws Exception {
+        when(superAdminTenantService.checkSlugAvailability("brand-new")).thenReturn(SlugAvailabilityResponse.ofAvailable());
+
+        mockMvc.perform(get(ENDPOINT + "/check-slug").param("slug", "brand-new"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(true))
+                .andExpect(jsonPath("$.reason").doesNotExist());
+    }
+
+    @Test
+    void checkSlug_returns200_withReasonWhenUnavailable() throws Exception {
+        when(superAdminTenantService.checkSlugAvailability("admin")).thenReturn(SlugAvailabilityResponse.reserved());
+
+        mockMvc.perform(get(ENDPOINT + "/check-slug").param("slug", "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false))
+                .andExpect(jsonPath("$.reason").value("RESERVED"));
+    }
+
+    @Test
+    void checkSlug_returns401_whenSecurityContextHasNoUserDetails() throws Exception {
+        SecurityContextHolder.clearContext();
+
+        mockMvc.perform(get(ENDPOINT + "/check-slug").param("slug", "brand-new"))
+                .andExpect(status().isUnauthorized());
+
+        verify(superAdminTenantService, never()).checkSlugAvailability(any());
+    }
+
+    // ----------------------------------------------------------------
+    // Helpers
+    // ----------------------------------------------------------------
+
+    private static String validPayload() {
+        return "{\"name\":\"Acme Corp\",\"slug\":\"acme-corp\",\"plan\":\"SAAS\",\"authMode\":\"LOCAL\"}";
+    }
+
+    private static void authenticateAsSuperAdmin() {
+        final User user = new User();
+        user.setRole("ROLE_SUPER_ADMIN");
+        final UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                "super-admin-test", null, List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN")));
+        auth.setDetails(user);
+        SecurityContextHolder.getContext().setAuthentication(auth);
     }
 }
