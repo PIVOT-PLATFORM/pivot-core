@@ -34,9 +34,12 @@ public interface AccessTokenRepository extends JpaRepository<AccessToken, Long> 
     Optional<AccessToken> findByTokenHashAndStatus(String tokenHash, TokenStatus status);
 
     /**
-     * Finds an active token with its user eagerly loaded — avoids N+1 on validate().
+     * Finds an active token with its user and the user's tenant eagerly loaded — avoids
+     * N+1 on {@code validate()}, which also needs {@code tenant.tenantInvalidationTimestamp}
+     * (US06.2.2 bulk tenant-deactivation revocation check) on every call.
      */
-    @Query("SELECT t FROM AccessToken t JOIN FETCH t.user WHERE t.tokenHash = :hash AND t.status = :status")
+    @Query("SELECT t FROM AccessToken t JOIN FETCH t.user u JOIN FETCH u.tenant "
+        + "WHERE t.tokenHash = :hash AND t.status = :status")
     Optional<AccessToken> findByTokenHashAndStatusWithUser(
         @Param("hash") String hash,
         @Param("status") TokenStatus status);

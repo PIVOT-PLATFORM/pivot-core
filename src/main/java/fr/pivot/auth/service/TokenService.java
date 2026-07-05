@@ -8,6 +8,7 @@ import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.util.CryptoUtils;
 import fr.pivot.auth.util.HtmlStripper;
+import fr.pivot.tenant.entity.Tenant;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -227,6 +228,13 @@ public class TokenService {
             return Optional.empty();
         }
 
+        if (isTenantInvalidated(token)) {
+            LOG.warn("event=TOKEN_REJECTED_TENANT_DEACTIVATED userId={} tenantId={}",
+                token.getUser().getId(), token.getUser().getTenant().getId());
+            meterRegistry.counter("pivot.auth.token.tenant_invalidated").increment();
+            return Optional.empty();
+        }
+
         // Throttle last_used_at updates — only write if null or beyond the throttle window.
         // Dispatched asynchronously (REQUIRES_NEW UPDATE-by-id) so this validation path never
         // opens a write transaction on the request thread (no per-request write amplification).
@@ -239,6 +247,42 @@ public class TokenService {
 
         LOG.debug("event=TOKEN_VALID userId={}", token.getUser() != null ? token.getUser().getId() : "?");
         return Optional.of(token);
+    }
+
+    /**
+     * Checks whether {@code token} was issued at or before its tenant's last deactivation
+     * (US06.2.2 « Super admin désactive un tenant »).
+     *
+     * <p>Bulk revocation strategy: deactivating a tenant stamps a single
+     * {@code tenant_invalidation_timestamp} on the {@code Tenant} row (O(1)) instead of
+     * revoking every {@code AccessToken} row of every user of that tenant (which would be
+     * O(n) users and could exceed the 500ms revocation SLA on a large tenant). Every token
+     * validation must therefore re-check this condition — a token issued strictly after the
+     * timestamp remains valid; one issued at or before it is treated as revoked.
+     *
+     * <p>{@code null} timestamp (tenant never deactivated) or a token with no resolvable
+     * user/tenant (defensive — should not happen for a persisted token given the
+     * {@code NOT NULL} FK constraints) both mean "not invalidated" — never blocks a
+     * legitimate token.
+     *
+     * @param token the token being validated, with its user and tenant eagerly loaded
+     * @return {@code true} if the token must be rejected because its tenant was deactivated
+     *     after it was issued
+     */
+    private boolean isTenantInvalidated(final AccessToken token) {
+        final User user = token.getUser();
+        if (user == null) {
+            return false;
+        }
+        final Tenant tenant = user.getTenant();
+        if (tenant == null) {
+            return false;
+        }
+        final Instant invalidatedAt = tenant.getTenantInvalidationTimestamp();
+        if (invalidatedAt == null) {
+            return false;
+        }
+        return !token.getCreatedAt().isAfter(invalidatedAt);
     }
 
     /**

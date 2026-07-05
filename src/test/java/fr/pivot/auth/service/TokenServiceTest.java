@@ -8,6 +8,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.util.CryptoUtils;
+import fr.pivot.tenant.entity.Tenant;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -236,6 +237,85 @@ class TokenServiceTest {
 
         assertThat(result).isEmpty();
         assertThat(stored.getStatus()).isEqualTo(TokenStatus.EXPIRED);
+    }
+
+    // ----------------------------------------------------------------
+    // validate() — US06.2.2 tenant bulk-revocation timestamp check
+    // ----------------------------------------------------------------
+
+    @Test
+    void validate_returnsEmpty_whenTokenIssuedBeforeTenantInvalidationTimestamp() throws Exception {
+        final String raw = "issued-before-deactivation";
+        final AccessToken stored = validToken(raw, 3600);
+        final Instant createdAt = Instant.now().minusSeconds(120);
+        setCreatedAt(stored, createdAt);
+        stored.setUser(user);
+
+        final Tenant tenant = Mockito.mock(Tenant.class);
+        when(tenant.getTenantInvalidationTimestamp()).thenReturn(createdAt.plusSeconds(60));
+        when(user.getTenant()).thenReturn(tenant);
+        when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(stored));
+
+        assertThat(tokenService.validate(raw)).isEmpty();
+        verify(self, never()).touchLastUsed(any(), any());
+    }
+
+    @Test
+    void validate_returnsToken_whenIssuedAfterTenantInvalidationTimestamp() throws Exception {
+        final String raw = "issued-after-deactivation";
+        final AccessToken stored = validToken(raw, 3600);
+        setCreatedAt(stored, Instant.now());
+        stored.setUser(user);
+
+        final Tenant tenant = Mockito.mock(Tenant.class);
+        // Tenant was deactivated in the past — this token was (re)issued afterwards.
+        when(tenant.getTenantInvalidationTimestamp()).thenReturn(Instant.now().minusSeconds(3600));
+        when(user.getTenant()).thenReturn(tenant);
+        when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(stored));
+
+        assertThat(tokenService.validate(raw)).isPresent();
+    }
+
+    @Test
+    void validate_returnsToken_whenTenantNeverDeactivated_timestampIsNull() {
+        // Regression safety: a null tenant_invalidation_timestamp must never block a token —
+        // this is the default state of every existing tenant before this feature shipped.
+        final String raw = "never-deactivated-tenant";
+        final AccessToken stored = validToken(raw, 3600);
+        stored.setUser(user);
+
+        final Tenant tenant = Mockito.mock(Tenant.class);
+        when(tenant.getTenantInvalidationTimestamp()).thenReturn(null);
+        when(user.getTenant()).thenReturn(tenant);
+        when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(stored));
+
+        assertThat(tokenService.validate(raw)).isPresent();
+    }
+
+    @Test
+    void validate_returnsToken_whenTokenHasNoResolvableUser() {
+        // Defensive: findByTokenHashAndStatusWithUser always JOIN FETCHes a non-null user in
+        // production (NOT NULL FK), but validate() must not NPE if that ever changes.
+        final String raw = "no-user-token";
+        final AccessToken stored = validToken(raw, 3600);
+        when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(stored));
+
+        assertThat(tokenService.validate(raw)).isPresent();
+    }
+
+    /**
+     * Sets the JPA-managed {@code createdAt} field via reflection — no public setter exists
+     * (it is populated by {@code @PrePersist} on real persistence, never mutated afterwards).
+     * Mirrors the {@link #intFlag} reflection helper already used in this test class.
+     */
+    private static void setCreatedAt(final AccessToken token, final Instant createdAt) throws Exception {
+        final var field = AccessToken.class.getDeclaredField("createdAt");
+        field.setAccessible(true);
+        field.set(token, createdAt);
     }
 
     // ----------------------------------------------------------------
