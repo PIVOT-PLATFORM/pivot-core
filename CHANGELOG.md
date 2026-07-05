@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.7.0...v0.8.0) (2026-07-05)
+
+
+### Features
+
+* **api:** admin liste les utilisateurs de son tenant (US06.1.1) ([#127](https://github.com/PIVOT-PLATFORM/pivot-core/issues/127)) ([283be5a](https://github.com/PIVOT-PLATFORM/pivot-core/commit/283be5a45de7775e4c0d48220948f9911318e2a7)), closes [AdminUserService#validateRole](https://github.com/AdminUserService/issues/validateRole)
+
 # [0.7.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.6.0...v0.7.0) (2026-07-05)
 
 
