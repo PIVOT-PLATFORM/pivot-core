@@ -1,6 +1,6 @@
 # Notes de version — PIVOT Core
 
-## [Unreleased]
+## [0.14.0] — 5 juillet 2026
 
 ### Gestion des tenants
 
