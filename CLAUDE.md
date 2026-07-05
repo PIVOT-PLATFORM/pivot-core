@@ -198,14 +198,14 @@ Travail organisé par sprint. Référence : **`pivot-docs/docs/backlog/SPRINTS.m
 Après implémentation sur `feat/{us-id}-{slug}` :
 
 1. Ouvrir une PR (draft) vers `main`
-2. **Autoloop** (10 itérations max) :
+2. **Autoloop** (20 itérations max) :
    - **En parallèle :**
      - **Review neutre** — Expert PR Review : architecture, AC, sécurité, dette
      - **CI** — `mvn verify -q` = 0 erreur/warning · Gitleaks clean · Gate 3 hard blocks
    - **Corrections** — tous les findings résolus, commit `fix({scope}): ...`
    - **Convergence** — Gate 4 ≥ 85 ET CI verte → sortir
 3. Gate 4 vert → `Stage: Review` dans frontmatter US + SPRINTS.md + signal mainteneur
-4. Blocage 10 boucles → Breaking Point 2
+4. Blocage 20 boucles → Breaking Point 2
 
 ## Workflow — Ordre d'exécution par US (dans un sprint)
 
