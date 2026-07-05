@@ -47,6 +47,9 @@ public class AccountExportController {
     private static final Logger LOG = LoggerFactory.getLogger(AccountExportController.class);
     private static final String HEADER_USER_AGENT = "User-Agent";
 
+    /** Reported by {@code GET /status} when the user has never requested an export. */
+    private static final String STATUS_NONE = "NONE";
+
     private final DataExportService exportService;
     private final ExportStorageService storageService;
     private final CookieHelper cookieHelper;
@@ -98,7 +101,7 @@ public class AccountExportController {
         final User user = currentUser();
         final Optional<DataExportRequest> last = exportService.findLatest(user.getId());
         final DataExportRequest req = last.orElse(null);
-        final String status = req == null ? "NONE" : req.getStatus().name();
+        final String status = req == null ? STATUS_NONE : req.getStatus().name();
         return ResponseEntity.ok(new ExportStatusDto(
             status,
             req == null ? null : req.getRequestedAt(),
