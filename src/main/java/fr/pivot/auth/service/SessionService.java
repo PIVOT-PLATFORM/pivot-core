@@ -3,13 +3,18 @@ package fr.pivot.auth.service;
 import fr.pivot.auth.dto.DeviceOtpRequest;
 import fr.pivot.auth.dto.LoginRequest;
 import fr.pivot.auth.dto.LoginResult;
+import fr.pivot.auth.dto.SessionDto;
+import fr.pivot.auth.entity.AccessToken;
 import fr.pivot.auth.entity.AuthMethod;
 import fr.pivot.auth.entity.DeviceVerifyToken;
+import fr.pivot.auth.entity.TokenStatus;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.mapper.UserMapper;
+import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.DeviceVerifyTokenRepository;
 import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.repository.UserRepository;
+import fr.pivot.auth.util.HtmlStripper;
 import fr.pivot.tenant.entity.Tenant;
 import fr.pivot.tenant.repository.TenantRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +31,7 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 /**
  * Handles login, device-OTP verification, session restore and logout.
@@ -38,6 +44,11 @@ import java.time.temporal.ChronoUnit;
  * are admin-configurable via {@code feature_flags}.
  *
  * <p>Device MFA is driven by {@code MFA_NEW_DEVICE_OTP} feature flag.
+ *
+ * <p>Also backs the "active sessions" self-service screen (US02.2.3):
+ * {@link #listSessions(User, Long)}, {@link #revokeSession(User, Long, Long)} and
+ * {@link #revokeAllSessionsExceptCurrent(User, Long)} — listing and revocation are userId-scoped
+ * from the bearer token's resolved {@link User}, never from a client-supplied identifier.
  *
  * @see PasswordService for password reset flows
  * @see RegistrationService for account creation and email verification
@@ -58,6 +69,13 @@ public class SessionService {
     private static final int SESSION_RESTORE_MAX = 30;
     private static final Duration SESSION_RESTORE_WINDOW = Duration.ofMinutes(5);
 
+    /**
+     * Max length re-applied to {@code device} when mapping to {@link SessionDto} — defence in
+     * depth alongside the sanitization already applied by {@link TokenService} at issuance time,
+     * in case any row was ever written by another path.
+     */
+    private static final int DEVICE_NAME_MAX_LENGTH = 200;
+
     private final UserRepository userRepo;
     private final TenantRepository tenantRepo;
     private final FeatureFlagRepository featureFlagRepo;
@@ -68,6 +86,7 @@ public class SessionService {
     private final RateLimiterService rateLimiter;
     private final TrustedDeviceService trustedDeviceService;
     private final AuditService auditService;
+    private final AccessTokenRepository tokenRepo;
 
     private static final int DEVICE_VERIFY_TTL_DEFAULT = 15;
     private final String otpSecret;
@@ -93,6 +112,8 @@ public class SessionService {
      * @param rateLimiter            sliding-window rate limiter backed by Redis
      * @param trustedDeviceService   manages trusted device records
      * @param auditService           async audit event logger
+     * @param tokenRepo              direct read access to {@link AccessToken} rows for the
+     *                               active-sessions screen (list / ownership check / bulk revoke)
      */
     public SessionService(
             final UserRepository userRepo,
@@ -105,7 +126,8 @@ public class SessionService {
             final RateLimiterService rateLimiter,
             final TrustedDeviceService trustedDeviceService,
             final AuditService auditService,
-            @Value("${pivot.auth.otp-secret:}") final String otpSecret) {
+            @Value("${pivot.auth.otp-secret:}") final String otpSecret,
+            final AccessTokenRepository tokenRepo) {
         this.userRepo = userRepo;
         this.tenantRepo = tenantRepo;
         this.featureFlagRepo = featureFlagRepo;
@@ -116,6 +138,7 @@ public class SessionService {
         this.rateLimiter = rateLimiter;
         this.trustedDeviceService = trustedDeviceService;
         this.auditService = auditService;
+        this.tokenRepo = tokenRepo;
         if (otpSecret == null || otpSecret.isBlank()) {
             // No hardcoded fallback secret: generate an ephemeral per-boot key. OTPs hashed with
             // it stop verifying after a restart (acceptable in dev — 15 min TTL). Set
@@ -322,6 +345,80 @@ public class SessionService {
     public void logout(final String rawCookieToken) {
         tokenService.revokeByRawToken(rawCookieToken);
         LOG.info("event=LOGOUT");
+    }
+
+    /**
+     * Lists the current user's active sessions, most recently created first (US02.2.3).
+     *
+     * <p>{@code userId} is always taken from the authenticated {@link User} — never from a
+     * client-supplied parameter — so this can never return another user's sessions.
+     *
+     * @param user            the authenticated user (resolved from the bearer token)
+     * @param currentTokenId  id of the {@link AccessToken} backing the current request, or
+     *                        {@code null} if it could not be resolved (no session is then
+     *                        flagged {@code isCurrent})
+     * @return active sessions mapped to {@link SessionDto}, most recent first
+     */
+    @Transactional(readOnly = true)
+    public List<SessionDto> listSessions(final User user, final Long currentTokenId) {
+        return tokenRepo.findByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), TokenStatus.ACTIVE)
+            .stream()
+            .map(token -> toSessionDto(token, currentTokenId))
+            .toList();
+    }
+
+    /**
+     * Revokes a single session belonging to the current user (US02.2.3).
+     *
+     * <p>Ownership is checked first: a {@code tokenId} that does not belong to {@code user}
+     * (whether it does not exist or belongs to another user) yields 404 — the response never
+     * reveals whether the token exists for someone else. Only once ownership is established is
+     * the current-session guard applied — revoking the session backing the request that asked
+     * for the revocation is rejected with 403 (API-level protection, independent of the UI).
+     *
+     * @param user           the authenticated user (resolved from the bearer token)
+     * @param tokenId        id of the {@link AccessToken} to revoke (path variable, untrusted)
+     * @param currentTokenId id of the session backing the current request
+     * @throws ResponseStatusException 404 if the token does not exist or belongs to another
+     *     user; 403 if {@code tokenId} is the current session
+     */
+    @Transactional
+    public void revokeSession(final User user, final Long tokenId, final Long currentTokenId) {
+        final AccessToken token = tokenRepo.findByIdAndUserId(tokenId, user.getId())
+            .filter(t -> TokenStatus.ACTIVE.equals(t.getStatus()))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+
+        if (token.getId().equals(currentTokenId)) {
+            LOG.warn("event=SESSION_REVOKE_REJECTED reason=is_current_session userId={} tokenId={}",
+                user.getId(), tokenId);
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Impossible de révoquer la session courante");
+        }
+
+        tokenService.revoke(token);
+        LOG.info("event=SESSION_REVOKED userId={} tokenId={}", user.getId(), tokenId);
+    }
+
+    /**
+     * Revokes every active session of the current user except the current one (US02.2.3).
+     *
+     * @param user           the authenticated user (resolved from the bearer token)
+     * @param currentTokenId id of the session backing the current request — preserved
+     */
+    @Transactional
+    public void revokeAllSessionsExceptCurrent(final User user, final Long currentTokenId) {
+        final int revoked = tokenRepo.revokeAllForUserExceptToken(
+            user.getId(), currentTokenId, TokenStatus.ACTIVE, TokenStatus.REVOKED);
+        LOG.info("event=SESSIONS_REVOKED_ALL_EXCEPT_CURRENT userId={} count={}", user.getId(), revoked);
+    }
+
+    private SessionDto toSessionDto(final AccessToken token, final Long currentTokenId) {
+        return new SessionDto(
+            token.getId(),
+            HtmlStripper.stripAndTruncate(token.getDeviceName(), DEVICE_NAME_MAX_LENGTH),
+            token.getIpAddress(),
+            token.getCreatedAt(),
+            token.getExpiresAt(),
+            token.getId().equals(currentTokenId));
     }
 
     // ----------------------------------------------------------------
