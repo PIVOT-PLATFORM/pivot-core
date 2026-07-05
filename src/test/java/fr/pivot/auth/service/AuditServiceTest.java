@@ -123,11 +123,13 @@ class AuditServiceTest {
 
         verify(self, never()).log(any(), any(), any(), any(), any(), any());
 
-        // Invoke the registered afterCommit hook (simulates transaction commit) — this is what
-        // lets a REQUIRES_NEW write see a row (here, otherTenant) inserted earlier in the same,
-        // still-open enclosing transaction.
+        // Invoke the registered afterCompletion hook (simulates transaction commit) — dispatch is
+        // deferred to afterCompletion(int), not afterCommit(), so the write still happens even if
+        // the enclosing transaction rolls back (see AuditService#log(User, Tenant, String, String,
+        // String) JavaDoc). This is what lets a REQUIRES_NEW write see a row (here, otherTenant)
+        // inserted earlier in the same, still-open enclosing transaction.
         new ArrayList<>(TransactionSynchronizationManager.getSynchronizations())
-            .forEach(s -> s.afterCommit());
+            .forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
 
         verify(self).log(eq(user), eq(otherTenant), eq(AuditService.TENANT_CREATED), eq("2.3.4.5"), eq("ua"), isNull());
     }
