@@ -108,6 +108,27 @@ class RegistrationServiceTest {
         verify(emailService, never()).sendVerificationEmail(anyString(), anyString(), anyString(), any());
     }
 
+    /**
+     * US02.2.4 regression: an email held only by a soft-deleted row (PENDING_DELETION account,
+     * or already anonymized) must not reach the {@code userRepo.save} INSERT — the unique index
+     * on (tenant_id, email) is not partial, so it would otherwise raise a raw
+     * {@code DataIntegrityViolationException} instead of the intended neutral response.
+     */
+    @Test
+    void register_isNeutral_whenEmailHeldBySoftDeletedRow() {
+        when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);
+        when(userRepo.findByTenantIdAndEmailAndDeletedAtIsNull(1L, "user@x.com"))
+            .thenReturn(Optional.empty());
+        when(userRepo.existsByTenantIdAndEmail(1L, "user@x.com")).thenReturn(true);
+
+        service.register(req(), "ip", "ua");
+
+        verify(passwordEncoder).encode(anyString());
+        verify(userRepo, never()).save(any(User.class));
+        verify(emailService, never()).sendVerificationEmail(anyString(), anyString(), anyString(), any());
+        verify(emailService, never()).sendVerificationReminderEmail(anyString(), anyString(), anyString(), any());
+    }
+
     @Test
     void register_savesUserAndSendsVerification_onHappyPath() {
         when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(true);
