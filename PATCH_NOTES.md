@@ -1,6 +1,6 @@
 # Notes de version — PIVOT Core
 
-## [Unreleased]
+## [0.7.0] — 5 juillet 2026
 
 ### Supervision plateforme
 

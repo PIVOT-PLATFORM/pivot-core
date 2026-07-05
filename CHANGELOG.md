@@ -1,3 +1,10 @@
+# [0.7.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.6.0...v0.7.0) (2026-07-05)
+
+
+### Features
+
+* **api:** GET /api/superadmin/tenants — super admin liste tous les tenants (US06.2.3) ([#126](https://github.com/PIVOT-PLATFORM/pivot-core/issues/126)) ([bb7a418](https://github.com/PIVOT-PLATFORM/pivot-core/commit/bb7a418b43e38c7811a9c2628ca76a21930d5ae8)), closes [#1](https://github.com/PIVOT-PLATFORM/pivot-core/issues/1) [#2](https://github.com/PIVOT-PLATFORM/pivot-core/issues/2) [#1](https://github.com/PIVOT-PLATFORM/pivot-core/issues/1)
+
 # [0.6.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.5.0...v0.6.0) (2026-07-03)
 
 
