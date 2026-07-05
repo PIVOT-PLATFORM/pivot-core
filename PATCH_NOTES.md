@@ -1,5 +1,14 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Administration des utilisateurs
+
+- **Liste des utilisateurs de l'organisation** : les administrateurs peuvent désormais consulter la liste paginée des utilisateurs de leur organisation depuis l'API, avec recherche par nom ou e-mail et filtres par rôle ou statut du compte
+- **Filtre par rôle plus explicite** : une valeur de rôle inconnue est désormais rejetée clairement (comme c'est déjà le cas pour le filtre par statut) plutôt que de renvoyer silencieusement une liste vide
+
+---
+
 ## [0.7.0] — 5 juillet 2026
 
 ### Supervision plateforme

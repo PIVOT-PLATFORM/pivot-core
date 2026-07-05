@@ -2,13 +2,21 @@ package fr.pivot.auth.repository;
 
 import fr.pivot.auth.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 
-public interface UserRepository extends JpaRepository<User, Long> {
+/**
+ * Spring Data repository for {@link User}.
+ *
+ * <p>Extends {@link JpaSpecificationExecutor} to support the dynamic, optional filter
+ * combinations (role / status / search) required by {@code GET /api/admin/users}
+ * (US06.1.1) — see {@link UserSpecifications}.
+ */
+public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificationExecutor<User> {
     Optional<User> findByTenantIdAndEmailAndDeletedAtIsNull(Long tenantId, String email);
     Optional<User> findByGoogleIdAndDeletedAtIsNull(String googleId);
     Optional<User> findByTenantIdAndOidcSubjectAndDeletedAtIsNull(Long tenantId, String oidcSubject);
