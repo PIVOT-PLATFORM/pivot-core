@@ -142,6 +142,76 @@ public class EmailService {
             locale);
     }
 
+    /**
+     * Confirmation-link email sent to the CANDIDATE new address for a "change my email"
+     * request (US02.2.2). The current address is never touched until this link is clicked —
+     * sent only to the new one, never to the old one.
+     *
+     * @param to        the candidate new address
+     * @param firstName the account holder's first name (may be {@code null})
+     * @param token     the raw confirmation token to embed in the link (SHA-256-hashed in DB)
+     * @param locale    the account holder's preferred locale
+     */
+    @Async
+    public void sendEmailChangeConfirmationEmail(String to, String firstName, String token, Locale locale) {
+        send(to, subject("email.subject.email-change-confirm", locale),
+            "email/email-change-confirm",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
+                   "confirmUrl", appUrl + "/account/email/confirm?token=" + token),
+            locale);
+    }
+
+    /**
+     * Security notification sent to the OLD address once an email change has been confirmed.
+     * Includes both addresses, the timestamp and the IP so the user can detect an
+     * unauthorized change even though they no longer receive mail at the new address.
+     *
+     * @param to        the OLD (now inactive) address — the only place this notice can reach
+     *                  the legitimate owner if the change was not authorized
+     * @param firstName the account holder's first name (may be {@code null})
+     * @param oldEmail  the address being replaced, repeated in the body for clarity
+     * @param newEmail  the newly confirmed address
+     * @param changedAt when the change was confirmed
+     * @param ip        client IP of the confirmation request (may be {@code null})
+     * @param locale    the account holder's preferred locale
+     */
+    @Async
+    public void sendEmailChangedNotificationEmail(
+            String to, String firstName, String oldEmail, String newEmail, Instant changedAt, String ip, Locale locale) {
+        final String pattern = messageSource.getMessage("email.password-changed.date-format", null, locale);
+        final String formattedDate = buildDateFormatter(pattern).format(changedAt);
+        send(to, subject("email.subject.email-changed", locale),
+            "email/email-changed",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
+                   "oldEmail", oldEmail,
+                   "newEmail", newEmail,
+                   "changedAt", formattedDate,
+                   "ip", ip != null ? ip
+                       : messageSource.getMessage("email.password-changed.unknown-ip", null, locale),
+                   KEY_RESET_URL, appUrl + "/auth/forgot-password"),
+            locale);
+    }
+
+    /**
+     * Notifies an address that a "change my email" request targeted it as the new address,
+     * but it already has a PIVOT account. Sent instead of a 409 to the requester, so the
+     * initiation endpoint never reveals account existence (RGPD Art. 5.1c / no enumeration) —
+     * mirrors {@link #sendAccountExistsEmail} for the registration flow.
+     *
+     * @param to        the existing account's email address (the attempted new address)
+     * @param firstName the existing account holder's first name (may be {@code null})
+     * @param locale    the existing account holder's preferred locale
+     */
+    @Async
+    public void sendEmailChangeDuplicateEmail(String to, String firstName, Locale locale) {
+        send(to, subject("email.subject.email-change-duplicate", locale),
+            "email/email-change-duplicate",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
+                   "loginUrl", appUrl + "/auth/login",
+                   KEY_RESET_URL, appUrl + "/auth/forgot-password"),
+            locale);
+    }
+
     @Async
     public void sendWelcomeEmail(String to, String firstName, Locale locale) {
         send(to, subject("email.subject.welcome", locale),
