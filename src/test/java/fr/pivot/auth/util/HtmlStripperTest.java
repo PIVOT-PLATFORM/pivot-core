@@ -52,4 +52,19 @@ class HtmlStripperTest {
     void stripAndTruncate_returnsEmptyString_whenOnlyTags() {
         assertThat(HtmlStripper.stripAndTruncate("<div></div>", 200)).isEmpty();
     }
+
+    @Test
+    void stripAndTruncate_removesUnterminatedTag_withNoClosingBracket() {
+        // TAG_PATTERN alone only matches well-formed "<...>" spans — an unterminated tag (no
+        // closing '>' anywhere in the value) would otherwise sail through untouched and could
+        // still be reinterpreted as markup by a lenient downstream HTML parser.
+        final String result = HtmlStripper.stripAndTruncate("Chrome<img src=x onerror=alert(1)", 200);
+        assertThat(result).doesNotContain("<").doesNotContain(">");
+    }
+
+    @Test
+    void stripAndTruncate_removesLoneAngleBrackets_notFormingAnyTag() {
+        final String result = HtmlStripper.stripAndTruncate("5 < 10 > 3", 200);
+        assertThat(result).doesNotContain("<").doesNotContain(">");
+    }
 }

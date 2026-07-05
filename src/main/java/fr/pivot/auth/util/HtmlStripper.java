@@ -30,6 +30,12 @@ public final class HtmlStripper {
      * (e.g. {@code "<b>Chrome</b>"} becomes {@code "Chrome"}). The result is trimmed of
      * leading/trailing whitespace before truncation.
      *
+     * <p>{@link #TAG_PATTERN} only matches well-formed {@code <...>} spans, so a value with an
+     * <em>unterminated</em> tag (e.g. {@code "Chrome<img src=x onerror=alert(1)"}, missing the
+     * closing {@code >}) would otherwise pass through untouched. Any {@code <} or {@code >}
+     * character still present after that pass is stripped as well, so the result is guaranteed
+     * free of angle brackets regardless of how malformed the input markup is.
+     *
      * @param value     raw client-supplied value, may be {@code null}
      * @param maxLength maximum number of characters to keep (after stripping)
      * @return the stripped and truncated value, or {@code null} if {@code value} was {@code null}
@@ -38,7 +44,8 @@ public final class HtmlStripper {
         if (value == null) {
             return null;
         }
-        final String stripped = TAG_PATTERN.matcher(value).replaceAll("").trim();
+        final String withoutTags = TAG_PATTERN.matcher(value).replaceAll("");
+        final String stripped = withoutTags.replace("<", "").replace(">", "").trim();
         return stripped.length() > maxLength ? stripped.substring(0, maxLength) : stripped;
     }
 }
