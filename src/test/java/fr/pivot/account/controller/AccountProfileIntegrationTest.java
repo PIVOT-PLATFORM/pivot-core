@@ -38,6 +38,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>Error case "prénom/nom obligatoires" — {@code ac0211_err_*}</li>
  *   <li>"Upload avatar stocké, URL retournée" + formats/tailles — {@code ac0211_avatar_*}</li>
  *   <li>Security "identité exclusivement depuis le token porteur" — {@code ac0211_sec_auth_*}</li>
+ *   <li>US02.1.2 "PATCH accepte preferredLanguage (fr/en)" — {@code ac0212_*}</li>
+ *   <li>US02.1.2 "GET expose preferredLanguage" — {@code ac0212_01_*}</li>
  * </ul>
  */
 class AccountProfileIntegrationTest extends AbstractIntegrationTest {
@@ -62,6 +64,7 @@ class AccountProfileIntegrationTest extends AbstractIntegrationTest {
     private String originalFirstName;
     private String originalLastName;
     private String originalAvatarUrl;
+    private String originalLocale;
 
     @BeforeEach
     void setUp() {
@@ -73,6 +76,7 @@ class AccountProfileIntegrationTest extends AbstractIntegrationTest {
         originalFirstName = testUser.getFirstName();
         originalLastName = testUser.getLastName();
         originalAvatarUrl = testUser.getAvatarUrl();
+        originalLocale = testUser.getLocale();
 
         rawToken = tokenService.issue(testUser, "fp-account-it", "Chrome", "ua", "127.0.0.1",
                 AuthMethod.PASSWORD, false).rawToken();
@@ -87,6 +91,7 @@ class AccountProfileIntegrationTest extends AbstractIntegrationTest {
         fresh.setFirstName(originalFirstName);
         fresh.setLastName(originalLastName);
         fresh.setAvatarUrl(originalAvatarUrl);
+        fresh.setLocale(originalLocale);
         userRepository.save(fresh);
     }
 
@@ -101,6 +106,14 @@ class AccountProfileIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.firstName").value(originalFirstName))
                 .andExpect(jsonPath("$.lastName").value(originalLastName))
                 .andExpect(jsonPath("$.email").value("user@pivot.test"));
+    }
+
+    @Test
+    void ac0212_01_getProfile_returnsSeededPreferredLanguage() throws Exception {
+        // Seeded in db/seeds/V2__test_seeds.sql: user@pivot.test has locale='en'.
+        mockMvc.perform(get("/account/profile").header("Authorization", "Bearer " + rawToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.preferredLanguage").value(originalLocale));
     }
 
     @Test
@@ -214,6 +227,73 @@ class AccountProfileIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"firstName\":\"Bob\",\"lastName\":\"Dupont\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    // ----------------------------------------------------------------
+    // PATCH /account/profile — preferredLanguage (US02.1.2)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0212_02_patchProfile_updatesPreferredLanguageToEn() throws Exception {
+        mockMvc.perform(patch("/account/profile")
+                        .header("Authorization", "Bearer " + rawToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"firstName\":\"Alicia\",\"lastName\":\"Martinez\",\"preferredLanguage\":\"en\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.preferredLanguage").value("en"));
+
+        final User reloaded = userRepository.findById(testUser.getId()).orElseThrow();
+        assertThat(reloaded.getLocale()).isEqualTo("en");
+    }
+
+    @Test
+    void ac0212_02_patchProfile_updatesPreferredLanguageToFr() throws Exception {
+        mockMvc.perform(patch("/account/profile")
+                        .header("Authorization", "Bearer " + rawToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"firstName\":\"Alicia\",\"lastName\":\"Martinez\",\"preferredLanguage\":\"fr\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.preferredLanguage").value("fr"));
+
+        final User reloaded = userRepository.findById(testUser.getId()).orElseThrow();
+        assertThat(reloaded.getLocale()).isEqualTo("fr");
+    }
+
+    @Test
+    void ac0212_02_patchProfile_isCaseInsensitiveOnPreferredLanguage() throws Exception {
+        mockMvc.perform(patch("/account/profile")
+                        .header("Authorization", "Bearer " + rawToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"firstName\":\"Alicia\",\"lastName\":\"Martinez\",\"preferredLanguage\":\"FR\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.preferredLanguage").value("fr"));
+    }
+
+    @Test
+    void ac0212_02_patchProfile_leavesPreferredLanguageUnchanged_whenFieldAbsent() throws Exception {
+        mockMvc.perform(patch("/account/profile")
+                        .header("Authorization", "Bearer " + rawToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"firstName\":\"Alicia\",\"lastName\":\"Martinez\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.preferredLanguage").value(originalLocale));
+
+        final User reloaded = userRepository.findById(testUser.getId()).orElseThrow();
+        assertThat(reloaded.getLocale()).isEqualTo(originalLocale);
+    }
+
+    @Test
+    void ac0212_err_patchProfile_rejectsUnsupportedLanguage_returns400() throws Exception {
+        mockMvc.perform(patch("/account/profile")
+                        .header("Authorization", "Bearer " + rawToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"firstName\":\"Alicia\",\"lastName\":\"Martinez\",\"preferredLanguage\":\"de\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_PREFERRED_LANGUAGE"));
+
+        final User reloaded = userRepository.findById(testUser.getId()).orElseThrow();
+        assertThat(reloaded.getLocale()).isEqualTo(originalLocale);
+        assertThat(reloaded.getFirstName()).isEqualTo(originalFirstName);
     }
 
     // ----------------------------------------------------------------

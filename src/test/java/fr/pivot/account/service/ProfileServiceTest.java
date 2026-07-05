@@ -2,6 +2,7 @@ package fr.pivot.account.service;
 
 import fr.pivot.account.dto.ProfileDto;
 import fr.pivot.account.dto.ProfileUpdateRequest;
+import fr.pivot.account.exception.InvalidPreferredLanguageException;
 import fr.pivot.account.exception.InvalidProfileNameException;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.repository.UserRepository;
@@ -84,7 +85,7 @@ class ProfileServiceTest {
     void ac0211_02_updateProfile_updatesFirstNameAndLastName() {
         when(userRepository.save(user)).thenReturn(user);
 
-        final ProfileDto dto = profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont"));
+        final ProfileDto dto = profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", null));
 
         assertThat(dto.firstName()).isEqualTo("Bob");
         assertThat(dto.lastName()).isEqualTo("Dupont");
@@ -98,7 +99,7 @@ class ProfileServiceTest {
         when(userRepository.save(user)).thenReturn(user);
 
         final ProfileDto dto = profileService.updateProfile(
-                user, new ProfileUpdateRequest("<b>Bob</b>", "<script>alert(1)</script>Dupont"));
+                user, new ProfileUpdateRequest("<b>Bob</b>", "<script>alert(1)</script>Dupont", null));
 
         assertThat(dto.firstName()).isEqualTo("Bob");
         assertThat(dto.lastName()).isEqualTo("alert(1)Dupont");
@@ -107,7 +108,7 @@ class ProfileServiceTest {
     @Test
     void ac0211_xss_updateProfile_rejectsName_whenBlankAfterStripping() {
         assertThatThrownBy(() -> profileService.updateProfile(
-                user, new ProfileUpdateRequest("<script></script>", "Dupont")))
+                user, new ProfileUpdateRequest("<script></script>", "Dupont", null)))
                 .isInstanceOf(InvalidProfileNameException.class);
 
         verify(userRepository, never()).save(any());
@@ -117,7 +118,7 @@ class ProfileServiceTest {
     void ac0211_02_updateProfile_trimsWhitespace() {
         when(userRepository.save(user)).thenReturn(user);
 
-        profileService.updateProfile(user, new ProfileUpdateRequest("  Bob  ", "  Dupont  "));
+        profileService.updateProfile(user, new ProfileUpdateRequest("  Bob  ", "  Dupont  ", null));
 
         assertThat(user.getFirstName()).isEqualTo("Bob");
         assertThat(user.getLastName()).isEqualTo("Dupont");
@@ -125,7 +126,7 @@ class ProfileServiceTest {
 
     @Test
     void ac0211_err_updateProfile_rejectsMissingFirstName() {
-        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest(null, "Dupont")))
+        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest(null, "Dupont", null)))
                 .isInstanceOf(InvalidProfileNameException.class);
 
         verify(userRepository, never()).save(any());
@@ -133,7 +134,7 @@ class ProfileServiceTest {
 
     @Test
     void ac0211_err_updateProfile_rejectsBlankLastName() {
-        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "   ")))
+        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "   ", null)))
                 .isInstanceOf(InvalidProfileNameException.class);
 
         verify(userRepository, never()).save(any());
@@ -143,7 +144,7 @@ class ProfileServiceTest {
     void ac0211_err_updateProfile_rejectsNameOver100Characters() {
         final String tooLong = "A".repeat(101);
 
-        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest(tooLong, "Dupont")))
+        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest(tooLong, "Dupont", null)))
                 .isInstanceOf(InvalidProfileNameException.class);
 
         verify(userRepository, never()).save(any());
@@ -154,9 +155,74 @@ class ProfileServiceTest {
         final String maxLength = "A".repeat(100);
         when(userRepository.save(user)).thenReturn(user);
 
-        profileService.updateProfile(user, new ProfileUpdateRequest(maxLength, "Dupont"));
+        profileService.updateProfile(user, new ProfileUpdateRequest(maxLength, "Dupont", null));
 
         assertThat(user.getFirstName()).isEqualTo(maxLength);
+    }
+
+    // ----------------------------------------------------------------
+    // updateProfile — preferredLanguage (US02.1.2)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0212_01_updateProfile_persistsPreferredLanguage_whenFr() {
+        user.setLocale("en");
+        when(userRepository.save(user)).thenReturn(user);
+
+        final ProfileDto dto = profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", "fr"));
+
+        assertThat(user.getLocale()).isEqualTo("fr");
+        assertThat(dto.preferredLanguage()).isEqualTo("fr");
+    }
+
+    @Test
+    void ac0212_01_updateProfile_persistsPreferredLanguage_whenEn() {
+        user.setLocale("fr");
+        when(userRepository.save(user)).thenReturn(user);
+
+        final ProfileDto dto = profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", "en"));
+
+        assertThat(user.getLocale()).isEqualTo("en");
+        assertThat(dto.preferredLanguage()).isEqualTo("en");
+    }
+
+    @Test
+    void ac0212_01_updateProfile_normalizesPreferredLanguageCase() {
+        when(userRepository.save(user)).thenReturn(user);
+
+        profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", "EN"));
+
+        assertThat(user.getLocale()).isEqualTo("en");
+    }
+
+    @Test
+    void ac0212_02_updateProfile_leavesLanguageUnchanged_whenNotProvided() {
+        user.setLocale("en");
+        when(userRepository.save(user)).thenReturn(user);
+
+        profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", null));
+
+        assertThat(user.getLocale()).isEqualTo("en");
+    }
+
+    @Test
+    void ac0212_err_updateProfile_rejectsUnsupportedLanguage() {
+        user.setLocale("fr");
+
+        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", "de")))
+                .isInstanceOf(InvalidPreferredLanguageException.class);
+
+        assertThat(user.getLocale()).isEqualTo("fr");
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void ac0212_err_updateProfile_rejectsBlankLanguage() {
+        assertThatThrownBy(
+                () -> profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", "   ")))
+                .isInstanceOf(InvalidPreferredLanguageException.class);
+
+        verify(userRepository, never()).save(any());
     }
 
     // ----------------------------------------------------------------

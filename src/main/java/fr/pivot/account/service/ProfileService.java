@@ -2,10 +2,13 @@ package fr.pivot.account.service;
 
 import fr.pivot.account.dto.ProfileDto;
 import fr.pivot.account.dto.ProfileUpdateRequest;
+import fr.pivot.account.exception.InvalidPreferredLanguageException;
 import fr.pivot.account.exception.InvalidProfileNameException;
 import fr.pivot.account.util.HtmlStripper;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.repository.UserRepository;
+import java.util.Locale;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -13,7 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Business logic for viewing and editing the current user's account profile (US02.1.1).
+ * Business logic for viewing and editing the current user's account profile (US02.1.1,
+ * US02.1.2).
  *
  * <p>Identity is always supplied by the caller ({@code AccountController}), resolved
  * exclusively from the bearer token — this service never looks up a user by an id coming
@@ -51,20 +55,28 @@ public class ProfileService {
     /** US02.1.1 AC: "max 100 caractères". Checked on the raw (pre-strip) value. */
     private static final int MAX_NAME_LENGTH = 100;
 
+    /** US02.1.2 AC: "choisir ma langue préférée (FR/EN)" — the only two accepted values. */
+    private static final Set<String> SUPPORTED_LANGUAGES = Set.of("fr", "en");
+
     /**
-     * Updates {@code firstName}/{@code lastName} for the given user.
+     * Updates {@code firstName}/{@code lastName}, and optionally {@code preferredLanguage},
+     * for the given user.
      *
      * <p>Validation order: (1) raw presence/length ({@code null}/blank or over
      * {@value #MAX_NAME_LENGTH} chars is rejected outright), (2) HTML stripping
      * ({@link HtmlStripper}) — the name is shown to other users (e.g. admin user list,
      * US06.1.x), so it must never carry markup, (3) a second blank check, since a value can
-     * strip down to nothing (e.g. {@code "<script></script>"}).
+     * strip down to nothing (e.g. {@code "<script></script>"}), (4) if {@code preferredLanguage}
+     * is present, it must be {@code fr}/{@code en} (case-insensitive) — any other value is
+     * rejected outright, it is never defaulted or silently ignored.
      *
      * @param user    the authenticated user
-     * @param request the requested first/last name
+     * @param request the requested first/last name and, optionally, preferred language
      * @return the updated profile DTO
-     * @throws InvalidProfileNameException if a name is missing, blank, over
+     * @throws InvalidProfileNameException        if a name is missing, blank, over
      *     {@value #MAX_NAME_LENGTH} characters, or blank once HTML has been stripped
+     * @throws InvalidPreferredLanguageException if {@code preferredLanguage} is present but
+     *     is neither {@code fr} nor {@code en} (case-insensitive)
      */
     @Transactional
     public ProfileDto updateProfile(final User user, final ProfileUpdateRequest request) {
@@ -81,6 +93,9 @@ public class ProfileService {
 
         user.setFirstName(firstName);
         user.setLastName(lastName);
+        if (request.preferredLanguage() != null) {
+            user.setLocale(normalizeLanguage(request.preferredLanguage()));
+        }
         final User saved = userRepository.save(user);
 
         LOG.info("event=PROFILE_UPDATED userId={}", user.getId());
@@ -95,6 +110,24 @@ public class ProfileService {
             throw new InvalidProfileNameException(
                     "Le prénom et le nom sont limités à " + MAX_NAME_LENGTH + " caractères.");
         }
+    }
+
+    /**
+     * Validates and normalizes a {@code preferredLanguage} value to the persisted form.
+     *
+     * @param value the raw value from the request (never {@code null} — callers only invoke
+     *              this when {@link ProfileUpdateRequest#preferredLanguage()} is present)
+     * @return {@code value} lower-cased, ready to persist in {@code User.locale}
+     * @throws InvalidPreferredLanguageException if {@code value} is not {@code fr}/{@code en}
+     *     once lower-cased
+     */
+    private static String normalizeLanguage(final String value) {
+        final String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (!SUPPORTED_LANGUAGES.contains(normalized)) {
+            throw new InvalidPreferredLanguageException(
+                    "La langue préférée doit être 'fr' ou 'en'.");
+        }
+        return normalized;
     }
 
     /**

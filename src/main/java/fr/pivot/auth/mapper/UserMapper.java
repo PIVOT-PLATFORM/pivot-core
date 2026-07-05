@@ -30,7 +30,8 @@ public final class UserMapper {
             user.getRole(),
             user.isEmailVerified(),
             user.getTenant().getId(),
-            user.getTenant().getSlug()
+            user.getTenant().getSlug(),
+            user.getLocale()
         );
     }
 }

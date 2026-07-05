@@ -1,8 +1,8 @@
 package fr.pivot.account.dto;
 
 /**
- * Payload for {@code PATCH /account/profile} (US02.1.1) — updates {@code firstName} and
- * {@code lastName} only.
+ * Payload for {@code PATCH /account/profile} — updates {@code firstName}/{@code lastName}
+ * (US02.1.1) and, optionally, {@code preferredLanguage} (US02.1.2).
  *
  * <p><strong>Security — email change out of scope (US02.2.2):</strong> this record is built by
  * {@code AccountController} from a raw {@code Map<String, Object>} request body, not deserialized
@@ -19,8 +19,17 @@ package fr.pivot.account.dto;
  * <p>Presence/length validation and HTML stripping (a value can strip down to blank, e.g.
  * {@code "<script></script>"}) all happen in {@code ProfileService}.
  *
- * @param firstName new first name, as read from the request body (not yet validated/stripped)
- * @param lastName  new last name, as read from the request body (not yet validated/stripped)
+ * @param firstName         new first name, as read from the request body (not yet
+ *                          validated/stripped)
+ * @param lastName          new last name, as read from the request body (not yet
+ *                          validated/stripped)
+ * @param preferredLanguage new preferred UI language ({@code fr}/{@code en}, case-insensitive),
+ *                          or {@code null} if the request body did not carry the key (or the key
+ *                          held a non-string value) — {@code null} means "leave unchanged", it is
+ *                          never itself rejected. Backed by the same {@code User.locale} column
+ *                          already used to localize transactional emails (see
+ *                          {@code EmailService.toLocale}) — there is a single source of truth for
+ *                          "the user's language", not one per feature.
  */
-public record ProfileUpdateRequest(String firstName, String lastName) {
+public record ProfileUpdateRequest(String firstName, String lastName, String preferredLanguage) {
 }

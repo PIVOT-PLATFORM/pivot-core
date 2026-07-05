@@ -63,7 +63,7 @@ class AccountControllerTest {
     }
 
     private AuthResponse.UserInfo userInfo() {
-        return new AuthResponse.UserInfo(7L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "pivot-saas");
+        return new AuthResponse.UserInfo(7L, "u@x.com", "A", "B", "ROLE_USER", true, 1L, "pivot-saas", "fr");
     }
 
     private void authenticateAs(final Long userId) {
