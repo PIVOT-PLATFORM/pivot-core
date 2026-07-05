@@ -1,5 +1,16 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Sécurité du compte
+
+- **Changer son adresse email** : depuis votre compte, vous pouvez désormais demander à changer votre adresse email en confirmant votre mot de passe actuel — un lien de confirmation valable 24 heures est envoyé à la nouvelle adresse, et votre ancienne adresse reste active tant que vous n'avez pas cliqué dessus
+- **Notification de sécurité** : dès que le changement est confirmé, un email est envoyé à votre ancienne adresse pour vous en informer, avec un lien pour sécuriser votre compte si vous n'êtes pas à l'origine de la demande
+- **Une seule demande à la fois** : si vous refaites une demande de changement d'email, la précédente est automatiquement annulée
+- **Protection contre les abus** : un lien de confirmation ne peut être utilisé qu'une seule fois, et le nombre de demandes est limité à 3 par heure
+
+---
+
 ## [0.10.0] — 5 juillet 2026
 
 ### Espace compte
