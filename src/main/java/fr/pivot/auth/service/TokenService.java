@@ -235,6 +235,12 @@ public class TokenService {
             return Optional.empty();
         }
 
+        if (isUserDeactivated(token)) {
+            LOG.warn("event=TOKEN_REJECTED_USER_DEACTIVATED userId={}", token.getUser().getId());
+            meterRegistry.counter("pivot.auth.token.user_deactivated").increment();
+            return Optional.empty();
+        }
+
         // Throttle last_used_at updates — only write if null or beyond the throttle window.
         // Dispatched asynchronously (REQUIRES_NEW UPDATE-by-id) so this validation path never
         // opens a write transaction on the request thread (no per-request write amplification).
@@ -283,6 +289,35 @@ public class TokenService {
             return false;
         }
         return !token.getCreatedAt().isAfter(invalidatedAt);
+    }
+
+    /**
+     * Checks whether {@code token} belongs to a user whose account has since been deactivated
+     * (US06.1.4 « Admin désactive un compte utilisateur »).
+     *
+     * <p>Re-reads {@code user.isActive()} straight from the {@link User} row eagerly joined by
+     * {@link AccessTokenRepository#findByTokenHashAndStatusWithUser} — i.e. from the database, on
+     * every single call to {@link #validate}, not from anything cached on the token or the
+     * Spring Security context. This is deliberately a second, independent line of defense on top
+     * of {@code AdminUserService#updateStatus}'s explicit {@link #revokeAllForUser} call: even if
+     * a token was issued/rotated in the narrow window around a deactivation and therefore missed
+     * that bulk revocation, or if a future code path forgets to call it, this per-request check
+     * still rejects it — a deactivated account can never authenticate a single further request,
+     * regardless of how its tokens got here. Mirrors {@link #isTenantInvalidated} in spirit (both
+     * re-derive an authorization fact from the database on every request instead of trusting a
+     * point-in-time revocation).
+     *
+     * <p>{@code null} user (defensive — should not happen for a persisted token given the
+     * {@code NOT NULL} FK constraint) means "not deactivated" — never blocks a token that cannot
+     * be resolved to a user at all.
+     *
+     * @param token the token being validated, with its user eagerly loaded
+     * @return {@code true} if the token must be rejected because its user account is
+     *     {@code INACTIVE} (see {@code UserStatus})
+     */
+    private boolean isUserDeactivated(final AccessToken token) {
+        final User user = token.getUser();
+        return user != null && !user.isActive();
     }
 
     /**

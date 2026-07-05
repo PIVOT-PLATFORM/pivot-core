@@ -1,11 +1,14 @@
 package fr.pivot.auth.controller;
 
 import fr.pivot.auth.dto.AdminUserDto;
+import fr.pivot.auth.dto.AssignableStatus;
 import fr.pivot.auth.dto.UpdateUserRoleRequest;
+import fr.pivot.auth.dto.UpdateUserStatusRequest;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
 import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SelfStatusChangeForbiddenException;
 import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.service.AdminUserService;
 import fr.pivot.auth.service.AuditService;
@@ -32,8 +35,10 @@ import java.util.Map;
 
 /**
  * REST controller d'administration des utilisateurs PIVOT — liste paginée des utilisateurs du
- * tenant courant (US06.1.1 « Admin liste utilisateurs de son tenant ») et modification du rôle
- * d'un utilisateur (US06.1.3 « Admin modifie le rôle d'un utilisateur »).
+ * tenant courant (US06.1.1 « Admin liste utilisateurs de son tenant »), modification du rôle
+ * d'un utilisateur (US06.1.3 « Admin modifie le rôle d'un utilisateur ») et activation/
+ * désactivation de compte (US06.1.4 « Admin désactive un compte utilisateur » / US06.1.5
+ * « Admin réactive un compte utilisateur »).
  *
  * <p>Responsabilité unique : résolution du contexte tenant/utilisateur depuis le
  * {@link SecurityContextHolder} (même schéma que {@code fr.pivot.modules.api.AdminModuleController}),
@@ -45,18 +50,18 @@ import java.util.Map;
  * par {@code fr.pivot.config.TokenAuthenticationFilter} dans les détails de l'authentification
  * courante. Un client qui tente de passer un {@code tenantId} en query param ou en body n'a
  * strictement aucun effet : le paramètre n'existe dans aucune signature de méthode de ce
- * contrôleur. Un {@code userId} de path variable (ex. {@link #updateRole}) est systématiquement
- * revérifié appartenir à ce tenant par {@link AdminUserService} avant tout traitement.
+ * contrôleur. Un {@code userId} de path variable (ex. {@link #updateRole}, {@link #updateStatus})
+ * est systématiquement revérifié appartenir à ce tenant par {@link AdminUserService} avant tout
+ * traitement.
  *
  * <p><strong>RBAC :</strong> porté par {@link AdminUserService} ({@code @PreAuthorize} sur le
  * service, pas sur ce contrôleur) — un appel {@code ROLE_USER} lève
  * {@link org.springframework.security.access.AccessDeniedException}, traduite en {@code 403}
  * par le comportement par défaut de Spring Security.
  *
- * <p><strong>Note d'extension :</strong> une US soeur (désactivation/réactivation de compte)
- * ajoute {@code PATCH /api/admin/users/{userId}/status} à ce même contrôleur — le helper
- * {@link #resolveActor()} et le bloc « Exception handling » sont volontairement génériques
- * (pas de nom spécifique au rôle) pour être réutilisés tels quels par ce futur endpoint.
+ * <p><strong>Note d'héritage :</strong> {@link #updateStatus} (US06.1.4/US06.1.5) réutilise tel
+ * quel le helper {@link #resolveActor()} introduit par US06.1.3, précisément générique (pas de
+ * nom spécifique au rôle) pour ce genre de réutilisation entre endpoints admin.
  */
 @RestController
 @RequestMapping("/api/admin/users")
@@ -154,6 +159,49 @@ public class AdminUserController {
         return ResponseEntity.ok(updated);
     }
 
+    /**
+     * Active ou désactive le compte d'un utilisateur du tenant courant — endpoint unique partagé
+     * par US06.1.4 (« Admin désactive un compte utilisateur ») et US06.1.5 (« Admin réactive un
+     * compte utilisateur »), une seule direction distinguée par {@code request.status()}.
+     *
+     * @param userId      identifiant de l'utilisateur ciblé (path variable — jamais le corps)
+     * @param request     corps de requête — {@code { "status": "ACTIVE" | "INACTIVE" } }
+     * @param httpRequest requête HTTP (résolution IP/User-Agent pour l'audit)
+     * @return {@code 200} avec le {@link AdminUserDto} mis à jour (idempotent si le statut demandé
+     *     est déjà celui de la cible — US06.1.5) · {@code 400} si {@code status} est absent ou
+     *     hors de {@link AssignableStatus} (ex. {@code "BLOCKED"}) · {@code 401} si le contexte
+     *     d'authentification est invalide · {@code 403} si l'appelant n'a pas {@code ROLE_ADMIN},
+     *     ou si {@code userId} désigne l'appelant lui-même avec {@code status: "INACTIVE"}
+     *     (auto-désactivation interdite) · {@code 404} si {@code userId} n'existe pas dans le
+     *     tenant courant. Une désactivation révoque immédiatement tous les tokens actifs de la
+     *     cible ; une réactivation transitionnant réellement de {@code INACTIVE} vers
+     *     {@code ACTIVE} envoie un email de notification (voir {@link AdminUserService#updateStatus}).
+     */
+    @PatchMapping("/{userId}/status")
+    public ResponseEntity<AdminUserDto> updateStatus(
+            @PathVariable("userId") final Long userId,
+            @Valid @RequestBody final UpdateUserStatusRequest request,
+            final HttpServletRequest httpRequest) {
+        final User actor = resolveActor();
+        if (actor == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        final AdminUserDto updated = adminUserService.updateStatus(
+                actor.getTenant().getId(), actor.getId(), userId, request.status());
+
+        final String eventType = request.status() == AssignableStatus.INACTIVE
+                ? AuditService.USER_DEACTIVATED
+                : AuditService.USER_REACTIVATED;
+        auditService.log(actor, actor.getTenant(), eventType,
+                cookieHelper.clientIp(httpRequest), httpRequest.getHeader("User-Agent"),
+                "{\"targetUserId\":" + userId + ",\"actorId\":" + actor.getId() + "}");
+
+        LOG.info("event=ADMIN_USER_STATUS_CHANGED actorId={} targetUserId={} newStatus={}",
+                actor.getId(), userId, request.status());
+        return ResponseEntity.ok(updated);
+    }
+
     // ----------------------------------------------------------------
     // Exception handling — local à ce contrôleur (pas de handler global)
     // ----------------------------------------------------------------
@@ -219,6 +267,20 @@ public class AdminUserController {
                 "message", "Le rôle d'un super-administrateur ne peut pas être modifié par ce endpoint"));
     }
 
+    /**
+     * Traduit une tentative d'un admin de désactiver son propre compte en {@code 403 Forbidden}.
+     *
+     * @param ex l'exception levée par le service
+     * @return corps d'erreur {@code 403}
+     */
+    @ExceptionHandler(SelfStatusChangeForbiddenException.class)
+    public ResponseEntity<Map<String, Object>> handleSelfStatusChange(final SelfStatusChangeForbiddenException ex) {
+        LOG.warn("event=ADMIN_SELF_STATUS_CHANGE_REJECTED");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "SELF_STATUS_CHANGE_FORBIDDEN",
+                "message", "Vous ne pouvez pas désactiver votre propre compte"));
+    }
+
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
@@ -242,8 +304,8 @@ public class AdminUserController {
      *
      * <p>Le {@code tenantId} n'est jamais lu ailleurs que dans l'entité {@link User} posée par
      * le filtre d'authentification — jamais depuis le corps, un paramètre ou un en-tête.
-     * Partagé par tous les endpoints de ce contrôleur (voir note d'extension dans le JavaDoc de
-     * classe) — le futur endpoint {@code PATCH .../status} le réutilise tel quel.
+     * Partagé par tous les endpoints de ce contrôleur, y compris {@link #updateStatus}
+     * (US06.1.4/US06.1.5, voir note d'héritage dans le JavaDoc de classe).
      *
      * @return l'utilisateur authentifié, ou {@code null} si le contexte d'authentification est
      *     invalide ou si l'utilisateur n'appartient à aucun tenant

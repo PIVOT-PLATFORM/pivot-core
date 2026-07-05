@@ -5,11 +5,13 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import fr.pivot.auth.dto.AdminUserDto;
 import fr.pivot.auth.dto.AssignableRole;
+import fr.pivot.auth.dto.AssignableStatus;
 import fr.pivot.auth.dto.UserStatus;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
 import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SelfStatusChangeForbiddenException;
 import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.service.AdminUserService;
 import fr.pivot.auth.service.AuditService;
@@ -353,6 +355,160 @@ class AdminUserControllerTest {
                 .andExpect(status().isUnauthorized());
 
         verify(adminUserService, never()).updateRole(any(), any(), any(), any());
+    }
+
+    // ----------------------------------------------------------------
+    // PATCH /api/admin/users/{userId}/status — US06.1.4 / US06.1.5
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0614_01_returns200_delegatesToService_andLogsUserDeactivatedAuditEvent() throws Exception {
+        setAuthentication(buildUser(1L, 42L));
+        final AdminUserDto updated = new AdminUserDto(
+                9L, "bob@pivot.test", "Bob", "Dupont", "ROLE_USER", UserStatus.INACTIVE, Instant.now());
+        when(adminUserService.updateStatus(42L, 1L, 9L, AssignableStatus.INACTIVE)).thenReturn(updated);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(9))
+                .andExpect(jsonPath("$.status").value("INACTIVE"));
+
+        verify(adminUserService).updateStatus(42L, 1L, 9L, AssignableStatus.INACTIVE);
+        verify(auditService).log(any(User.class), any(Tenant.class), eq(AuditService.USER_DEACTIVATED),
+                eq("127.0.0.1"), any(), any());
+    }
+
+    @Test
+    void ac0615_01_returns200_delegatesToService_andLogsUserReactivatedAuditEvent() throws Exception {
+        setAuthentication(buildUser(1L, 42L));
+        final AdminUserDto updated = new AdminUserDto(
+                9L, "bob@pivot.test", "Bob", "Dupont", "ROLE_USER", UserStatus.ACTIVE, Instant.now());
+        when(adminUserService.updateStatus(42L, 1L, 9L, AssignableStatus.ACTIVE)).thenReturn(updated);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(9))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        verify(adminUserService).updateStatus(42L, 1L, 9L, AssignableStatus.ACTIVE);
+        verify(auditService).log(any(User.class), any(Tenant.class), eq(AuditService.USER_REACTIVATED),
+                eq("127.0.0.1"), any(), any());
+    }
+
+    @Test
+    void ac0615_02_idempotentReactivation_returns200_evenWhenAlreadyActive() throws Exception {
+        // Le service porte l'idempotence (AdminUserServiceTest) — ce test vérifie que le
+        // contrôleur ne traduit pas ce cas en erreur : un simple 200, comme tout succès.
+        setAuthentication(buildUser(1L, 42L));
+        final AdminUserDto alreadyActive = new AdminUserDto(
+                9L, "bob@pivot.test", "Bob", "Dupont", "ROLE_USER", UserStatus.ACTIVE, Instant.now());
+        when(adminUserService.updateStatus(42L, 1L, 9L, AssignableStatus.ACTIVE)).thenReturn(alreadyActive);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    // ----------------------------------------------------------------
+    // AC : validation stricte du statut dans le DTO — 400 sur valeur absente/inconnue
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0614Err01_returns400_whenStatusFieldMissing() throws Exception {
+        setAuthentication(buildUser(1L, 42L));
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verify(adminUserService, never()).updateStatus(any(), any(), any(), any());
+    }
+
+    @Test
+    void ac0614Err02_returns400_whenStatusIsBlocked() throws Exception {
+        // BLOCKED est une valeur valide de UserStatus (US06.1.1) mais hors énumération
+        // AssignableStatus fermée à ACTIVE/INACTIVE pour cet endpoint (US06.1.4/US06.1.5).
+        setAuthentication(buildUser(1L, 42L));
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"BLOCKED\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(adminUserService, never()).updateStatus(any(), any(), any(), any());
+    }
+
+    @Test
+    void ac0614Err03_returns400_whenStatusIsUnknownValue() throws Exception {
+        setAuthentication(buildUser(1L, 42L));
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"bogus\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(adminUserService, never()).updateStatus(any(), any(), any(), any());
+    }
+
+    // ----------------------------------------------------------------
+    // AC sécurité : auto-désactivation interdite -> 403
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0614Sec01_returns403_whenServiceRejectsSelfStatusChange() throws Exception {
+        setAuthentication(buildUser(1L, 42L));
+        when(adminUserService.updateStatus(42L, 1L, 1L, AssignableStatus.INACTIVE))
+                .thenThrow(new SelfStatusChangeForbiddenException(1L));
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("SELF_STATUS_CHANGE_FORBIDDEN"));
+
+        verify(auditService, never()).log(any(), any(), any(), any(), any(), any());
+    }
+
+    // ----------------------------------------------------------------
+    // AC sécurité : isolation tenant -> 404 (jamais 403) sur userId cross-tenant/inexistant
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0614Sec02_returns404_whenServiceReportsUserNotFound() throws Exception {
+        setAuthentication(buildUser(1L, 42L));
+        when(adminUserService.updateStatus(42L, 1L, 999L, AssignableStatus.INACTIVE))
+                .thenThrow(new AdminUserNotFoundException(999L));
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", 999L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("USER_NOT_FOUND"));
+
+        verify(auditService, never()).log(any(), any(), any(), any(), any(), any());
+    }
+
+    // ----------------------------------------------------------------
+    // AC erreur : contexte d'authentification invalide -> 401
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0614Err04_returns401_whenNoAuthentication() throws Exception {
+        SecurityContextHolder.clearContext();
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isUnauthorized());
+
+        verify(adminUserService, never()).updateStatus(any(), any(), any(), any());
     }
 
     // ----------------------------------------------------------------

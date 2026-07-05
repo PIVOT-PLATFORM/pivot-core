@@ -212,6 +212,25 @@ public class EmailService {
             locale);
     }
 
+    /**
+     * Notifies a user that a tenant admin has just reactivated their account (US06.1.5 « Admin
+     * réactive un compte utilisateur »). Sent only when the account genuinely transitions from
+     * {@code INACTIVE} to {@code ACTIVE} — see {@code AdminUserService#updateStatus} — so a
+     * retried/idempotent reactivation of an already-{@code ACTIVE} account never re-sends it.
+     *
+     * @param to        the reactivated account's email address
+     * @param firstName the account holder's first name (may be {@code null})
+     * @param locale    the account holder's preferred locale
+     */
+    @Async
+    public void sendAccountReactivatedEmail(String to, String firstName, Locale locale) {
+        send(to, subject("email.subject.account-reactivated", locale),
+            "email/account-reactivated",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
+                   "loginUrl", appUrl + "/auth/login"),
+            locale);
+    }
+
     @Async
     public void sendWelcomeEmail(String to, String firstName, Locale locale) {
         send(to, subject("email.subject.welcome", locale),

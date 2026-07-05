@@ -2,11 +2,13 @@ package fr.pivot.auth.service;
 
 import fr.pivot.auth.dto.AdminUserDto;
 import fr.pivot.auth.dto.AssignableRole;
+import fr.pivot.auth.dto.AssignableStatus;
 import fr.pivot.auth.dto.UserStatus;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
 import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SelfStatusChangeForbiddenException;
 import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,11 +24,13 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -55,11 +59,14 @@ class AdminUserServiceTest {
     @Mock
     private TokenService tokenService;
 
+    @Mock
+    private EmailService emailService;
+
     private AdminUserService service;
 
     @BeforeEach
     void setUp() {
-        service = new AdminUserService(userRepository, tokenService);
+        service = new AdminUserService(userRepository, tokenService, emailService);
     }
 
     // ----------------------------------------------------------------
@@ -281,8 +288,136 @@ class AdminUserServiceTest {
     }
 
     // ----------------------------------------------------------------
+    // US06.1.4 : désactivation de compte
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0614_01_deactivatesUser_andRevokesAllTokens() {
+        final User target = activeUser(99L);
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(99L, TENANT_ID))
+                .thenReturn(Optional.of(target));
+
+        final AdminUserDto dto = service.updateStatus(TENANT_ID, 1L, 99L, AssignableStatus.INACTIVE);
+
+        verify(target).setActive(false);
+        verify(userRepository).save(target);
+        verify(tokenService).revokeAllForUser(99L);
+        verifyNoInteractions(emailService);
+        assertThat(dto.id()).isEqualTo(99L);
+    }
+
+    @Test
+    void ac0614_02_reDeactivatesAlreadyInactiveUser_withoutError() {
+        // AC : la désactivation n'est assortie d'aucune contrainte d'idempotence explicite —
+        // ré-exécuter la désactivation sur une cible déjà INACTIVE doit rester possible (aucune
+        // AC ne l'interdit), la revocation de tokens ci-dessus la rend de toute façon sûre.
+        final User target = mock(User.class);
+        when(target.getId()).thenReturn(99L);
+        when(target.isActive()).thenReturn(false);
+        when(target.getCreatedAt()).thenReturn(Instant.parse("2026-01-01T00:00:00Z"));
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(99L, TENANT_ID))
+                .thenReturn(Optional.of(target));
+
+        service.updateStatus(TENANT_ID, 1L, 99L, AssignableStatus.INACTIVE);
+
+        verify(target).setActive(false);
+        verify(tokenService).revokeAllForUser(99L);
+    }
+
+    @Test
+    void ac0614Sec01_throwsSelfStatusChangeForbidden_whenAdminTargetsOwnAccountForDeactivation() {
+        assertThatThrownBy(() -> service.updateStatus(TENANT_ID, 1L, 1L, AssignableStatus.INACTIVE))
+                .isInstanceOf(SelfStatusChangeForbiddenException.class);
+
+        verifyNoInteractions(userRepository, tokenService, emailService);
+    }
+
+    @Test
+    void ac0614Sec02_throwsAdminUserNotFound_whenTargetNotInTenant_forDeactivation() {
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(123L, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateStatus(TENANT_ID, 1L, 123L, AssignableStatus.INACTIVE))
+                .isInstanceOf(AdminUserNotFoundException.class);
+
+        verify(tokenService, never()).revokeAllForUser(any());
+    }
+
+    // ----------------------------------------------------------------
+    // US06.1.5 : réactivation de compte
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0615_01_reactivatesInactiveUser_andSendsNotificationEmail() {
+        final User target = mock(User.class);
+        when(target.getId()).thenReturn(99L);
+        when(target.isActive()).thenReturn(false);
+        when(target.getEmail()).thenReturn("bob@pivot.test");
+        when(target.getFirstName()).thenReturn("Bob");
+        when(target.getLocale()).thenReturn("fr");
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(99L, TENANT_ID))
+                .thenReturn(Optional.of(target));
+
+        final AdminUserDto dto = service.updateStatus(TENANT_ID, 1L, 99L, AssignableStatus.ACTIVE);
+
+        verify(target).setActive(true);
+        verify(userRepository).save(target);
+        verify(emailService).sendAccountReactivatedEmail(
+                eq("bob@pivot.test"), eq("Bob"), eq(Locale.FRENCH));
+        verify(tokenService, never()).revokeAllForUser(any());
+        assertThat(dto.id()).isEqualTo(99L);
+    }
+
+    @Test
+    void ac0615_02_reactivatingAlreadyActiveUser_isIdempotent_andDoesNotResendEmail() {
+        final User target = activeUser(99L);
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(99L, TENANT_ID))
+                .thenReturn(Optional.of(target));
+
+        final AdminUserDto dto = service.updateStatus(TENANT_ID, 1L, 99L, AssignableStatus.ACTIVE);
+
+        verify(target).setActive(true);
+        verify(userRepository).save(target);
+        verifyNoInteractions(emailService);
+        assertThat(dto.id()).isEqualTo(99L);
+    }
+
+    @Test
+    void ac0615_03_allowsSelfTargetForReactivation_noSelfGuard() {
+        // Asymétrique de la désactivation : cibler son propre compte avec status ACTIVE n'est
+        // jamais rejeté — voir SelfStatusChangeForbiddenException (n'a de toute façon aucun
+        // effet réel puisqu'un compte désactivé ne peut pas être authentifié pour émettre cette
+        // requête, mais un compte déjà ACTIF doit pouvoir se "réactiver" lui-même sans 403).
+        final User target = activeUser(1L);
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(1L, TENANT_ID))
+                .thenReturn(Optional.of(target));
+
+        assertThat(service.updateStatus(TENANT_ID, 1L, 1L, AssignableStatus.ACTIVE)).isNotNull();
+    }
+
+    @Test
+    void ac0615Sec01_throwsAdminUserNotFound_whenTargetNotInTenant_forReactivation() {
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(123L, TENANT_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.updateStatus(TENANT_ID, 1L, 123L, AssignableStatus.ACTIVE))
+                .isInstanceOf(AdminUserNotFoundException.class);
+
+        verifyNoInteractions(emailService);
+    }
+
+    // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
+
+    /** Builds a mocked, already-{@code ACTIVE} target user with the given id, DTO-mappable. */
+    private User activeUser(final Long id) {
+        final User user = mock(User.class);
+        when(user.getId()).thenReturn(id);
+        when(user.isActive()).thenReturn(true);
+        when(user.getCreatedAt()).thenReturn(Instant.parse("2026-01-01T00:00:00Z"));
+        return user;
+    }
 
     @SuppressWarnings("unchecked")
     private void stubEmptyPage() {
