@@ -76,7 +76,28 @@ public class AuditService {
      * @param userAgent client user-agent
      */
     public void log(User user, String eventType, String ip, String userAgent) {
-        final Tenant tenant = user != null ? user.getTenant() : null;
+        log(user, user != null ? user.getTenant() : null, eventType, ip, userAgent);
+    }
+
+    /**
+     * Convenience overload for an explicit tenant that is not (necessarily) the caller's own
+     * tenant — e.g. a super admin action performed against a tenant other than their own.
+     *
+     * <p>Defers the actual write until after the enclosing transaction commits, exactly like
+     * {@link #log(User, String, String, String)}. This matters when {@code tenant} (or {@code
+     * user}) was itself only just inserted in the same still-open transaction: the {@code
+     * REQUIRES_NEW} write below runs on a separate connection/transaction and would otherwise
+     * fail to see that uncommitted row (foreign key not yet visible), or — for a row visible
+     * across transactions in READ COMMITTED — simply audit an operation that later rolls back.
+     *
+     * @param user      the acting user (may be {@code null})
+     * @param tenant    the tenant the event is about (may be {@code null}, and may differ from
+     *                  {@code user.getTenant()})
+     * @param eventType one of the event-type constants
+     * @param ip        client IP
+     * @param userAgent client user-agent
+     */
+    public void log(User user, Tenant tenant, String eventType, String ip, String userAgent) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
@@ -114,4 +135,6 @@ public class AuditService {
     public static final String AVATAR_UPDATED = "account.avatar_updated";
     /** RGPD Art. 20 — logged when a user requests a personal-data export (US02.3.1). */
     public static final String DATA_EXPORT_REQUESTED = "account.data_export_requested";
+    public static final String TENANT_CREATED = "tenant.created";
+    public static final String TENANT_CREATION_RATE_LIMIT_EXCEEDED = "tenant.creation_rate_limit_exceeded";
 }
