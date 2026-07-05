@@ -104,6 +104,10 @@ public class AuditService {
     public static final String DEVICE_VERIFIED = "auth.device_verified";
     public static final String DEVICE_OTP_FAILED = "auth.device_otp_failed";
     public static final String OIDC_LOGIN = "auth.oidc_login";
+    public static final String EMAIL_CHANGE_REQUESTED = "auth.email_change_requested";
+    public static final String EMAIL_CHANGE_DUPLICATE_ATTEMPT = "auth.email_change_duplicate_attempt";
+    public static final String EMAIL_CHANGE_CONFIRMED = "auth.email_change_confirmed";
+    public static final String EMAIL_CHANGE_TARGET_TAKEN = "auth.email_change_target_taken";
     public static final String MODULE_ACTIVATED = "module.activated";
     public static final String MODULE_DEACTIVATED = "module.deactivated";
     public static final String PROFILE_UPDATED = "account.profile_updated";
