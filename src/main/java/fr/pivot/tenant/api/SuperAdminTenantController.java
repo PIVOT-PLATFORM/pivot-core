@@ -28,10 +28,17 @@ import org.springframework.web.bind.annotation.RestController;
  * (US06.2.3 « Super admin liste tous les tenants »), {@code POST /api/superadmin/tenants} et
  * {@code GET /api/superadmin/tenants/check-slug} (US06.2.1 « Super admin crée un tenant »).
  *
- * <p>Mapping {@code /superadmin/tenants} (sans préfixe {@code /api}) car
- * {@code server.servlet.context-path=/api} est déjà configuré globalement
- * (voir {@code application.yml}) — le chemin externe résolu est bien
- * {@code /api/superadmin/tenants}.
+ * <p>Mapping {@code /superadmin/tenants} (sans préfixe {@code /api}, ajouté par {@code
+ * server.servlet.context-path=/api}) — même convention que le contrôleur de US06.2.3 ({@code GET
+ * /api/superadmin/tenants}, liste paginée, PR #126, déjà fusionnée ici) et celui de US06.2.2
+ * ({@code PATCH /api/superadmin/tenants/{tenantId}/status}, désactivation, PR #135, encore
+ * ouverte). Cette classe porte donc pour l'instant {@code list()} + {@code create()}/{@code
+ * checkSlug()} — la fusion avec {@code updateStatus()} (PR #135) se réglera en résolution de
+ * conflit Git à son intégration, pas dans le code de cette PR. PR #135 crée en outre sa propre
+ * migration {@code V4__tenant_invalidation_timestamp.sql}, qui collisionne avec la migration
+ * {@code V6__tenant_auth_mode_creation_values.sql} de cette PR (déjà renumérotée depuis {@code
+ * V4} au moment de cette fusion) — sa propre renumérotation restera nécessaire à son tour,
+ * aucun changement de contrat, juste une réconciliation de fichiers côté mainteneur.
  *
  * <p>Aucune logique métier ici — délégation intégrale à {@link SuperAdminTenantService}, qui
  * porte le {@code @PreAuthorize("hasRole('SUPER_ADMIN')")} (RBAC porté par le service, même

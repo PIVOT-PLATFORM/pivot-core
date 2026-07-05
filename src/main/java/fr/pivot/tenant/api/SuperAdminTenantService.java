@@ -31,6 +31,12 @@ import org.springframework.transaction.annotation.Transactional;
  * @PreAuthorize("hasRole('SUPER_ADMIN')")} est porté par ce service, pas le contrôleur, pour
  * qu'un futur appelant interne ne puisse jamais le contourner.
  *
+ * <p>Portera bientôt aussi {@code updateStatus} (US06.2.2, PR #135, encore ouverte — même classe,
+ * même package). PR #135 crée sa propre migration {@code V4__tenant_invalidation_timestamp.sql},
+ * qui collisionne avec {@code V6__tenant_auth_mode_creation_values.sql} de cette PR (déjà
+ * renumérotée depuis {@code V4} lors de cette fusion) — sa propre renumérotation restera
+ * nécessaire à son intégration, en plus de la fusion service/contrôleur.
+ *
  * <p><strong>Rate limiting (création) :</strong> {@link RateLimiterService#checkAndRecord} est
  * évalué en premier, avant toute autre règle métier (le format du slug est déjà rejeté en amont
  * par la validation bean de {@link CreateTenantRequest}, mais les vérifications réservé/unicité
