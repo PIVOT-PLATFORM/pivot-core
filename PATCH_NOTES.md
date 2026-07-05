@@ -1,5 +1,15 @@
 # Notes de version — PIVOT Core
 
+## [Unreleased]
+
+### Sécurité du compte
+
+- **Sessions actives** : depuis votre espace compte, vous pouvez désormais consulter la liste de vos sessions actives (appareil, adresse IP, date de création, date d'expiration) et repérer clairement celle que vous utilisez actuellement
+- **Révocation à distance** : possibilité de déconnecter une session précise, ou toutes les autres sessions en une seule action, pour couper court à un accès non autorisé — la session en cours ne peut pas être auto-révoquée par erreur
+- **Nom d'appareil sécurisé** : le nom d'appareil associé à chaque session est systématiquement nettoyé (balises HTML supprimées, longueur limitée) avant d'être enregistré
+
+---
+
 ## [0.11.0] — 5 juillet 2026
 
 ### Sécurité du compte
