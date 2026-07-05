@@ -238,6 +238,42 @@ public class EmailService {
     }
 
     /**
+     * RGPD Art. 20 — notifies the user that their personal-data export archive is ready
+     * for download (US02.3.1). The link points to an authenticated frontend page — never a
+     * public presigned URL — that in turn calls {@code GET /api/account/export/download/{token}}.
+     *
+     * @param to          the export owner's email address
+     * @param firstName   the account holder's first name (may be {@code null})
+     * @param downloadToken the raw one-time download token to embed in the link
+     * @param locale      the recipient's preferred locale
+     */
+    @Async
+    public void sendExportReadyEmail(String to, String firstName, String downloadToken, Locale locale) {
+        send(to, subject("email.subject.export-ready", locale),
+            "email/export-ready",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
+                   "downloadUrl", appUrl + "/account/export/download?token=" + downloadToken),
+            locale);
+    }
+
+    /**
+     * RGPD Art. 20 — notifies the user that their personal-data export request failed
+     * (US02.3.1), so they are not left waiting indefinitely for a download link that will
+     * never arrive. Invites them to retry from their account page.
+     *
+     * @param to        the export owner's email address
+     * @param firstName the account holder's first name (may be {@code null})
+     * @param locale    the recipient's preferred locale
+     */
+    @Async
+    public void sendExportFailedEmail(String to, String firstName, Locale locale) {
+        send(to, subject("email.subject.export-failed", locale),
+            "email/export-failed",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale)),
+            locale);
+    }
+
+    /**
      * Internal notification forwarded to the owner — Reply-To set to the sender's address
      * so the owner can reply directly to the user.
      *

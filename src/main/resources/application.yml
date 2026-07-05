@@ -130,6 +130,13 @@ pivot:
       # US02.1.1 — local filesystem avatar storage (MVP, self-hostable). Mount a persistent
       # Docker volume at this path in production, or override via PIVOT_AVATAR_STORAGE_PATH.
       base-path: ${PIVOT_AVATAR_STORAGE_PATH:./data/avatars}
+  export:
+    # RGPD Art. 20 (US02.3.1) — export de données personnelles.
+    # Stockage local MVP (chemin configurable, exclu du contrôle de version).
+    storage-path: ${PIVOT_EXPORT_STORAGE_PATH:./data/exports}
+    rate-limit-hours: ${PIVOT_EXPORT_RATE_LIMIT_HOURS:24}
+    download-ttl-hours: ${PIVOT_EXPORT_DOWNLOAD_TTL_HOURS:24}
+    cleanup-cron: "0 30 2 * * *"  # Nightly 02:30 — overridable via env PIVOT_EXPORT_CLEANUP_CRON
 
 modules:
   cache:
