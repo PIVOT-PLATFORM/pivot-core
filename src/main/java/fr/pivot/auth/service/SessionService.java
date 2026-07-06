@@ -45,6 +45,13 @@ import java.util.List;
  *
  * <p>Device MFA is driven by {@code MFA_NEW_DEVICE_OTP} feature flag.
  *
+ * <p>On every login where that gate does not trigger (flag disabled, or a non-{@code
+ * ROLE_SUPER_ADMIN} account) and the device fingerprint is unknown to {@code trusted_devices},
+ * {@link SuspiciousLoginService} sends a passive, non-blocking "suspicious login" email alert
+ * instead (US01.4.3a) — the device is then marked trusted so the same device does not re-alert
+ * on the next login. This is a distinct, additive feature from the US01.4.1 OTP gate above: the
+ * two never fire on the same request.
+ *
  * <p>Also backs the "active sessions" self-service screen (US02.2.3):
  * {@link #listSessions(User, Long)}, {@link #revokeSession(User, Long, Long)} and
  * {@link #revokeAllSessionsExceptCurrent(User, Long)} — listing and revocation are userId-scoped
@@ -87,6 +94,7 @@ public class SessionService {
     private final TrustedDeviceService trustedDeviceService;
     private final AuditService auditService;
     private final AccessTokenRepository tokenRepo;
+    private final SuspiciousLoginService suspiciousLoginService;
 
     private static final int DEVICE_VERIFY_TTL_DEFAULT = 15;
     private final String otpSecret;
@@ -114,6 +122,8 @@ public class SessionService {
      * @param auditService           async audit event logger
      * @param tokenRepo              direct read access to {@link AccessToken} rows for the
      *                               active-sessions screen (list / ownership check / bulk revoke)
+     * @param suspiciousLoginService sends the passive "unknown device" alert (US01.4.3a) on the
+     *                               login branch where the US01.4.1 OTP gate does not apply
      */
     public SessionService(
             final UserRepository userRepo,
@@ -127,7 +137,8 @@ public class SessionService {
             final TrustedDeviceService trustedDeviceService,
             final AuditService auditService,
             @Value("${pivot.auth.otp-secret:}") final String otpSecret,
-            final AccessTokenRepository tokenRepo) {
+            final AccessTokenRepository tokenRepo,
+            final SuspiciousLoginService suspiciousLoginService) {
         this.userRepo = userRepo;
         this.tenantRepo = tenantRepo;
         this.featureFlagRepo = featureFlagRepo;
@@ -139,6 +150,7 @@ public class SessionService {
         this.trustedDeviceService = trustedDeviceService;
         this.auditService = auditService;
         this.tokenRepo = tokenRepo;
+        this.suspiciousLoginService = suspiciousLoginService;
         this.otpSecret = fr.pivot.auth.util.CryptoUtils.resolveOtpSecret(otpSecret);
         if (otpSecret == null || otpSecret.isBlank()) {
             LOG.warn("event=OTP_SECRET_EPHEMERAL reason=pivot.auth.otp-secret_unset scope=session-device-otp");
@@ -199,12 +211,14 @@ public class SessionService {
         rateLimiter.reset(rateLimiter.loginEmailBucket(req.email()));
 
         final String fingerprint = req.deviceFingerprint();
+        final boolean hasFingerprint = fingerprint != null && !fingerprint.isBlank();
         final boolean mfaNewDevice = featureFlagRepo.isEnabled("MFA_NEW_DEVICE_OTP");
         final boolean isSuperAdmin = "ROLE_SUPER_ADMIN".equals(user.getRole());
 
-        if (fingerprint != null && !fingerprint.isBlank()) {
-            final boolean trusted = trustedDeviceService.isTrusted(user, fingerprint);
-            if (!trusted && (mfaNewDevice || isSuperAdmin)) {
+        boolean deviceTrusted = false;
+        if (hasFingerprint) {
+            deviceTrusted = trustedDeviceService.isTrusted(user, fingerprint);
+            if (!deviceTrusted && (mfaNewDevice || isSuperAdmin)) {
                 sendDeviceOtp(user, fingerprint, req.deviceName(), ip, userAgent);
                 return LoginResult.requiresDeviceVerification(fingerprint);
             }
@@ -217,6 +231,18 @@ public class SessionService {
 
         auditService.log(user, AuditService.LOGIN, ip, userAgent);
         LOG.info("event=LOGIN_SUCCESS userId={} rememberMe={} ttl={}s", user.getId(), rememberMe, issued.ttlSeconds());
+
+        // US01.4.3a — passive alert for the branch the US01.4.1 OTP gate does not cover
+        // (flag disabled, or a non-ROLE_SUPER_ADMIN account): never blocks the login above.
+        if (hasFingerprint) {
+            suspiciousLoginService.alertIfUnknownDevice(user, deviceTrusted, fingerprint, req.deviceName(), ip, userAgent);
+            if (!deviceTrusted) {
+                // Device is now known — the alert already told the owner about it once;
+                // it must not re-fire on every subsequent login from this same device.
+                trustedDeviceService.trust(user, fingerprint, req.deviceName());
+            }
+        }
+
         return LoginResult.success(
             issued.rawToken(),
             issued.expiresAt().toEpochMilli(),

@@ -8,9 +8,11 @@ import fr.pivot.auth.dto.LoginResult;
 import fr.pivot.auth.dto.PasswordPolicyDto;
 import fr.pivot.auth.dto.RegisterRequest;
 import fr.pivot.auth.dto.ResetPasswordRequest;
+import fr.pivot.auth.dto.SuspiciousLoginConfirmRequest;
 import fr.pivot.auth.service.PasswordService;
 import fr.pivot.auth.service.RegistrationService;
 import fr.pivot.auth.service.SessionService;
+import fr.pivot.auth.service.SuspiciousLoginService;
 import fr.pivot.auth.validation.PasswordPolicyProperties;
 import fr.pivot.config.CookieHelper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,6 +39,8 @@ import java.util.Map;
  *   <li>{@link RegistrationService} — registration and email verification</li>
  *   <li>{@link SessionService} — login, session restore and logout</li>
  *   <li>{@link PasswordService} — forgot/reset password</li>
+ *   <li>{@link SuspiciousLoginService} — passive "unknown device" alert and its "Not me"
+ *       full re-authentication confirmation (US01.4.3a)</li>
  * </ul>
  *
  * <p>From US-AUTH-002: cookie TTL is dynamic — it comes from {@link LoginResult#sessionTtlSeconds()}
@@ -55,27 +59,32 @@ public class AuthController {
     private final RegistrationService registrationService;
     private final SessionService sessionService;
     private final PasswordService passwordService;
+    private final SuspiciousLoginService suspiciousLoginService;
     private final CookieHelper cookieHelper;
     private final PasswordPolicyProperties passwordPolicy;
 
     /**
      * Constructs the controller with its required service collaborators.
      *
-     * @param registrationService manages account creation and email verification
-     * @param sessionService      manages login, device OTP, session restore and logout
-     * @param passwordService     manages forgot-password and reset-password flows
-     * @param cookieHelper        shared session-cookie + client-IP helper
-     * @param passwordPolicy      configured password robustness policy (US01.2.4)
+     * @param registrationService   manages account creation and email verification
+     * @param sessionService        manages login, device OTP, session restore and logout
+     * @param passwordService       manages forgot-password and reset-password flows
+     * @param suspiciousLoginService manages the "Not me" full re-authentication confirmation
+     *                               (US01.4.3a)
+     * @param cookieHelper          shared session-cookie + client-IP helper
+     * @param passwordPolicy        configured password robustness policy (US01.2.4)
      */
     public AuthController(
             final RegistrationService registrationService,
             final SessionService sessionService,
             final PasswordService passwordService,
+            final SuspiciousLoginService suspiciousLoginService,
             final CookieHelper cookieHelper,
             final PasswordPolicyProperties passwordPolicy) {
         this.registrationService = registrationService;
         this.sessionService = sessionService;
         this.passwordService = passwordService;
+        this.suspiciousLoginService = suspiciousLoginService;
         this.cookieHelper = cookieHelper;
         this.passwordPolicy = passwordPolicy;
     }
@@ -261,5 +270,26 @@ public class AuthController {
                                                              final HttpServletRequest http) {
         passwordService.resetPassword(req, cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
         return ResponseEntity.ok(Map.of(KEY_MESSAGE, "Mot de passe réinitialisé. Vous pouvez maintenant vous connecter."));
+    }
+
+    /**
+     * Confirms a "Not me" report on a suspicious-login alert (US01.4.3a).
+     *
+     * <p>Requires the account's current password — a full re-authentication — before taking any
+     * action: the emailed link's token alone is never sufficient. On success, the flagged
+     * device's trust is revoked and every active session for the account is terminated.
+     *
+     * @param req  confirmation payload (raw token from the email link + current password)
+     * @param http incoming request (IP, User-Agent extraction)
+     * @return 200 OK on success
+     */
+    @PostMapping("/suspicious-login/confirm")
+    public ResponseEntity<Map<String, String>> confirmSuspiciousLoginNotMe(
+            @Valid @RequestBody final SuspiciousLoginConfirmRequest req,
+            final HttpServletRequest http) {
+        suspiciousLoginService.confirmNotMe(
+            req.token(), req.currentPassword(), cookieHelper.clientIp(http), http.getHeader(HEADER_USER_AGENT));
+        return ResponseEntity.ok(Map.of(KEY_MESSAGE,
+            "Confirmé. Toutes vos sessions ont été déconnectées et cet appareil n'est plus approuvé."));
     }
 }

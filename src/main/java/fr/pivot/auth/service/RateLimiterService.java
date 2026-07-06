@@ -107,4 +107,18 @@ public class RateLimiterService {
 
     /** Bucket for POST /api/superadmin/tenants — keyed by SUPER_ADMIN account id (US06.2.1). */
     public String tenantCreationBucket(String superAdminId) { return "tenant-creation:superadmin:" + superAdminId; }
+
+    /**
+     * Bucket throttling the "Not me" alert email itself (not the login) — US01.4.3a. Keyed by
+     * user id so an attacker who already has valid credentials cannot flood the victim's inbox
+     * by repeatedly logging in with distinct device fingerprints.
+     */
+    public String suspiciousLoginAlertBucket(String userId) { return "suspicious-login-alert:user:" + userId; }
+
+    /**
+     * Bucket for POST /auth/suspicious-login/confirm — US01.4.3a. Unauthenticated by design (the
+     * caller is not yet re-authenticated), keyed by IP like every other unauthenticated
+     * single-use-token consumer ({@link #resetPasswordBucket}, {@link #accountDeletionCancelIpBucket}).
+     */
+    public String suspiciousLoginConfirmIpBucket(String ip) { return "suspicious-login-confirm:ip:" + ip; }
 }

@@ -99,4 +99,25 @@ class TrustedDeviceServiceTest {
 
         verify(repo, never()).save(any());
     }
+
+    // ---------------- revoke (US01.4.3a "Not me" confirmation) ----------------
+
+    @Test
+    void revoke_deletesRecord_whenPresent() {
+        final TrustedDevice td = new TrustedDevice();
+        when(repo.findByUserIdAndDeviceFingerprint(7L, "fp")).thenReturn(Optional.of(td));
+
+        service.revoke(user, "fp");
+
+        verify(repo).delete(td);
+    }
+
+    @Test
+    void revoke_isNoOp_whenAbsent() {
+        when(repo.findByUserIdAndDeviceFingerprint(7L, "fp")).thenReturn(Optional.empty());
+
+        service.revoke(user, "fp");
+
+        verify(repo, never()).delete(any());
+    }
 }
