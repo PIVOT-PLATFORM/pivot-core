@@ -204,7 +204,11 @@ Après implémentation sur `feat/{us-id}-{slug}` :
      - **CI** — `mvn verify -q` = 0 erreur/warning · Gitleaks clean · Gate 3 hard blocks
    - **Corrections** — tous les findings résolus, commit `fix({scope}): ...`
    - **Convergence** — Gate 4 ≥ 85 ET CI verte → sortir
-3. Gate 4 = 100/100 (ou convergence confirmée sans finding restant) → sortir la PR du mode draft (`gh pr ready`) · `Stage: Review` dans frontmatter US + SPRINTS.md + signal mainteneur
+3. Gate 4 = 100/100 (ou convergence confirmée sans finding restant) :
+   - Sortir la PR du mode draft (`gh pr ready`)
+   - `Stage: Review` dans frontmatter US + SPRINTS.md (branche/PR dédiée `pivot-docs`)
+   - **Gate 5** — générer/mettre à jour la spec fonctionnelle et technique figée `pivot-docs/docs/specs/{EPIC}/{us-id}-{slug}.md` (branche/PR `pivot-docs` dédiée — jamais de commit cross-repo, voir `pivot-docs/docs/workflow/README.md`)
+   - Signal mainteneur
 4. Blocage 20 boucles → Breaking Point 2
 
 ## Workflow — Ordre d'exécution par US (dans un sprint)
