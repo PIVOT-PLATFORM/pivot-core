@@ -245,6 +245,36 @@ CREATE TABLE IF NOT EXISTS device_verify_tokens (
 CREATE INDEX IF NOT EXISTS idx_dvt_user_device ON device_verify_tokens (user_id, device_fingerprint);
 
 -- ================================================================
+-- TABLE: suspicious_login_tokens
+-- ================================================================
+-- "Not me" single-use link token emailed on a passive suspicious-login alert (US01.4.3a).
+-- Distinct from device_verify_tokens: that one is a 6-digit OTP typed in BEFORE a login from an
+-- unknown device is allowed to complete (a blocking gate, only active when MFA_NEW_DEVICE_OTP is
+-- enabled or the account is ROLE_SUPER_ADMIN). This one fires AFTER a login already succeeded
+-- from a device unknown to trusted_devices while that gate did not apply — a passive, non-
+-- blocking notification. Shape mirrors password_reset_tokens (raw 256-bit value hashed with
+-- SHA-256, expires_at/used_at) rather than device_verify_tokens' HMAC OTP, since this token is
+-- clicked from an email link, never typed in by hand. TTL: 1h (SUSPICIOUS_LOGIN_OTP_TTL_MINUTES).
+CREATE TABLE IF NOT EXISTS suspicious_login_tokens (
+    id                 BIGSERIAL   NOT NULL,
+    user_id            BIGINT      NOT NULL,
+    device_fingerprint VARCHAR(64) NOT NULL,
+    device_name        VARCHAR(255),
+    ip_address         VARCHAR(45),
+    token_hash         VARCHAR(64) NOT NULL,
+    expires_at         TIMESTAMPTZ NOT NULL,
+    used_at            TIMESTAMPTZ,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_suspicious_login_tokens PRIMARY KEY (id),
+    CONSTRAINT uq_slt_token_hash UNIQUE (token_hash),
+    CONSTRAINT fk_slt_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_slt_token_hash ON suspicious_login_tokens (token_hash);
+CREATE INDEX IF NOT EXISTS idx_slt_user_id ON suspicious_login_tokens (user_id);
+
+-- ================================================================
 -- TABLE: audit_events
 -- ================================================================
 -- Immutable RGPD Art. 30 audit log — no DELETE from application
@@ -671,7 +701,9 @@ VALUES
     ('ACCOUNT_DELETION_GRACE_DAYS',      true, '30', 'int',
      'Délai de grâce (jours) avant purge effective (anonymisation) d''un compte en cours de suppression (RGPD Art. 17).'),
     ('ACCOUNT_DELETION_OTP_TTL_MINUTES', true, '10', 'int',
-     'Durée de validité (minutes) du code OTP de confirmation de suppression de compte (comptes sans mot de passe local).')
+     'Durée de validité (minutes) du code OTP de confirmation de suppression de compte (comptes sans mot de passe local).'),
+    ('SUSPICIOUS_LOGIN_OTP_TTL_MINUTES', true, '60', 'int',
+     'Durée de validité (minutes) du lien « Pas moi » envoyé lors d''une alerte de connexion suspecte (US01.4.3a).')
 ON CONFLICT (flag_key) DO NOTHING;
 
 -- Labels for admin UI
@@ -685,3 +717,4 @@ UPDATE feature_flags SET label = 'TTL OTP vérification appareil (min)' WHERE fl
 UPDATE feature_flags SET label = 'Durée de confiance appareil (jours)' WHERE flag_key = 'DEVICE_TTL_DAYS';
 UPDATE feature_flags SET label = 'Délai de grâce suppression compte (jours)' WHERE flag_key = 'ACCOUNT_DELETION_GRACE_DAYS';
 UPDATE feature_flags SET label = 'TTL OTP suppression compte (min)'         WHERE flag_key = 'ACCOUNT_DELETION_OTP_TTL_MINUTES';
+UPDATE feature_flags SET label = 'TTL lien « Pas moi » alerte connexion (min)' WHERE flag_key = 'SUSPICIOUS_LOGIN_OTP_TTL_MINUTES';
