@@ -419,6 +419,42 @@ ALTER TABLE tenants
     ADD CONSTRAINT fk_tenants_billing_plan FOREIGN KEY (billing_plan_id) REFERENCES plans (id);
 
 -- ================================================================
+-- TABLE: module_overrides
+-- ================================================================
+-- US03.3.2 — SUPER_ADMIN override d'activation d'un module par tenant.
+--
+-- Concept DISTINCT de module_activations (voir son commentaire ci-dessus) : module_activations
+-- porte le choix de l'admin *du tenant* (autorité tenant-scope, EN03.1) ; module_overrides porte
+-- une décision plateforme du SUPER_ADMIN qui prend explicitement le pas dessus (autorité
+-- cross-tenant). Conflater les deux dans une seule table/ligne mélangerait deux niveaux
+-- d'autorité différents : un admin de tenant qui active/désactive son module écraserait
+-- silencieusement une décision super-admin (ou l'inverse) si les deux partageaient la même
+-- ligne. Une table séparée garantit que ModuleActivationService#isEnabled peut composer les
+-- deux sources sans ambiguïté : override présent → il gagne toujours ; absent → repli sur
+-- module_activations (voir ModuleActivationService pour la résolution complète).
+--
+-- Une ligne par couple (tenant, module) = un override actif, `enabled` porte la valeur forcée.
+-- Absence de ligne = pas d'override, comportement normal (module_activations). Contrairement à
+-- module_activations, `enabled` n'a pas de DEFAULT : chaque ligne n'existe que via un appel
+-- explicite à POST .../override avec une valeur assumée, jamais une création implicite.
+CREATE TABLE IF NOT EXISTS module_overrides (
+    id          BIGSERIAL    NOT NULL,
+    tenant_id   BIGINT       NOT NULL,
+    module_id   VARCHAR(100) NOT NULL,
+    enabled     BOOLEAN      NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_module_overrides PRIMARY KEY (id),
+    -- Un seul override par couple (tenant, module) — sert aussi d'index de lookup
+    -- (préfixe tenant_id).
+    CONSTRAINT uq_mo_tenant_module UNIQUE (tenant_id, module_id),
+    -- CASCADE justifié : un override n'a aucun sens sans son tenant (même motif que
+    -- fk_ma_tenant ci-dessus).
+    CONSTRAINT fk_mo_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
+);
+
+-- ================================================================
 -- TABLE: email_change_requests
 -- ================================================================
 -- US02.2.2 — changement d'adresse email : lien de confirmation à usage unique.
