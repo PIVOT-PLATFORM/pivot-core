@@ -1,3 +1,10 @@
+# [0.19.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.18.0...v0.19.0) (2026-07-06)
+
+
+### Features
+
+* suppression de compte RGPD Art.17 (US02.2.4) ([#140](https://github.com/PIVOT-PLATFORM/pivot-core/issues/140)) ([8522c92](https://github.com/PIVOT-PLATFORM/pivot-core/commit/8522c92032327cff467cc5190897cbf217da66dc)), closes [User#anonymizedAt](https://github.com/User/issues/anonymizedAt) [CryptoUtils#resolveOtpSecret](https://github.com/CryptoUtils/issues/resolveOtpSecret) [PasswordEncoder#matches](https://github.com/PasswordEncoder/issues/matches) [PasswordService#resetPassword](https://github.com/PasswordService/issues/resetPassword) [EmailChangeService#confirmEmailChange](https://github.com/EmailChangeService/issues/confirmEmailChange) [AccountDeletionService#cancelDeletion](https://github.com/AccountDeletionService/issues/cancelDeletion) [PasswordService#RESET_MAX](https://github.com/PasswordService/issues/RESET_MAX)
+
 # [0.18.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.17.0...v0.18.0) (2026-07-06)
 
 
