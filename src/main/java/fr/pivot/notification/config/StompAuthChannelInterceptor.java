@@ -77,7 +77,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
      *               {@code null}
      * @return le token brut, ou {@code null} si l'en-tête est absent ou mal formé
      */
-    private static String extractBearerToken(final String header) {
+    private static @Nullable String extractBearerToken(final @Nullable String header) {
         if (header == null || !header.startsWith(BEARER_PREFIX)) {
             return null;
         }
