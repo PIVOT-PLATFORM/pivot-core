@@ -70,7 +70,7 @@ public class AccountPasswordService {
     private final UserRepository userRepo;
     private final PasswordEncoder passwordEncoder;
     private final TokenService tokenService;
-    private final EmailService emailService;
+    private final SecurityNotificationService securityNotificationService;
     private final RateLimiterService rateLimiter;
     private final AuditService auditService;
     private final MessageSource messageSource;
@@ -78,26 +78,27 @@ public class AccountPasswordService {
     /**
      * Constructs the service with its required collaborators.
      *
-     * @param userRepo        JPA repository for users
-     * @param passwordEncoder BCrypt encoder for current-password verification and new-hash storage
-     * @param tokenService    revokes existing sessions and issues the replacement token
-     * @param emailService    sends the "password changed" confirmation email
-     * @param rateLimiter     sliding-window rate limiter backed by Redis
-     * @param auditService    async audit event logger
-     * @param messageSource   resolves the shared anti-enumeration message text
+     * @param userRepo                    JPA repository for users
+     * @param passwordEncoder             BCrypt encoder for current-password verification and
+     *                                    new-hash storage
+     * @param tokenService                revokes existing sessions and issues the replacement token
+     * @param securityNotificationService sends the "password changed" confirmation email (US01.5.1)
+     * @param rateLimiter                 sliding-window rate limiter backed by Redis
+     * @param auditService                async audit event logger
+     * @param messageSource               resolves the shared anti-enumeration message text
      */
     public AccountPasswordService(
             final UserRepository userRepo,
             final PasswordEncoder passwordEncoder,
             final TokenService tokenService,
-            final EmailService emailService,
+            final SecurityNotificationService securityNotificationService,
             final RateLimiterService rateLimiter,
             final AuditService auditService,
             final MessageSource messageSource) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
         this.tokenService = tokenService;
-        this.emailService = emailService;
+        this.securityNotificationService = securityNotificationService;
         this.rateLimiter = rateLimiter;
         this.auditService = auditService;
         this.messageSource = messageSource;
@@ -167,8 +168,7 @@ public class AccountPasswordService {
         final TokenService.TokenIssueResult issued = tokenService.issue(
             user, null, null, userAgent, ip, AuthMethod.PASSWORD, false);
 
-        emailService.sendPasswordChangedEmail(
-            user.getEmail(), user.getFirstName(), Instant.now(), ip, EmailService.toLocale(user.getLocale()));
+        securityNotificationService.notifyPasswordChanged(user, Instant.now(), ip);
         auditService.log(user, AuditService.CHANGE_PASSWORD, ip, userAgent);
         LOG.info("event=CHANGE_PASSWORD_SUCCESS userId={}", userId);
 

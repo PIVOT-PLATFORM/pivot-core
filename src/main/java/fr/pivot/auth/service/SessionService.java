@@ -53,9 +53,11 @@ import java.util.List;
  * two never fire on the same request.
  *
  * <p>Also backs the "active sessions" self-service screen (US02.2.3):
- * {@link #listSessions(User, Long)}, {@link #revokeSession(User, Long, Long)} and
- * {@link #revokeAllSessionsExceptCurrent(User, Long)} — listing and revocation are userId-scoped
- * from the bearer token's resolved {@link User}, never from a client-supplied identifier.
+ * {@link #listSessions(User, Long)}, {@link #revokeSession(User, Long, Long, String)} and
+ * {@link #revokeAllSessionsExceptCurrent(User, Long, String)} — listing and revocation are
+ * userId-scoped from the bearer token's resolved {@link User}, never from a client-supplied
+ * identifier. Both revocation methods also dispatch a "sessions revoked" security notification
+ * (US01.5.1) via {@link SecurityNotificationService}.
  *
  * @see PasswordService for password reset flows
  * @see RegistrationService for account creation and email verification
@@ -90,6 +92,7 @@ public class SessionService {
     private final PasswordEncoder passwordEncoder;
     private final TokenService tokenService;
     private final EmailService emailService;
+    private final SecurityNotificationService securityNotificationService;
     private final RateLimiterService rateLimiter;
     private final TrustedDeviceService trustedDeviceService;
     private final AuditService auditService;
@@ -117,6 +120,7 @@ public class SessionService {
      * @param passwordEncoder        BCrypt encoder for credential verification
      * @param tokenService           opaque session token lifecycle manager
      * @param emailService           transactional email sender
+     * @param securityNotificationService sends the "sessions revoked" security notice (US01.5.1)
      * @param rateLimiter            sliding-window rate limiter backed by Redis
      * @param trustedDeviceService   manages trusted device records
      * @param auditService           async audit event logger
@@ -133,6 +137,7 @@ public class SessionService {
             final PasswordEncoder passwordEncoder,
             final TokenService tokenService,
             final EmailService emailService,
+            final SecurityNotificationService securityNotificationService,
             final RateLimiterService rateLimiter,
             final TrustedDeviceService trustedDeviceService,
             final AuditService auditService,
@@ -146,6 +151,7 @@ public class SessionService {
         this.passwordEncoder = passwordEncoder;
         this.tokenService = tokenService;
         this.emailService = emailService;
+        this.securityNotificationService = securityNotificationService;
         this.rateLimiter = rateLimiter;
         this.trustedDeviceService = trustedDeviceService;
         this.auditService = auditService;
@@ -400,11 +406,12 @@ public class SessionService {
      * @param user           the authenticated user (resolved from the bearer token)
      * @param tokenId        id of the {@link AccessToken} to revoke (path variable, untrusted)
      * @param currentTokenId id of the session backing the current request
+     * @param ip             client IP of the revocation request — security notification (US01.5.1)
      * @throws ResponseStatusException 404 if the token does not exist or belongs to another
      *     user; 403 if {@code tokenId} is the current session
      */
     @Transactional
-    public void revokeSession(final User user, final Long tokenId, final Long currentTokenId) {
+    public void revokeSession(final User user, final Long tokenId, final Long currentTokenId, final String ip) {
         final AccessToken token = tokenRepo.findByIdAndUserId(tokenId, user.getId())
             .filter(t -> TokenStatus.ACTIVE.equals(t.getStatus()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -416,19 +423,27 @@ public class SessionService {
         }
 
         tokenService.revoke(token);
+        securityNotificationService.notifySessionsRevoked(user, 1, Instant.now(), ip);
         LOG.info("event=SESSION_REVOKED userId={} tokenId={}", user.getId(), tokenId);
     }
 
     /**
      * Revokes every active session of the current user except the current one (US02.2.3).
      *
+     * <p>Sends a single summary security notification (US01.5.1) covering every session
+     * revoked by this call — never one email per session — and only when at least one session
+     * was actually revoked (nothing to report otherwise, e.g. the current session was the only
+     * active one).
+     *
      * @param user           the authenticated user (resolved from the bearer token)
      * @param currentTokenId id of the session backing the current request — preserved
+     * @param ip             client IP of the revocation request — security notification (US01.5.1)
      */
     @Transactional
-    public void revokeAllSessionsExceptCurrent(final User user, final Long currentTokenId) {
+    public void revokeAllSessionsExceptCurrent(final User user, final Long currentTokenId, final String ip) {
         final int revoked = tokenRepo.revokeAllForUserExceptToken(
             user.getId(), currentTokenId, TokenStatus.ACTIVE, TokenStatus.REVOKED);
+        securityNotificationService.notifySessionsRevoked(user, revoked, Instant.now(), ip);
         LOG.info("event=SESSIONS_REVOKED_ALL_EXCEPT_CURRENT userId={} count={}", user.getId(), revoked);
     }
 

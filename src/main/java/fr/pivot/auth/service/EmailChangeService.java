@@ -63,6 +63,7 @@ public class EmailChangeService {
     private final EmailChangeRequestRepository emailChangeRepo;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final SecurityNotificationService securityNotificationService;
     private final RateLimiterService rateLimiter;
     private final AuditService auditService;
     private final long changeEmailTtlHours;
@@ -70,19 +71,21 @@ public class EmailChangeService {
     /**
      * Constructs the service with its required collaborators.
      *
-     * @param userRepo            JPA repository for users
-     * @param emailChangeRepo     JPA repository for pending email-change confirmation tokens
-     * @param passwordEncoder     BCrypt encoder for current-password verification
-     * @param emailService        transactional email sender
-     * @param rateLimiter         sliding-window rate limiter backed by Redis
-     * @param auditService        async audit event logger
-     * @param changeEmailTtlHours number of hours before a confirmation link expires
+     * @param userRepo                    JPA repository for users
+     * @param emailChangeRepo             JPA repository for pending email-change confirmation tokens
+     * @param passwordEncoder             BCrypt encoder for current-password verification
+     * @param emailService                transactional email sender (confirmation link + duplicate notice)
+     * @param securityNotificationService sends the "email changed" security notice (US01.5.1)
+     * @param rateLimiter                 sliding-window rate limiter backed by Redis
+     * @param auditService                async audit event logger
+     * @param changeEmailTtlHours         number of hours before a confirmation link expires
      */
     public EmailChangeService(
             final UserRepository userRepo,
             final EmailChangeRequestRepository emailChangeRepo,
             final PasswordEncoder passwordEncoder,
             final EmailService emailService,
+            final SecurityNotificationService securityNotificationService,
             final RateLimiterService rateLimiter,
             final AuditService auditService,
             @Value("${pivot.auth.email-change-ttl-hours:24}") final long changeEmailTtlHours) {
@@ -90,6 +93,7 @@ public class EmailChangeService {
         this.emailChangeRepo = emailChangeRepo;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
+        this.securityNotificationService = securityNotificationService;
         this.rateLimiter = rateLimiter;
         this.auditService = auditService;
         this.changeEmailTtlHours = changeEmailTtlHours;
@@ -233,8 +237,7 @@ public class EmailChangeService {
             throw new EmailChangeTargetTakenException();
         }
 
-        emailService.sendEmailChangedNotificationEmail(
-            oldEmail, user.getFirstName(), oldEmail, newEmail, now, ip, EmailService.toLocale(user.getLocale()));
+        securityNotificationService.notifyEmailChanged(user, oldEmail, newEmail, now, ip);
         auditService.log(user, AuditService.EMAIL_CHANGE_CONFIRMED, ip, userAgent);
         LOG.info("event=EMAIL_CHANGE_CONFIRMED userId={}", user.getId());
     }

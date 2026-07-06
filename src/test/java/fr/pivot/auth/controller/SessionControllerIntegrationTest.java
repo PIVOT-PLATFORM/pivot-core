@@ -7,17 +7,31 @@ import fr.pivot.auth.entity.TokenStatus;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.UserRepository;
+import fr.pivot.auth.service.EmailService;
 import fr.pivot.auth.service.TokenService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.time.Instant;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -33,14 +47,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@link fr.pivot.config.TokenAuthenticationFilter}. This exercises the full path the frontend
  * will use, including the ownership (cross-user → 404) and current-session (→ 403) guards.
  *
- * <p>Traceability (see {@code us-sessions-actives.md}):
+ * <p>The real {@link EmailService} is replaced by a Mockito mock ({@link TestMailConfig}) — same
+ * convention as every other TI test exercising an email-triggering flow (e.g. {@code
+ * AccountControllerIntegrationTest}) — there is no SMTP server available in this test
+ * environment. {@code SecurityNotificationService} (US01.5.1) is a real bean wired to this mock.
+ *
+ * <p>Traceability (see {@code us-sessions-actives.md} and {@code us-email-action-sensible.md}):
  * <ul>
  *   <li>"GET retourne la liste ... isCurrent" — {@code list_*}</li>
  *   <li>"DELETE /{tokenId} vérifie l'appartenance ... 404 (pas 403)" — {@code deleteOne_crossUser404}</li>
  *   <li>"DELETE /{tokenId} retourne 403 si tokenId est la session courante" — {@code deleteOne_currentSession403}</li>
  *   <li>"DELETE révoque toutes les sessions sauf la courante" — {@code deleteAll_*}</li>
+ *   <li>"Email envoyé après ... révocation session" + "un seul email récapitulatif" —
+ *       {@code deleteOne_sendsSessionRevokedNotification}, {@code deleteAll_sendsSingleSummaryNotification}</li>
  * </ul>
  */
+@Import(SessionControllerIntegrationTest.TestMailConfig.class)
 class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -54,6 +76,9 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private UserRepository userRepo;
+
+    @Autowired
+    private EmailService emailService;
 
     private MockMvc mockMvc;
     private User userAlice;
@@ -69,6 +94,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
             .orElseThrow(() -> new IllegalStateException("Test user 'user@pivot.test' not found"));
         userAdmin = userRepo.findByTenantIdAndEmailAndDeletedAtIsNull(1L, "admin@pivot.test")
             .orElseThrow(() -> new IllegalStateException("Test user 'admin@pivot.test' not found"));
+        reset(emailService);
     }
 
     @AfterEach
@@ -179,6 +205,20 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void deleteOne_sendsSingleSessionRevokedNotification() throws Exception {
+        final String currentRaw = issueToken(userAlice, "Chrome", "203.0.113.1");
+        final String otherRaw = issueToken(userAlice, "Safari", "203.0.113.2");
+        final Long otherId = activeTokenId(otherRaw);
+
+        mockMvc.perform(delete("/api/account/sessions/{tokenId}", otherId)
+                .header("Authorization", "Bearer " + currentRaw))
+            .andExpect(status().isNoContent());
+
+        verify(emailService).sendSessionsRevokedEmail(
+            eq(userAlice.getEmail()), anyString(), eq(1), any(Instant.class), anyString(), any());
+    }
+
+    @Test
     void deleteOne_crossUser_returns404_andDoesNotRevoke() throws Exception {
         final String currentRaw = issueToken(userAlice, "Chrome", "203.0.113.1");
         final String adminRaw = issueToken(userAdmin, "Firefox", "198.51.100.1");
@@ -240,6 +280,10 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         assertThat(tokenRepo.findById(currentId).orElseThrow().getStatus()).isEqualTo(TokenStatus.ACTIVE);
         assertThat(tokenRepo.findById(otherId1).orElseThrow().getStatus()).isEqualTo(TokenStatus.REVOKED);
         assertThat(tokenRepo.findById(otherId2).orElseThrow().getStatus()).isEqualTo(TokenStatus.REVOKED);
+
+        // Exactly one summary email covering both revoked sessions — never one per session.
+        verify(emailService, times(1)).sendSessionsRevokedEmail(
+            eq(userAlice.getEmail()), anyString(), eq(2), any(Instant.class), anyString(), any());
     }
 
     @Test
@@ -263,5 +307,19 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     private Long activeTokenId(final String rawToken) {
         return tokenService.validate(rawToken).orElseThrow().getId();
+    }
+
+    // ----------------------------------------------------------------
+    // Test wiring
+    // ----------------------------------------------------------------
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class TestMailConfig {
+
+        @Bean
+        @Primary
+        EmailService emailService() {
+            return mock(EmailService.class);
+        }
     }
 }

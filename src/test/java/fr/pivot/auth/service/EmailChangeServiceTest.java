@@ -55,6 +55,7 @@ class EmailChangeServiceTest {
     @Mock private EmailChangeRequestRepository emailChangeRepo;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EmailService emailService;
+    @Mock private SecurityNotificationService securityNotificationService;
     @Mock private RateLimiterService rateLimiter;
     @Mock private AuditService auditService;
     @Mock private User user;
@@ -65,7 +66,8 @@ class EmailChangeServiceTest {
     @BeforeEach
     void setUp() {
         service = new EmailChangeService(
-            userRepo, emailChangeRepo, passwordEncoder, emailService, rateLimiter, auditService, 24L);
+            userRepo, emailChangeRepo, passwordEncoder, emailService, securityNotificationService,
+            rateLimiter, auditService, 24L);
 
         when(rateLimiter.emailChangeUserBucket(anyString())).thenReturn("email-change:user:7");
         when(rateLimiter.emailChangeConfirmIpBucket(anyString())).thenReturn("email-change-confirm:ip:ip");
@@ -293,7 +295,7 @@ class EmailChangeServiceTest {
 
         verify(user, never()).setEmail(any());
         verify(userRepo, never()).save(any());
-        verify(emailService, never()).sendEmailChangedNotificationEmail(any(), any(), any(), any(), any(), any(), any());
+        verify(securityNotificationService, never()).notifyEmailChanged(any(), any(), any(), any(), any());
         verify(auditService).log(user, AuditService.EMAIL_CHANGE_TARGET_TAKEN, "ip", "ua");
     }
 
@@ -308,8 +310,8 @@ class EmailChangeServiceTest {
 
         verify(user).setEmail(NEW_EMAIL);
         verify(userRepo).saveAndFlush(user);
-        verify(emailService).sendEmailChangedNotificationEmail(
-            eq("old@x.com"), eq("Alice"), eq("old@x.com"), eq(NEW_EMAIL), any(Instant.class), eq("ip"), eq(Locale.FRENCH));
+        verify(securityNotificationService).notifyEmailChanged(
+            eq(user), eq("old@x.com"), eq(NEW_EMAIL), any(Instant.class), eq("ip"));
         verify(auditService).log(user, AuditService.EMAIL_CHANGE_CONFIRMED, "ip", "ua");
     }
 
@@ -327,7 +329,7 @@ class EmailChangeServiceTest {
         assertThatThrownBy(() -> service.confirmEmailChange("tok", "ip", "ua"))
             .isInstanceOf(EmailChangeTargetTakenException.class);
 
-        verify(emailService, never()).sendEmailChangedNotificationEmail(any(), any(), any(), any(), any(), any(), any());
+        verify(securityNotificationService, never()).notifyEmailChanged(any(), any(), any(), any(), any());
         verify(auditService).log(user, AuditService.EMAIL_CHANGE_TARGET_TAKEN, "ip", "ua");
     }
 }

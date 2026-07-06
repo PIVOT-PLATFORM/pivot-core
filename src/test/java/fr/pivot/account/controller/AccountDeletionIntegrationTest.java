@@ -198,7 +198,7 @@ class AccountDeletionIntegrationTest extends AbstractIntegrationTest {
         assertThat(tokenService.validate(otherToken)).isEmpty();
 
         verify(emailService).sendAccountDeletionConfirmationEmail(
-            eq(reloaded.getEmail()), anyString(), any(Instant.class), anyString(), any());
+            eq(reloaded.getEmail()), anyString(), any(Instant.class), anyString(), anyString(), any());
     }
 
     @Test
@@ -257,7 +257,7 @@ class AccountDeletionIntegrationTest extends AbstractIntegrationTest {
 
         final org.mockito.ArgumentCaptor<String> cancelTokenCaptor = forClass(String.class);
         verify(emailService).sendAccountDeletionConfirmationEmail(
-            anyString(), anyString(), any(Instant.class), cancelTokenCaptor.capture(), any());
+            anyString(), anyString(), any(Instant.class), cancelTokenCaptor.capture(), anyString(), any());
         final String rawCancelToken = cancelTokenCaptor.getValue();
 
         mockMvc().perform(post("/account/deletion/cancel")

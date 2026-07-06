@@ -49,6 +49,7 @@ class PasswordServiceTest {
     @Mock private TokenService tokenService;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private EmailService emailService;
+    @Mock private SecurityNotificationService securityNotificationService;
     @Mock private RateLimiterService rateLimiter;
     @Mock private AuditService auditService;
     @Mock private User user;
@@ -60,7 +61,7 @@ class PasswordServiceTest {
     void setUp() {
         when(featureFlagRepo.getInt("PASSWORD_RESET_TTL_MINUTES", 15)).thenReturn(15);
         service = new PasswordService(userRepo, tenantRepo, passwordResetRepo, featureFlagRepo,
-            tokenService, passwordEncoder, emailService, rateLimiter, auditService);
+            tokenService, passwordEncoder, emailService, securityNotificationService, rateLimiter, auditService);
         when(rateLimiter.forgotPasswordBucket(anyString())).thenReturn("forgot:ip:ip");
         when(rateLimiter.resetPasswordBucket(anyString())).thenReturn("reset:ip:ip");
         when(tenantRepo.findBySlug("pivot-saas")).thenReturn(Optional.of(tenant));
@@ -190,7 +191,7 @@ class PasswordServiceTest {
         verify(user).setPasswordHash("hashed");
         verify(userRepo).save(user);
         verify(tokenService).revokeAllForUser(7L);
-        verify(emailService).sendPasswordChangedEmail(eq("user@x.com"), eq("Alice"), any(Instant.class), eq("ip"), any(Locale.class));
+        verify(securityNotificationService).notifyPasswordChanged(eq(user), any(Instant.class), eq("ip"));
         verify(auditService).log(user, AuditService.PASSWORD_RESET, "ip", "ua");
     }
 

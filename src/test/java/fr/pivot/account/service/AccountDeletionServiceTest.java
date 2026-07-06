@@ -12,6 +12,7 @@ import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.service.AuditService;
 import fr.pivot.auth.service.EmailService;
 import fr.pivot.auth.service.RateLimiterService;
+import fr.pivot.auth.service.SecurityNotificationService;
 import fr.pivot.auth.service.TokenService;
 import fr.pivot.auth.util.CryptoUtils;
 import java.time.Instant;
@@ -75,6 +76,7 @@ class AccountDeletionServiceTest {
     @Mock private TokenService tokenService;
     @Mock private AvatarStorageService avatarStorageService;
     @Mock private EmailService emailService;
+    @Mock private SecurityNotificationService securityNotificationService;
     @Mock private RateLimiterService rateLimiter;
     @Mock private AuditService auditService;
     @Mock private AccountDeletionService self;
@@ -87,7 +89,8 @@ class AccountDeletionServiceTest {
     void setUp() {
         service = new AccountDeletionService(
             userRepo, deletionRequestRepo, deletionOtpRepo, featureFlagRepo, passwordEncoder,
-            tokenService, avatarStorageService, emailService, rateLimiter, auditService, OTP_SECRET, self);
+            tokenService, avatarStorageService, emailService, securityNotificationService,
+            rateLimiter, auditService, OTP_SECRET, self);
 
         when(user.getId()).thenReturn(USER_ID);
         when(user.getEmail()).thenReturn("alice@x.com");
@@ -228,8 +231,8 @@ class AccountDeletionServiceTest {
 
         assertThat(effectiveAt).isCloseTo(Instant.now().plus(30, ChronoUnit.DAYS), within(java.time.Duration.ofSeconds(5)));
 
-        verify(emailService).sendAccountDeletionConfirmationEmail(
-            eq("alice@x.com"), eq("Alice"), eq(effectiveAt), anyString(), any());
+        verify(securityNotificationService).notifyAccountDeletionRequested(
+            eq(user), eq(effectiveAt), anyString(), eq("ip"));
         verify(auditService).log(user, AuditService.ACCOUNT_DELETED, "ip", "ua");
     }
 

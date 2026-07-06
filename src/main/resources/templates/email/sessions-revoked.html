@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title th:text="#{email.password-changed.page-title}">Votre mot de passe a été modifié — PIVOT</title>
+  <title th:text="#{email.sessions-revoked.page-title}">Des sessions ont été déconnectées — PIVOT</title>
 </head>
 <body style="margin:0;padding:0;background:#F4F5F7;font-family:'Segoe UI',Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F5F7;padding:40px 0;">
@@ -16,8 +16,8 @@
         <!-- Body -->
         <tr><td style="padding:40px;">
           <p style="margin:0 0 16px;font-size:16px;color:#1B2A4A;font-weight:600;" th:text="#{email.common.hello(${firstName})}">Bonjour là,</p>
-          <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;" th:text="#{email.password-changed.body}">
-            Le mot de passe de votre compte PIVOT a été modifié avec succès.
+          <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;" th:text="#{email.sessions-revoked.body}">
+            Une ou plusieurs sessions actives ont été déconnectées de votre compte PIVOT.
           </p>
 
           <!-- Detail block -->
@@ -25,13 +25,19 @@
                  style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;margin:0 0 24px;">
             <tr>
               <td style="padding:16px 20px;border-bottom:1px solid #E5E7EB;">
-                <span style="font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.password-changed.label.date}">Date</span><br/>
-                <span style="font-size:14px;color:#111827;font-weight:500;" th:text="${changedAt}">01/01/2026</span>
+                <span style="font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.sessions-revoked.label.count}">Sessions déconnectées</span><br/>
+                <span style="font-size:14px;color:#111827;font-weight:500;" th:text="${revokedCount}">1</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 20px;border-bottom:1px solid #E5E7EB;">
+                <span style="font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.sessions-revoked.label.date}">Date</span><br/>
+                <span style="font-size:14px;color:#111827;font-weight:500;" th:text="${revokedAt}">01/01/2026</span>
               </td>
             </tr>
             <tr>
               <td style="padding:16px 20px;">
-                <span style="font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.password-changed.label.ip}">Adresse IP</span><br/>
+                <span style="font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.sessions-revoked.label.ip}">Adresse IP</span><br/>
                 <span style="font-size:14px;color:#111827;font-weight:500;" th:text="${ip}">0.0.0.0</span>
               </td>
             </tr>
@@ -41,15 +47,15 @@
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                  style="background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;margin:0 0 24px;">
             <tr><td style="padding:16px 20px;">
-              <p style="margin:0 0 8px;font-size:14px;color:#991B1B;font-weight:600;" th:text="#{email.password-changed.not-you.title}">
+              <p style="margin:0 0 8px;font-size:14px;color:#991B1B;font-weight:600;" th:text="#{email.sessions-revoked.not-you.title}">
                 Cette action ne vient pas de vous ?
               </p>
-              <p style="margin:0 0 12px;font-size:13px;color:#7F1D1D;line-height:1.5;" th:text="#{email.password-changed.not-you.body}">
+              <p style="margin:0 0 12px;font-size:13px;color:#7F1D1D;line-height:1.5;" th:text="#{email.sessions-revoked.not-you.body}">
                 Votre compte est peut-être compromis.
               </p>
               <table role="presentation" cellpadding="0" cellspacing="0">
                 <tr><td style="background:#DC2626;border-radius:4px;">
-                  <a th:href="${secureAccountUrl}" th:text="#{email.password-changed.not-you.cta}"
+                  <a th:href="${secureAccountUrl}" th:text="#{email.sessions-revoked.not-you.cta}"
                      style="display:inline-block;padding:10px 20px;color:#FFFFFF;text-decoration:none;font-size:13px;font-weight:600;">
                     Sécuriser mon compte
                   </a>
