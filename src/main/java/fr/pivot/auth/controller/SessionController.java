@@ -44,6 +44,9 @@ public class SessionController {
 
     private static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
+    /** Structured-log event name used by {@link CurrentSessionResolver} on rejection. */
+    private static final String REJECTED_EVENT = "SESSIONS_REJECTED";
+
     private final SessionService sessionService;
     private final CurrentSessionResolver sessionResolver;
 
@@ -67,8 +70,8 @@ public class SessionController {
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<SessionDto>> listSessions(final HttpServletRequest http) {
-        final User user = currentUser();
-        final Long currentTokenId = resolveCurrentTokenId(http);
+        final User user = sessionResolver.currentUser(LOG, REJECTED_EVENT);
+        final Long currentTokenId = sessionResolver.currentTokenId(http).orElse(null);
         LOG.info("event=LIST_SESSIONS userId={}", user.getId());
         return ResponseEntity.ok(sessionService.listSessions(user, currentTokenId));
     }
@@ -87,8 +90,8 @@ public class SessionController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("isAuthenticated()")
     public void revokeSession(@PathVariable final Long tokenId, final HttpServletRequest http) {
-        final User user = currentUser();
-        final Long currentTokenId = requireCurrentTokenId(http);
+        final User user = sessionResolver.currentUser(LOG, REJECTED_EVENT);
+        final Long currentTokenId = sessionResolver.requireCurrentTokenId(http, LOG, REJECTED_EVENT);
         sessionService.revokeSession(user, tokenId, currentTokenId);
     }
 
@@ -103,43 +106,8 @@ public class SessionController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("isAuthenticated()")
     public void revokeAllExceptCurrent(final HttpServletRequest http) {
-        final User user = currentUser();
-        final Long currentTokenId = requireCurrentTokenId(http);
+        final User user = sessionResolver.currentUser(LOG, REJECTED_EVENT);
+        final Long currentTokenId = sessionResolver.requireCurrentTokenId(http, LOG, REJECTED_EVENT);
         sessionService.revokeAllSessionsExceptCurrent(user, currentTokenId);
-    }
-
-    // ----------------------------------------------------------------
-    // Private helpers
-    // ----------------------------------------------------------------
-
-    private User currentUser() {
-        return sessionResolver.currentUser()
-            .orElseThrow(() -> {
-                LOG.warn("event=SESSIONS_REJECTED reason=invalid_auth_details");
-                return new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-            });
-    }
-
-    /**
-     * Resolves the {@link fr.pivot.auth.entity.AccessToken} id backing the current request, or
-     * {@code null} if it cannot be resolved (never fails the request — used on the read path
-     * where a missing {@code isCurrent} flag is preferable to a hard error).
-     */
-    private Long resolveCurrentTokenId(final HttpServletRequest http) {
-        return sessionResolver.currentTokenId(http).orElse(null);
-    }
-
-    /**
-     * Same as {@link #resolveCurrentTokenId} but fails the request with 401 if the current
-     * session cannot be resolved — required on write paths, where silently treating "unknown
-     * current session" as "no current session" would let a caller revoke its own current token.
-     */
-    private Long requireCurrentTokenId(final HttpServletRequest http) {
-        final Long currentTokenId = resolveCurrentTokenId(http);
-        if (currentTokenId == null) {
-            LOG.warn("event=SESSIONS_REJECTED reason=current_token_unresolved");
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        }
-        return currentTokenId;
     }
 }

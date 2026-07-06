@@ -47,6 +47,9 @@ public class DeviceController {
 
     private static final Logger LOG = LoggerFactory.getLogger(DeviceController.class);
 
+    /** Structured-log event name used by {@link CurrentSessionResolver} on rejection. */
+    private static final String REJECTED_EVENT = "DEVICES_REJECTED";
+
     private final TrustedDeviceService trustedDeviceService;
     private final CurrentSessionResolver sessionResolver;
 
@@ -71,8 +74,8 @@ public class DeviceController {
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<List<TrustedDeviceDto>> listDevices(final HttpServletRequest http) {
-        final User user = currentUser();
-        final Long currentTokenId = resolveCurrentTokenId(http);
+        final User user = sessionResolver.currentUser(LOG, REJECTED_EVENT);
+        final Long currentTokenId = sessionResolver.currentTokenId(http).orElse(null);
         LOG.info("event=LIST_TRUSTED_DEVICES userId={}", user.getId());
         return ResponseEntity.ok(trustedDeviceService.listDevices(user, currentTokenId));
     }
@@ -91,44 +94,12 @@ public class DeviceController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @PreAuthorize("isAuthenticated()")
     public void revokeDevice(@PathVariable final Long deviceId, final HttpServletRequest http) {
-        final User user = currentUser();
-        final Long currentTokenId = requireCurrentTokenId(http);
+        final User user = sessionResolver.currentUser(LOG, REJECTED_EVENT);
+        // Required (not resolveCurrentTokenId's nullable variant): silently treating "unknown
+        // current session" as "no current session" would let a caller revoke its own current
+        // device without the 403 current-device guard in TrustedDeviceService ever being
+        // evaluated (see SessionController.revokeSession for the identical rationale on writes).
+        final Long currentTokenId = sessionResolver.requireCurrentTokenId(http, LOG, REJECTED_EVENT);
         trustedDeviceService.revokeDevice(user, deviceId, currentTokenId);
-    }
-
-    // ----------------------------------------------------------------
-    // Private helpers
-    // ----------------------------------------------------------------
-
-    private User currentUser() {
-        return sessionResolver.currentUser()
-            .orElseThrow(() -> {
-                LOG.warn("event=DEVICES_REJECTED reason=invalid_auth_details");
-                return new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-            });
-    }
-
-    /**
-     * Resolves the {@link fr.pivot.auth.entity.AccessToken} id backing the current request, or
-     * {@code null} if it cannot be resolved (never fails the request — used on the read path
-     * where a missing {@code isCurrent} flag is preferable to a hard error).
-     */
-    private Long resolveCurrentTokenId(final HttpServletRequest http) {
-        return sessionResolver.currentTokenId(http).orElse(null);
-    }
-
-    /**
-     * Same as {@link #resolveCurrentTokenId} but fails the request with 401 if the current
-     * session cannot be resolved — required on write paths, where silently treating "unknown
-     * current session" as "no current session" would let a caller revoke its own current device
-     * without the 403 guard ever being evaluated.
-     */
-    private Long requireCurrentTokenId(final HttpServletRequest http) {
-        final Long currentTokenId = resolveCurrentTokenId(http);
-        if (currentTokenId == null) {
-            LOG.warn("event=DEVICES_REJECTED reason=current_token_unresolved");
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        }
-        return currentTokenId;
     }
 }
