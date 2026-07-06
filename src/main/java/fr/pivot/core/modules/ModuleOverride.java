@@ -2,14 +2,8 @@ package fr.pivot.core.modules;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-
-import java.time.Instant;
 
 /**
  * Override SUPER_ADMIN de l'activation d'un module pour un tenant — table
@@ -23,7 +17,9 @@ import java.time.Instant;
  * {@link ModuleOverride} porte une décision plateforme du {@code SUPER_ADMIN} qui prend
  * explicitement le pas dessus (autorité cross-tenant). Ce sont deux niveaux d'autorité
  * différents — jamais la même ligne/table, sous peine qu'un admin de tenant puisse écraser
- * silencieusement une décision super-admin (ou l'inverse).
+ * silencieusement une décision super-admin (ou l'inverse). Les deux entités partagent
+ * uniquement leur mécanique BDD commune via {@link TenantModuleRecord} (identifiant,
+ * {@code tenant_id}, {@code module_id}, horodatages) — jamais leur sémantique {@code enabled}.
  *
  * <p>Une ligne par couple (tenant, module) — contrainte unique en BDD ({@code
  * uq_mo_tenant_module}). L'absence de ligne signifie qu'aucun override n'est actif pour ce
@@ -37,26 +33,10 @@ import java.time.Instant;
 @Entity
 @Table(name = "module_overrides",
         uniqueConstraints = @UniqueConstraint(name = "uq_mo_tenant_module", columnNames = {"tenant_id", "module_id"}))
-public class ModuleOverride {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "tenant_id", nullable = false)
-    private Long tenantId;
-
-    @Column(name = "module_id", nullable = false, length = 100)
-    private String moduleId;
+public class ModuleOverride extends TenantModuleRecord {
 
     @Column(nullable = false)
     private boolean enabled;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
-
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt = Instant.now();
 
     /**
      * Constructeur sans argument requis par JPA.
@@ -77,44 +57,8 @@ public class ModuleOverride {
      * @param enabled  valeur forcée par le super admin
      */
     public ModuleOverride(final Long tenantId, final String moduleId, final boolean enabled) {
-        this.tenantId = tenantId;
-        this.moduleId = moduleId;
+        super(tenantId, moduleId);
         this.enabled = enabled;
-    }
-
-    /**
-     * Met à jour l'horodatage de modification avant chaque UPDATE JPA.
-     */
-    @PreUpdate
-    void onUpdate() {
-        this.updatedAt = Instant.now();
-    }
-
-    /**
-     * Identifiant technique de la ligne.
-     *
-     * @return clé primaire, {@code null} tant que non persistée
-     */
-    public Long getId() {
-        return id;
-    }
-
-    /**
-     * Tenant propriétaire de cet override.
-     *
-     * @return identifiant du tenant
-     */
-    public Long getTenantId() {
-        return tenantId;
-    }
-
-    /**
-     * Module concerné par cet override.
-     *
-     * @return identifiant technique du module
-     */
-    public String getModuleId() {
-        return moduleId;
     }
 
     /**
@@ -134,23 +78,5 @@ public class ModuleOverride {
      */
     public void setEnabled(final boolean enabled) {
         this.enabled = enabled;
-    }
-
-    /**
-     * Horodatage de création de l'override.
-     *
-     * @return instant de création
-     */
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    /**
-     * Horodatage de dernière modification de l'override.
-     *
-     * @return instant de dernière mise à jour
-     */
-    public Instant getUpdatedAt() {
-        return updatedAt;
     }
 }
