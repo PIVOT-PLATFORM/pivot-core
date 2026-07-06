@@ -3,6 +3,7 @@ package fr.pivot.auth.controller;
 import fr.pivot.auth.dto.TrustedDeviceDto;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.service.TrustedDeviceService;
+import fr.pivot.config.CurrentSessionResolver;
 import fr.pivot.config.TokenAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -11,7 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,10 +34,12 @@ import java.util.List;
  * {@link Authentication} populated by the filter (only the resolved {@link User} is). Rather than
  * re-validating the same bearer token a second time against the database, it is read from the
  * {@value TokenAuthenticationFilter#CURRENT_TOKEN_ID_ATTRIBUTE} request attribute that
- * {@link TokenAuthenticationFilter} already populates while authenticating the request. This
- * mirrors {@link SessionController} exactly (own {@code currentUser()} /
- * {@code resolveCurrentTokenId()} / {@code requireCurrentTokenId()} helpers — not shared via
- * inheritance, consistent with how this codebase structures these two controllers).
+ * {@link TokenAuthenticationFilter} already populates while authenticating the request — via the
+ * shared {@link CurrentSessionResolver}, also used by {@link SessionController} (US02.2.3), which
+ * needs the exact same "who is calling" / "which session" resolution (DRY — the resolution logic
+ * used to be copy-pasted per controller; each controller still keeps its own
+ * {@code ResponseStatusException} status codes and structured log event names, composition over
+ * a shared base class, consistent with how this codebase structures these two controllers).
  */
 @RestController
 @RequestMapping("/api/auth/devices")
@@ -46,14 +48,18 @@ public class DeviceController {
     private static final Logger LOG = LoggerFactory.getLogger(DeviceController.class);
 
     private final TrustedDeviceService trustedDeviceService;
+    private final CurrentSessionResolver sessionResolver;
 
     /**
-     * Constructs the controller with its required service collaborator.
+     * Constructs the controller with its required collaborators.
      *
      * @param trustedDeviceService manages listing and revocation of trusted devices
+     * @param sessionResolver      resolves the authenticated user and current token id from a request
      */
-    public DeviceController(final TrustedDeviceService trustedDeviceService) {
+    public DeviceController(final TrustedDeviceService trustedDeviceService,
+                             final CurrentSessionResolver sessionResolver) {
         this.trustedDeviceService = trustedDeviceService;
+        this.sessionResolver = sessionResolver;
     }
 
     /**
@@ -95,23 +101,20 @@ public class DeviceController {
     // ----------------------------------------------------------------
 
     private User currentUser() {
-        final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getDetails() instanceof User user)) {
-            LOG.warn("event=DEVICES_REJECTED reason=invalid_auth_details");
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        }
-        return user;
+        return sessionResolver.currentUser()
+            .orElseThrow(() -> {
+                LOG.warn("event=DEVICES_REJECTED reason=invalid_auth_details");
+                return new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+            });
     }
 
     /**
-     * Resolves the {@link fr.pivot.auth.entity.AccessToken} id backing the current request from
-     * the {@link TokenAuthenticationFilter#CURRENT_TOKEN_ID_ATTRIBUTE} request attribute, or
+     * Resolves the {@link fr.pivot.auth.entity.AccessToken} id backing the current request, or
      * {@code null} if it cannot be resolved (never fails the request — used on the read path
      * where a missing {@code isCurrent} flag is preferable to a hard error).
      */
     private Long resolveCurrentTokenId(final HttpServletRequest http) {
-        final Object attribute = http.getAttribute(TokenAuthenticationFilter.CURRENT_TOKEN_ID_ATTRIBUTE);
-        return attribute instanceof Long tokenId ? tokenId : null;
+        return sessionResolver.currentTokenId(http).orElse(null);
     }
 
     /**

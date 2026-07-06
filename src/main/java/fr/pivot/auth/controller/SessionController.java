@@ -3,6 +3,7 @@ package fr.pivot.auth.controller;
 import fr.pivot.auth.dto.SessionDto;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.service.SessionService;
+import fr.pivot.config.CurrentSessionResolver;
 import fr.pivot.config.TokenAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -11,7 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,7 +34,9 @@ import java.util.List;
  * {@link Authentication} populated by the filter (only the resolved {@link User} is). Rather than
  * re-validating the same bearer token a second time against the database, it is read from the
  * {@value TokenAuthenticationFilter#CURRENT_TOKEN_ID_ATTRIBUTE} request attribute that
- * {@link TokenAuthenticationFilter} already populates while authenticating the request.
+ * {@link TokenAuthenticationFilter} already populates while authenticating the request — via the
+ * shared {@link CurrentSessionResolver} (US01.4.2 — also used by {@code DeviceController}, which
+ * needs the exact same "who is calling" / "which session" resolution).
  */
 @RestController
 @RequestMapping("/api/account/sessions")
@@ -43,14 +45,17 @@ public class SessionController {
     private static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
 
     private final SessionService sessionService;
+    private final CurrentSessionResolver sessionResolver;
 
     /**
-     * Constructs the controller with its required service collaborator.
+     * Constructs the controller with its required collaborators.
      *
-     * @param sessionService manages listing and revocation of active sessions
+     * @param sessionService  manages listing and revocation of active sessions
+     * @param sessionResolver resolves the authenticated user and current token id from a request
      */
-    public SessionController(final SessionService sessionService) {
+    public SessionController(final SessionService sessionService, final CurrentSessionResolver sessionResolver) {
         this.sessionService = sessionService;
+        this.sessionResolver = sessionResolver;
     }
 
     /**
@@ -108,23 +113,20 @@ public class SessionController {
     // ----------------------------------------------------------------
 
     private User currentUser() {
-        final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !(auth.getDetails() instanceof User user)) {
-            LOG.warn("event=SESSIONS_REJECTED reason=invalid_auth_details");
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        }
-        return user;
+        return sessionResolver.currentUser()
+            .orElseThrow(() -> {
+                LOG.warn("event=SESSIONS_REJECTED reason=invalid_auth_details");
+                return new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+            });
     }
 
     /**
-     * Resolves the {@link fr.pivot.auth.entity.AccessToken} id backing the current request from
-     * the {@link TokenAuthenticationFilter#CURRENT_TOKEN_ID_ATTRIBUTE} request attribute, or
+     * Resolves the {@link fr.pivot.auth.entity.AccessToken} id backing the current request, or
      * {@code null} if it cannot be resolved (never fails the request — used on the read path
      * where a missing {@code isCurrent} flag is preferable to a hard error).
      */
     private Long resolveCurrentTokenId(final HttpServletRequest http) {
-        final Object attribute = http.getAttribute(TokenAuthenticationFilter.CURRENT_TOKEN_ID_ATTRIBUTE);
-        return attribute instanceof Long tokenId ? tokenId : null;
+        return sessionResolver.currentTokenId(http).orElse(null);
     }
 
     /**
