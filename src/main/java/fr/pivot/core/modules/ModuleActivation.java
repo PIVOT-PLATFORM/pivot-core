@@ -15,7 +15,7 @@ import java.time.Instant;
  * État d'activation d'un module PIVOT pour un tenant — table {@code public.module_activations}.
  *
  * <p>Une ligne par couple (tenant, module) — contrainte unique en BDD (migration
- * {@code V3__module_activations.sql}). L'absence de ligne équivaut à un module désactivé
+ * {@code V1__schema_init.sql}). L'absence de ligne équivaut à un module désactivé
  * (défaut sûr : rien n'est activé implicitement).
  *
  * <p>Entité interne à pivot-core : jamais exposée directement en API — projection via DTO

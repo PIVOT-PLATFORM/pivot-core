@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <ul>
  *   <li>auto-découverte d'un bean {@link PivotModule} déclaré par {@code @Bean}
  *       (simulation d'un repo module externe) → {@link ModuleRegistry} ;</li>
- *   <li>migration Flyway {@code V3__module_activations.sql} : persistance, contrainte
+ *   <li>migration Flyway {@code V1__schema_init.sql} : persistance, contrainte
  *       unique (tenant_id, module_id), FK vers {@code public.tenants} ;</li>
  *   <li>bus d'événements {@code ApplicationEventPublisher} : événements typés publiés
  *       sur activation / désactivation.</li>

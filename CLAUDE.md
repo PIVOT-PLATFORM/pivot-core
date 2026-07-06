@@ -73,8 +73,8 @@ pivot-core/
 │   │   │   └── db/            # Flyway config multi-schéma, DataSource
 │   │   └── shell/             # Application shell (controllers, config Spring Boot)
 │   ├── main/resources/
-│   │   ├── db/migration/      # Flyway schéma public (V1__, V2__…)
-│   │   └── db/seeds/          # Seeds test (profil test uniquement)
+│   │   ├── db/migration/      # Flyway schéma public — voir règle V1 unique ci-dessous
+│   │   └── db/seeds/          # Seeds test (profil test uniquement, V2__test_seeds.sql)
 │   └── test/java/
 ├── .github/
 │   ├── workflows/
@@ -84,6 +84,12 @@ pivot-core/
 ```
 
 **Maven :** projet single-module. `pivot-core-starter` = artifact publié depuis ce même `pom.xml` via profil `release`. Les repos modules ajoutent `fr.pivot:pivot-core-starter` en dépendance.
+
+**Migrations Flyway — fichier V1 unique avant la BETA :** tant que le schéma n'est pas stabilisé
+(avant la première BETA du produit), tout changement de schéma est plié dans l'unique
+`V1__schema_init.sql` plutôt que d'ajouter un `V2__`/`V3__…` séparé — pas d'historique de
+migrations incrémentales à maintenir tant que rien n'est en prod. Ne pas créer de nouveau fichier
+de migration numéroté sans feu vert explicite du mainteneur (déclenché au démarrage de la BETA).
 
 Frontend Angular → **pivot-ui**. Documentation → **pivot-docs**. Logique métier modules → **pivot-xxx-core**.
 

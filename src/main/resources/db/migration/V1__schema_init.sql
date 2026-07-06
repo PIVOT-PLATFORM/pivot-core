@@ -1,5 +1,8 @@
 -- pivot-platform schema v1 — consolidated DDL
 -- Source of truth for fresh installs
+--
+-- Kept as a single consolidated file by convention until the product's first BETA —
+-- see CLAUDE.md. Do not add V2+ migrations before that point; fold new DDL in here instead.
 
 -- ----------------------------------------------------------------
 -- EXTENSIONS
@@ -14,16 +17,27 @@ CREATE TABLE IF NOT EXISTS tenants (
     slug        VARCHAR(100) NOT NULL,
     name        VARCHAR(255) NOT NULL,
     plan        VARCHAR(50)  NOT NULL DEFAULT 'SAAS',
-    -- SAAS | ENTERPRISE | HYBRID — drives available auth methods
+    -- Originally a deployment-scope concept (SAAS | ENTERPRISE | HYBRID — drives available
+    -- auth methods). Tenant creation (US06.2.1) reuses the same column to let a super admin
+    -- pick the *primary authentication method* offered to a new tenant's users at creation
+    -- time: LOCAL (email/password), OIDC (enterprise SSO) or GOOGLE. Both value sets coexist
+    -- (additive, non-breaking): the bootstrap "pivot-saas" tenant (seed below) and any
+    -- deployment-scope row keep using SAAS/ENTERPRISE/HYBRID, while tenants created via
+    -- POST /api/superadmin/tenants use LOCAL/OIDC/GOOGLE.
     auth_mode   VARCHAR(20)  NOT NULL DEFAULT 'SAAS',
     is_active   BOOLEAN      NOT NULL DEFAULT true,
+    -- Horodatage de la dernière désactivation du tenant. Tout access_token dont created_at <=
+    -- cette valeur est considéré révoqué, sans écriture individuelle sur access_tokens
+    -- (révocation en O(1) plutôt que O(n) utilisateurs). NULL = jamais désactivé, aucune
+    -- régression sur les tokens existants.
+    tenant_invalidation_timestamp TIMESTAMPTZ,
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
     CONSTRAINT pk_tenants PRIMARY KEY (id),
     CONSTRAINT uq_tenants_slug UNIQUE (slug),
     CONSTRAINT chk_tenants_plan CHECK (plan IN ('SAAS', 'ENTERPRISE', 'TRIAL')),
-    CONSTRAINT chk_tenants_auth_mode CHECK (auth_mode IN ('SAAS', 'ENTERPRISE', 'HYBRID'))
+    CONSTRAINT chk_tenants_auth_mode CHECK (auth_mode IN ('SAAS', 'ENTERPRISE', 'HYBRID', 'LOCAL', 'OIDC', 'GOOGLE'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_tenants_slug ON tenants (slug);
@@ -89,7 +103,11 @@ CREATE TABLE IF NOT EXISTS users (
     oidc_subject                VARCHAR(500),
     is_active                   BOOLEAN      NOT NULL DEFAULT true,
     is_blocked                  BOOLEAN      NOT NULL DEFAULT false,
-    -- Preferred language (i18n). Inherited from browser on first login.
+    -- Preferred language (i18n). Inherited from browser on first login. Also exposed and
+    -- user-editable via the account profile API (US02.1.2, `preferredLanguage`) — deliberately
+    -- not a separate column: `locale` and "preferred language" are the same fact about the
+    -- user, a second column would create two sources of truth and risk drift between the UI
+    -- language and the language of emails sent to the same user.
     locale                      VARCHAR(10)  NOT NULL DEFAULT 'fr',
     -- Profile photo URL (provided by Google OAuth / OIDC)
     avatar_url                  TEXT,
@@ -100,20 +118,36 @@ CREATE TABLE IF NOT EXISTS users (
     locked_until                TIMESTAMPTZ,
     last_login_at               TIMESTAMPTZ,
     inactivity_warning_sent_at  TIMESTAMPTZ,
-    -- Soft delete RGPD Art. 17
+    -- Soft delete RGPD Art. 17. deleted_at is set IMMEDIATELY when deletion is requested,
+    -- marking the account "PENDING_DELETION": invisible to admin reads and unresolvable at
+    -- login. scheduled_deletion_at is the effective purge date communicated to the user
+    -- (grace period deadline). anonymized_at marks that the scheduled purge has actually
+    -- anonymized the row — distinguishes "pending, still within grace period" from "purged"
+    -- without parsing users.email.
     deleted_at                  TIMESTAMPTZ,
     scheduled_deletion_at       TIMESTAMPTZ,
+    anonymized_at               TIMESTAMPTZ,
     created_at                  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at                  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
     CONSTRAINT pk_users PRIMARY KEY (id),
-    CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+    CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+    -- RegisterRequest.locale is already constrained to fr|en at the application layer
+    -- (@Pattern "^(fr|en)$"), and no code path other than registration writes this column
+    -- (no Google/OIDC claim is ever mapped onto it) — this promotes that existing invariant
+    -- to the database, per this schema's convention for enum-like columns.
+    CONSTRAINT chk_users_locale CHECK (locale IN ('fr', 'en'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_email ON users (tenant_id, email);
 CREATE INDEX IF NOT EXISTS idx_users_google_id ON users (google_id);
 CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users (deleted_at);
 CREATE INDEX IF NOT EXISTS idx_users_oidc_subject ON users (oidc_subject);
+
+-- Feeds AccountDeletionScheduler.anonymizeDueAccounts() — accounts whose grace period elapsed
+-- and have not been anonymized yet.
+CREATE INDEX IF NOT EXISTS idx_users_scheduled_deletion ON users (scheduled_deletion_at)
+    WHERE deleted_at IS NOT NULL AND anonymized_at IS NULL;
 
 -- ================================================================
 -- TABLE: email_verifications
@@ -308,6 +342,166 @@ CREATE INDEX IF NOT EXISTS idx_at_active_user_created ON access_tokens (user_id,
     WHERE status = 'active';
 
 -- ================================================================
+-- TABLE: module_activations
+-- ================================================================
+-- EN03.1 — état d'activation des modules PIVOT par tenant (schéma public).
+-- Une ligne par couple (tenant, module). Absence de ligne = module désactivé.
+CREATE TABLE IF NOT EXISTS module_activations (
+    id          BIGSERIAL    NOT NULL,
+    tenant_id   BIGINT       NOT NULL,
+    module_id   VARCHAR(100) NOT NULL,
+    enabled     BOOLEAN      NOT NULL DEFAULT false,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_module_activations PRIMARY KEY (id),
+    -- Un seul état par couple (tenant, module) — sert aussi d'index de lookup
+    -- (préfixe tenant_id) pour findAllByTenantId / findByTenantIdAndModuleId.
+    CONSTRAINT uq_ma_tenant_module UNIQUE (tenant_id, module_id),
+    -- CASCADE justifié : l'état d'activation n'a aucun sens sans son tenant.
+    CONSTRAINT fk_ma_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
+);
+
+-- ================================================================
+-- TABLE: email_change_requests
+-- ================================================================
+-- US02.2.2 — changement d'adresse email : lien de confirmation à usage unique.
+-- Mêmes garanties que email_verifications / password_reset_tokens : le token brut
+-- n'est jamais persisté, seul son hash SHA-256 l'est (voir EmailChangeService).
+--
+-- Une seule ligne "en attente" (used_at IS NULL AND cancelled_at IS NULL) par utilisateur
+-- à la fois : toute nouvelle demande annule (cancelled_at) la précédente avant d'en créer
+-- une nouvelle. L'ancienne adresse (users.email) reste inchangée tant que le lien envoyé
+-- à la nouvelle adresse n'a pas été confirmé.
+CREATE TABLE IF NOT EXISTS email_change_requests (
+    id           BIGSERIAL    NOT NULL,
+    user_id      BIGINT       NOT NULL,
+    -- Nouvelle adresse demandée — appliquée à users.email uniquement après confirmation.
+    new_email    VARCHAR(320) NOT NULL,
+    -- SHA-256 hash du token brut envoyé par email — le brut n'est jamais persisté.
+    token_hash   VARCHAR(64)  NOT NULL,
+    expires_at   TIMESTAMPTZ  NOT NULL,
+    -- Renseigné au clic valide sur le lien de confirmation (usage unique).
+    used_at      TIMESTAMPTZ,
+    -- Renseigné quand une nouvelle demande supersède celle-ci avant toute confirmation.
+    cancelled_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_email_change_requests PRIMARY KEY (id),
+    CONSTRAINT uq_ecr_token_hash UNIQUE (token_hash),
+    CONSTRAINT fk_ecr_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ecr_token_hash ON email_change_requests (token_hash);
+CREATE INDEX IF NOT EXISTS idx_ecr_user_id ON email_change_requests (user_id);
+
+-- ================================================================
+-- TABLE: data_export_requests
+-- ================================================================
+-- RGPD Art. 20 (portabilité) — US02.3.1. Une ligne par demande d'export de
+-- données personnelles (POST /api/account/export). Le fichier généré (ZIP)
+-- est stocké sur le système de fichiers local (chemin configurable, voir
+-- pivot.export.storage-path) ; seul le hash SHA-256 du token de
+-- téléchargement à usage unique est persisté, jamais le token brut — même
+-- convention que access_tokens / password_reset_tokens.
+CREATE TABLE IF NOT EXISTS data_export_requests (
+    id               BIGSERIAL    NOT NULL,
+    -- Propriétaire — cascade delete si le compte est supprimé (RGPD Art. 17)
+    user_id          BIGINT       NOT NULL,
+    status           VARCHAR(10)  NOT NULL DEFAULT 'pending',
+    -- SHA-256 du token de téléchargement brut — NULL tant que l'archive n'est pas prête
+    token_hash       VARCHAR(64),
+    -- Chemin absolu du fichier ZIP sur le stockage local
+    file_path        VARCHAR(500),
+    file_size_bytes  BIGINT,
+    -- Renseigné uniquement si status = 'failed'
+    error_message    TEXT,
+    requested_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    completed_at     TIMESTAMPTZ,
+    -- TTL du lien de téléchargement (24h après completed_at)
+    expires_at       TIMESTAMPTZ,
+
+    CONSTRAINT pk_data_export_requests PRIMARY KEY (id),
+    CONSTRAINT fk_der_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT chk_der_status CHECK (status IN ('pending', 'processing', 'ready', 'failed'))
+);
+
+-- Rate limit (1 export / 24h par utilisateur) : recherche de la dernière demande
+CREATE INDEX IF NOT EXISTS idx_der_user_requested ON data_export_requests (user_id, requested_at DESC);
+
+-- Résolution du token de téléchargement authentifié (jamais d'URL signée publique).
+-- Index partiel : de nombreuses lignes ont token_hash NULL (pending/processing/failed).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_der_token_hash ON data_export_requests (token_hash)
+    WHERE token_hash IS NOT NULL;
+
+-- Purge planifiée des archives expirées (ExportCleanupScheduler)
+CREATE INDEX IF NOT EXISTS idx_der_status_expires ON data_export_requests (status, expires_at)
+    WHERE status = 'ready';
+
+-- Ferme la fenêtre TOCTOU applicative : deux POST /api/account/export quasi simultanés
+-- pourraient tous deux passer le check "pas de pending/processing" (DataExportService
+-- #createPendingRequest) avant que l'un des deux inserts ne commit. Cette contrainte
+-- partielle garantit au plus une ligne pending/processing par utilisateur au niveau BDD ;
+-- le second INSERT concurrent lève DataIntegrityViolationException, traduite en 409 côté service.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_der_user_one_active ON data_export_requests (user_id)
+    WHERE status IN ('pending', 'processing');
+
+-- ================================================================
+-- TABLE: account_deletion_requests
+-- ================================================================
+-- US02.2.4 — Suppression de compte (RGPD Art. 17).
+-- One row per deletion *request* — kept (with cancelled_at set) even after cancellation, and
+-- forever after the purge, for audit history (RGPD Art. 5.2 accountability).
+CREATE TABLE IF NOT EXISTS account_deletion_requests (
+    id                BIGSERIAL   NOT NULL,
+    user_id           BIGINT      NOT NULL,
+    requested_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Effective deletion date communicated to the user in the confirmation email
+    -- (requested_at + grace period AT THE TIME of the request — a later admin change to
+    -- ACCOUNT_DELETION_GRACE_DAYS never silently moves an already-communicated date).
+    effective_at      TIMESTAMPTZ NOT NULL,
+    -- How the deletion request itself was confirmed: 'password' (LOCAL accounts) or
+    -- 'otp' (OIDC / no local password accounts).
+    confirmed_via     VARCHAR(10) NOT NULL,
+    -- SHA-256 hash of the raw cancellation token emailed to the user — the raw value is never
+    -- persisted, same convention as every other token table in this schema.
+    cancel_token_hash VARCHAR(64) NOT NULL,
+    cancelled_at      TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_account_deletion_requests PRIMARY KEY (id),
+    CONSTRAINT fk_adr_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT chk_adr_confirmed_via CHECK (confirmed_via IN ('password', 'otp')),
+    CONSTRAINT uq_adr_cancel_token_hash UNIQUE (cancel_token_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_adr_user_id ON account_deletion_requests (user_id);
+
+-- ================================================================
+-- TABLE: account_deletion_otps
+-- ================================================================
+-- Email OTP confirmation for accounts without a local password (auth_mode OIDC / Google-only) —
+-- US01.4.1's device-verification mechanism (device_verify_tokens), reused at the primitive
+-- level (6-digit OTP, HMAC-SHA256 via pivot.auth.otp-secret, bounded attempts, short TTL). A
+-- dedicated table rather than reusing device_verify_tokens directly: there is no
+-- device/fingerprint concept for an account-deletion confirmation.
+CREATE TABLE IF NOT EXISTS account_deletion_otps (
+    id           BIGSERIAL   NOT NULL,
+    user_id      BIGINT      NOT NULL,
+    otp_hash     VARCHAR(64) NOT NULL,
+    attempts     INT         NOT NULL DEFAULT 0,
+    expires_at   TIMESTAMPTZ NOT NULL,
+    confirmed_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_account_deletion_otps PRIMARY KEY (id),
+    CONSTRAINT fk_ado_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ado_user_pending ON account_deletion_otps (user_id, expires_at)
+    WHERE confirmed_at IS NULL;
+
+-- ================================================================
 -- SEED DATA: initial tenant + feature flags
 -- ================================================================
 
@@ -338,7 +532,11 @@ VALUES
     ('DEVICE_VERIFY_TTL_MINUTES',       true,  '15',      'int',
      'Durée de validité du code OTP de vérification d''un nouvel appareil en minutes.'),
     ('DEVICE_TTL_DAYS',                 true,  '90',      'int',
-     'Sliding TTL en jours avant qu''un appareil de confiance doive re-vérifier.')
+     'Sliding TTL en jours avant qu''un appareil de confiance doive re-vérifier.'),
+    ('ACCOUNT_DELETION_GRACE_DAYS',      true, '30', 'int',
+     'Délai de grâce (jours) avant purge effective (anonymisation) d''un compte en cours de suppression (RGPD Art. 17).'),
+    ('ACCOUNT_DELETION_OTP_TTL_MINUTES', true, '10', 'int',
+     'Durée de validité (minutes) du code OTP de confirmation de suppression de compte (comptes sans mot de passe local).')
 ON CONFLICT (flag_key) DO NOTHING;
 
 -- Labels for admin UI
@@ -350,3 +548,5 @@ UPDATE feature_flags SET label = 'Sessions max par utilisateur'        WHERE fla
 UPDATE feature_flags SET label = 'TTL lien reset mot de passe (min)'   WHERE flag_key = 'PASSWORD_RESET_TTL_MINUTES';
 UPDATE feature_flags SET label = 'TTL OTP vérification appareil (min)' WHERE flag_key = 'DEVICE_VERIFY_TTL_MINUTES';
 UPDATE feature_flags SET label = 'Durée de confiance appareil (jours)' WHERE flag_key = 'DEVICE_TTL_DAYS';
+UPDATE feature_flags SET label = 'Délai de grâce suppression compte (jours)' WHERE flag_key = 'ACCOUNT_DELETION_GRACE_DAYS';
+UPDATE feature_flags SET label = 'TTL OTP suppression compte (min)'         WHERE flag_key = 'ACCOUNT_DELETION_OTP_TTL_MINUTES';
