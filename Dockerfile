@@ -31,6 +31,10 @@ EXPOSE 8080
 # Docker interne uniquement) appliquée côté compose — EXPOSE ici documente le port, ne
 # l'ouvre pas au host à lui seul.
 EXPOSE 8081
-HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+# EN04.4 — timing pinned to this Enabler's AC exactly (interval 10s, timeout 5s, start-period
+# 30s, retries 3). docker-compose.prod.yml's own `healthcheck:` block (when the container runs
+# via that compose file) overrides this directive with the identical values — this one is what
+# applies when the image runs standalone (docker run, no compose), so both must stay in sync.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8081/actuator/health || exit 1
 ENTRYPOINT ["java", "-jar", "app.jar"]
