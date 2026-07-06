@@ -62,6 +62,18 @@
                  constructeur-injectés (PlanRepository, ModuleRegistry). -->
             <Package name="fr.pivot.plan.entity"/>
             <Package name="fr.pivot.plan.api"/>
+            <!-- Infrastructure notifications in-app (EN-NOTIF) : Notification est une entité JPA
+                 (getters/setters mutables requis par Hibernate) ; NotificationService/
+                 NotificationController/NotificationPushListener stockent des beans singleton
+                 constructeur-injectés (repositories, MessageSource, ApplicationEventPublisher,
+                 SimpMessagingTemplate) ; NotificationWebSocketConfig/StompAuthChannelInterceptor
+                 stockent de même des beans singleton constructeur-injectés (TokenService,
+                 intercepteur, chaîne d'origines CORS). -->
+            <Package name="fr.pivot.notification.entity"/>
+            <Package name="fr.pivot.notification.service"/>
+            <Package name="fr.pivot.notification.controller"/>
+            <Package name="fr.pivot.notification.config"/>
+            <Package name="fr.pivot.notification.listener"/>
         </Or>
     </Match>
 
