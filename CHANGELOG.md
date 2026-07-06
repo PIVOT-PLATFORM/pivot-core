@@ -1,3 +1,10 @@
+# [0.21.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.20.0...v0.21.0) (2026-07-06)
+
+
+### Features
+
+* **backend:** EN04.1 — logs structurés JSON + MDC ([#156](https://github.com/PIVOT-PLATFORM/pivot-core/issues/156)) ([a73e785](https://github.com/PIVOT-PLATFORM/pivot-core/commit/a73e785e38edd4fdbc6f1c01491b7e475adf295a))
+
 # [0.20.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.19.1...v0.20.0) (2026-07-06)
 
 
