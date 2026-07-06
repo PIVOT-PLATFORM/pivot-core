@@ -13,14 +13,14 @@
           <p style="margin:0 0 24px;font-size:16px;color:#6D28D9;font-weight:600;" th:text="#{email.contact-notification.heading}">Nouveau message reçu via le formulaire de contact</p>
           <table style="width:100%;border-collapse:collapse;margin:0 0 24px;">
             <tr>
-              <td style="padding:10px 12px;background:#F3EEFC;font-size:12px;font-weight:600;color:#8A7EA8;text-transform:uppercase;letter-spacing:.05em;width:120px;" th:text="#{email.contact-notification.from-label}">De</td>
+              <td style="padding:10px 12px;background:#F3EEFC;font-size:12px;font-weight:600;color:#756693;text-transform:uppercase;letter-spacing:.05em;width:120px;" th:text="#{email.contact-notification.from-label}">De</td>
               <td style="padding:10px 12px;font-size:14px;color:#1A1230;border-bottom:1px solid #E9E1F7;">
                 <a th:href="'mailto:' + ${from}" th:text="${from}" style="color:#6D28D9;text-decoration:none;"></a>
               </td>
             </tr>
           </table>
           <div style="background:#F6F3FD;border-left:4px solid #6D28D9;border-radius:2px;padding:16px 20px;">
-            <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#8A7EA8;text-transform:uppercase;letter-spacing:.05em;" th:text="#{email.contact-notification.message-label}">Message</p>
+            <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#756693;text-transform:uppercase;letter-spacing:.05em;" th:text="#{email.contact-notification.message-label}">Message</p>
             <p style="margin:0;font-size:14px;color:#564A76;line-height:1.6;white-space:pre-wrap;" th:text="${message}"></p>
           </div>
         </td></tr>

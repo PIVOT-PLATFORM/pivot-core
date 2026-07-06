@@ -21,7 +21,7 @@
             </td></tr>
           </table>
           <p style="margin:0 0 24px;font-size:13px;color:#A99BC7;" th:text="#{email.export-ready.expiry}">Ce lien expire dans 24 heures.</p>
-          <p style="margin:0;font-size:13px;color:#8A7EA8;background:#FDEFC4;border-left:3px solid #F59E0B;padding:10px 14px;border-radius:0 2px 2px 0;">
+          <p style="margin:0;font-size:13px;color:#756693;background:#FDEFC4;border-left:3px solid #F59E0B;padding:10px 14px;border-radius:0 2px 2px 0;">
             <span th:text="#{email.export-ready.safe}">Si vous n'avez pas demandé cet export, contactez notre support immédiatement :</span>
             <a th:href="'mailto:' + ${supportEmail}" th:text="${supportEmail}" style="color:#6D28D9;">support@pivot.app</a>
           </p>
