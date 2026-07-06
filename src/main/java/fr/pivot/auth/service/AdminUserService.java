@@ -12,6 +12,9 @@ import fr.pivot.auth.exception.SelfStatusChangeForbiddenException;
 import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.repository.UserSpecifications;
+import fr.pivot.notification.service.NotificationPayload;
+import fr.pivot.notification.service.NotificationService;
+import fr.pivot.notification.service.NotificationType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -67,23 +70,29 @@ public class AdminUserService {
     private final UserRepository userRepository;
     private final TokenService tokenService;
     private final EmailService emailService;
+    private final NotificationService notificationService;
 
     /**
      * Construit le service avec ses collaborateurs.
      *
-     * @param userRepository accès aux utilisateurs, avec support {@link Specification}
-     * @param tokenService   révocation des tokens actifs — US06.1.3 : un changement de rôle doit
-     *                       invalider immédiatement toute session portant l'ancien rôle en cache ;
-     *                       US06.1.4 : une désactivation doit produire le même effet
-     * @param emailService   notification transactionnelle envoyée au compte réactivé (US06.1.5)
+     * @param userRepository      accès aux utilisateurs, avec support {@link Specification}
+     * @param tokenService        révocation des tokens actifs — US06.1.3 : un changement de rôle
+     *                            doit invalider immédiatement toute session portant l'ancien rôle
+     *                            en cache ; US06.1.4 : une désactivation doit produire le même
+     *                            effet
+     * @param emailService        notification transactionnelle envoyée au compte réactivé (US06.1.5)
+     * @param notificationService notification in-app (EN-NOTIF) — US06.1.3 : {@link #updateRole} ;
+     *                            US06.1.4 : {@link #updateStatus} (désactivation uniquement)
      */
     public AdminUserService(
             final UserRepository userRepository,
             final TokenService tokenService,
-            final EmailService emailService) {
+            final EmailService emailService,
+            final NotificationService notificationService) {
         this.userRepository = userRepository;
         this.tokenService = tokenService;
         this.emailService = emailService;
+        this.notificationService = notificationService;
     }
 
     /**
@@ -197,6 +206,9 @@ public class AdminUserService {
         // le rôle depuis la BDD.
         tokenService.revokeAllForUser(target.getId());
 
+        // EN-NOTIF — US06.1.3 producteur : notification in-app du nouveau rôle.
+        notificationService.create(target.getId(), NotificationType.ROLE_CHANGED, NotificationPayload.of(role.name()));
+
         return AdminUserDto.from(target);
     }
 
@@ -269,6 +281,10 @@ public class AdminUserService {
             // user.isActive() de TokenService — la révocation reste immédiate même si la
             // relecture en base n'était pas en place.
             tokenService.revokeAllForUser(target.getId());
+            // EN-NOTIF — US06.1.4 producteur : notification in-app de désactivation. Envoyée à
+            // chaque appel, y compris une re-désactivation idempotente (symétrique de la
+            // révocation de tokens ci-dessus) — jamais pour US06.1.5 (réactivation, branche else).
+            notificationService.create(target.getId(), NotificationType.ACCOUNT_DEACTIVATED, NotificationPayload.of());
         } else {
             final boolean wasInactive = !target.isActive();
             target.setActive(true);

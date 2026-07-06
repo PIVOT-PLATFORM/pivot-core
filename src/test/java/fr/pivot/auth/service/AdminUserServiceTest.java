@@ -11,6 +11,9 @@ import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
 import fr.pivot.auth.exception.SelfStatusChangeForbiddenException;
 import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.repository.UserRepository;
+import fr.pivot.notification.service.NotificationPayload;
+import fr.pivot.notification.service.NotificationService;
+import fr.pivot.notification.service.NotificationType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -65,11 +68,14 @@ class AdminUserServiceTest {
     @Mock
     private EmailService emailService;
 
+    @Mock
+    private NotificationService notificationService;
+
     private AdminUserService service;
 
     @BeforeEach
     void setUp() {
-        service = new AdminUserService(userRepository, tokenService, emailService);
+        service = new AdminUserService(userRepository, tokenService, emailService, notificationService);
     }
 
     // ----------------------------------------------------------------
@@ -227,6 +233,7 @@ class AdminUserServiceTest {
         verify(target).setRole("ROLE_ADMIN");
         verify(userRepository).save(target);
         verify(tokenService).revokeAllForUser(99L);
+        verify(notificationService).create(99L, NotificationType.ROLE_CHANGED, NotificationPayload.of("ROLE_ADMIN"));
         assertThat(dto.id()).isEqualTo(99L);
         assertThat(dto.role()).isEqualTo("ROLE_ADMIN");
     }
@@ -236,7 +243,7 @@ class AdminUserServiceTest {
         assertThatThrownBy(() -> service.updateRole(TENANT_ID, 1L, 1L, AssignableRole.ROLE_USER))
                 .isInstanceOf(SelfRoleChangeForbiddenException.class);
 
-        verifyNoInteractions(userRepository, tokenService);
+        verifyNoInteractions(userRepository, tokenService, notificationService);
     }
 
     @Test
@@ -248,6 +255,7 @@ class AdminUserServiceTest {
                 .isInstanceOf(AdminUserNotFoundException.class);
 
         verify(tokenService, never()).revokeAllForUser(any());
+        verifyNoInteractions(notificationService);
     }
 
     /**
@@ -270,6 +278,7 @@ class AdminUserServiceTest {
         verify(target, never()).setRole(any());
         verify(userRepository, never()).save(any());
         verify(tokenService, never()).revokeAllForUser(any());
+        verifyNoInteractions(notificationService);
     }
 
     // ----------------------------------------------------------------
@@ -287,6 +296,7 @@ class AdminUserServiceTest {
         verify(target).setActive(false);
         verify(userRepository).save(target);
         verify(tokenService).revokeAllForUser(99L);
+        verify(notificationService).create(99L, NotificationType.ACCOUNT_DEACTIVATED, NotificationPayload.of());
         verifyNoInteractions(emailService);
         assertThat(dto.id()).isEqualTo(99L);
     }
@@ -295,7 +305,8 @@ class AdminUserServiceTest {
     void ac0614_02_reDeactivatesAlreadyInactiveUser_withoutError() {
         // AC : la désactivation n'est assortie d'aucune contrainte d'idempotence explicite —
         // ré-exécuter la désactivation sur une cible déjà INACTIVE doit rester possible (aucune
-        // AC ne l'interdit), la revocation de tokens ci-dessus la rend de toute façon sûre.
+        // AC ne l'interdit), la revocation de tokens ci-dessus la rend de toute façon sûre — même
+        // principe pour la notification in-app, envoyée à chaque appel (EN-NOTIF).
         final User target = mock(User.class);
         when(target.getId()).thenReturn(99L);
         when(target.isActive()).thenReturn(false);
@@ -307,6 +318,7 @@ class AdminUserServiceTest {
 
         verify(target).setActive(false);
         verify(tokenService).revokeAllForUser(99L);
+        verify(notificationService).create(99L, NotificationType.ACCOUNT_DEACTIVATED, NotificationPayload.of());
     }
 
     @Test
@@ -314,7 +326,7 @@ class AdminUserServiceTest {
         assertThatThrownBy(() -> service.updateStatus(TENANT_ID, 1L, 1L, AssignableStatus.INACTIVE))
                 .isInstanceOf(SelfStatusChangeForbiddenException.class);
 
-        verifyNoInteractions(userRepository, tokenService, emailService);
+        verifyNoInteractions(userRepository, tokenService, emailService, notificationService);
     }
 
     @Test
@@ -326,6 +338,7 @@ class AdminUserServiceTest {
                 .isInstanceOf(AdminUserNotFoundException.class);
 
         verify(tokenService, never()).revokeAllForUser(any());
+        verifyNoInteractions(notificationService);
     }
 
     // ----------------------------------------------------------------
@@ -349,6 +362,9 @@ class AdminUserServiceTest {
         verify(userRepository).save(target);
         verify(emailService).sendAccountReactivatedEmail("bob@pivot.test", "Bob", Locale.FRENCH);
         verify(tokenService, never()).revokeAllForUser(any());
+        // EN-NOTIF ne définit US06.1.4 (désactivation) que comme producteur — la réactivation
+        // (US06.1.5) ne déclenche aucune notification in-app.
+        verifyNoInteractions(notificationService);
         assertThat(dto.id()).isEqualTo(99L);
     }
 
@@ -363,6 +379,7 @@ class AdminUserServiceTest {
         verify(target).setActive(true);
         verify(userRepository).save(target);
         verifyNoInteractions(emailService);
+        verifyNoInteractions(notificationService);
         assertThat(dto.id()).isEqualTo(99L);
     }
 
@@ -388,6 +405,7 @@ class AdminUserServiceTest {
                 .isInstanceOf(AdminUserNotFoundException.class);
 
         verifyNoInteractions(emailService);
+        verifyNoInteractions(notificationService);
     }
 
     // ----------------------------------------------------------------

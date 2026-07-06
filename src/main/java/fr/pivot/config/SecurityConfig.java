@@ -118,6 +118,14 @@ public class SecurityConfig {
                     // UUID filename, see AvatarWebConfig) so a plain <img src> works with no
                     // per-request auth plumbing. GET only.
                     .requestMatchers(HttpMethod.GET, "/avatars/**").permitAll()
+                    // EN-NOTIF — the WebSocket handshake itself cannot carry a custom
+                    // Authorization header (browsers' native WebSocket API forbids arbitrary
+                    // headers on the upgrade request), so this route is public at the HTTP
+                    // layer. Real authentication happens on the first STOMP CONNECT frame
+                    // (which does carry arbitrary headers) via
+                    // fr.pivot.notification.config.StompAuthChannelInterceptor — an
+                    // unauthenticated CONNECT is rejected and the STOMP session never established.
+                    .requestMatchers("/ws/notifications/**").permitAll()
                     .anyRequest().authenticated()
                 )
                 // Opaque token filter runs before Spring's default UsernamePasswordAuthenticationFilter

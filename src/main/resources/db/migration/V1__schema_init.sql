@@ -594,6 +594,49 @@ CREATE INDEX IF NOT EXISTS idx_ado_user_pending ON account_deletion_otps (user_i
     WHERE confirmed_at IS NULL;
 
 -- ================================================================
+-- TABLE: notifications
+-- ================================================================
+-- EN-NOTIF — Infrastructure notifications in-app. Une ligne par notification utilisateur.
+-- tenant_id est dénormalisé depuis users.tenant_id au moment de la création
+-- (NotificationService#create, jamais accepté depuis l'appelant) : permet un filtrage direct
+-- (WHERE user_id = ? AND tenant_id = ?) sans jointure sur users à chaque lecture, et sert de
+-- garde-fou défense-en-profondeur d'isolation tenant (voir CLAUDE.md « Règle transversale
+-- sécurité — Isolation tenant »).
+CREATE TABLE IF NOT EXISTS notifications (
+    id          BIGSERIAL    NOT NULL,
+    user_id     BIGINT       NOT NULL,
+    tenant_id   BIGINT       NOT NULL,
+    -- Producteurs connus (voir NotificationType) : ROLE_CHANGED (US06.1.3) et
+    -- ACCOUNT_DEACTIVATED (US06.1.4) sont câblés dès cet enabler. SENSITIVE_ACTION (US01.5.1)
+    -- et UNKNOWN_DEVICE (US01.4.3a) existent déjà ici (type + libellés i18n) mais ne sont pas
+    -- encore émis : leurs producteurs respectifs (core PR #154 / #151) ne sont pas fusionnés
+    -- sur main et ne publient pas encore d'événement consommable — voir
+    -- fr.pivot.notification.listener (package-info.java) pour le point d'intégration documenté.
+    type        VARCHAR(30)  NOT NULL,
+    title       VARCHAR(255) NOT NULL,
+    body        TEXT         NOT NULL,
+    -- NULL = non lue. Renseigné par PATCH /api/notifications/{id}/read ou .../read-all.
+    read_at     TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_notifications PRIMARY KEY (id),
+    CONSTRAINT fk_notifications_user   FOREIGN KEY (user_id)   REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_notifications_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+    CONSTRAINT chk_notifications_type CHECK (
+        type IN ('ROLE_CHANGED', 'ACCOUNT_DEACTIVATED', 'SENSITIVE_ACTION', 'UNKNOWN_DEVICE')
+    )
+);
+
+-- GET /api/notifications?page=&size= — pagination triée created_at DESC, scopée user+tenant.
+CREATE INDEX IF NOT EXISTS idx_notifications_user_tenant_created
+    ON notifications (user_id, tenant_id, created_at DESC);
+
+-- GET /api/notifications/unread-count — index partiel (la plupart des lignes finissent lues).
+CREATE INDEX IF NOT EXISTS idx_notifications_unread
+    ON notifications (user_id, tenant_id)
+    WHERE read_at IS NULL;
+
+-- ================================================================
 -- SEED DATA: initial tenant + feature flags
 -- ================================================================
 
