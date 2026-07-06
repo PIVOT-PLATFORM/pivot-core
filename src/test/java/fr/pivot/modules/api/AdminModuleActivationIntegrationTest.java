@@ -235,6 +235,20 @@ class AdminModuleActivationIntegrationTest extends AbstractIntegrationTest {
     /**
      * Simule un repo module externe : déclaration d'un {@link PivotModule} par
      * {@code @Bean} — même pattern que {@code ModuleRegistryIntegrationTest}.
+     *
+     * <p><strong>Réutilisé tel quel par {@code AdminModuleListIntegrationTest}</strong>
+     * (US03.3.3, {@code @Import(AdminModuleActivationIntegrationTest.TestModuleConfig.class)})
+     * plutôt que d'y déclarer sa propre configuration de test dédiée : Spring TestContext
+     * met en cache un {@code ApplicationContext} par combinaison unique de configuration
+     * (classes importées, profils, etc.) — <strong>pas</strong> par classe de test — donc
+     * réutiliser exactement cette même classe {@code @Import} fait partager le même contexte
+     * (et le même pool HikariCP) aux deux classes de test, au lieu d'en créer un second. Avec
+     * un nombre croissant de classes {@code *IntegrationTest} dans la suite (chacune avec sa
+     * propre config potentiellement distincte), le nombre de contextes/pools de connexions
+     * simultanés contre le conteneur Postgres Testcontainers unique peut sinon approcher sa
+     * limite {@code max_connections} (observé en CI : {@code FATAL: sorry, too many clients
+     * already}) — d'où les deux modules supplémentaires ci-dessous, ajoutés ici plutôt que
+     * dans une configuration séparée.
      */
     @TestConfiguration(proxyBeanMethods = false)
     static class TestModuleConfig {
@@ -260,6 +274,58 @@ class AdminModuleActivationIntegrationTest extends AbstractIntegrationTest {
                 @Override
                 public boolean isEnabled(final TenantContext ctx) {
                     return true;
+                }
+            };
+        }
+
+        // Modules additionnels US03.3.3 (AdminModuleListIntegrationTest) — voir la Javadoc de
+        // classe ci-dessus pour la raison de leur présence ici plutôt que dans une config dédiée.
+        @Bean
+        PivotModule listItRoadmapModule() {
+            return new PivotModule() {
+                @Override
+                public String getId() {
+                    return "list-it-roadmap";
+                }
+
+                @Override
+                public String getName() {
+                    return "Roadmap (IT)";
+                }
+
+                @Override
+                public String getVersion() {
+                    return "1.0.0";
+                }
+
+                @Override
+                public boolean isEnabled(final TenantContext ctx) {
+                    return false;
+                }
+            };
+        }
+
+        @Bean
+        PivotModule listItQuizModule() {
+            return new PivotModule() {
+                @Override
+                public String getId() {
+                    return "list-it-quiz";
+                }
+
+                @Override
+                public String getName() {
+                    return "Quiz (IT)";
+                }
+
+                @Override
+                public String getVersion() {
+                    return "1.0.0";
+                }
+
+                @Override
+                public boolean isEnabled(final TenantContext ctx) {
+                    return false;
                 }
             };
         }

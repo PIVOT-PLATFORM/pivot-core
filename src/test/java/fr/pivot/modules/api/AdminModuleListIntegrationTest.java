@@ -3,16 +3,12 @@ package fr.pivot.modules.api;
 import fr.pivot.AbstractIntegrationTest;
 import fr.pivot.core.modules.ModuleOverride;
 import fr.pivot.core.modules.ModuleOverrideRepository;
-import fr.pivot.core.modules.PivotModule;
-import fr.pivot.core.tenant.TenantContext;
 import fr.pivot.plan.entity.Plan;
 import fr.pivot.plan.repository.PlanRepository;
 import fr.pivot.tenant.entity.Tenant;
 import fr.pivot.tenant.repository.TenantRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 import java.util.List;
@@ -37,11 +33,22 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>override SUPER_ADMIN actif visible hors plan, {@code source = "override"} ; override
  *       désactivé hors plan reste invisible.</li>
  * </ul>
+ *
+ * <p><strong>Réutilise le contexte Spring de {@code AdminModuleActivationIntegrationTest}</strong>
+ * ({@code @Import(AdminModuleActivationIntegrationTest.TestModuleConfig.class)}, exactement la
+ * même classe, pas une copie) plutôt que de déclarer sa propre configuration — voir la Javadoc
+ * de {@code TestModuleConfig} pour la raison (évite un pool HikariCP/contexte Spring
+ * supplémentaire contre le conteneur Postgres Testcontainers partagé). Les 3 modules nécessaires
+ * ici (bundlé dans les deux plans, bundlé dans un seul, absent des deux) sont donc : le module
+ * déjà déclaré par cette configuration partagée ({@code admin-it-test-module}, réutilisé ici
+ * comme module « toujours dans le plan »), plus {@code list-it-roadmap} et {@code list-it-quiz}
+ * (ajoutés à cette même configuration partagée par cette US).
  */
-@Import(AdminModuleListIntegrationTest.TestModuleConfig.class)
+@Import(AdminModuleActivationIntegrationTest.TestModuleConfig.class)
 class AdminModuleListIntegrationTest extends AbstractIntegrationTest {
 
-    private static final String MODULE_WHITEBOARD = "list-it-whiteboard";
+    /** Réutilise le module déjà déclaré par {@code AdminModuleActivationIntegrationTest}. */
+    private static final String MODULE_WHITEBOARD = "admin-it-test-module";
     private static final String MODULE_ROADMAP = "list-it-roadmap";
     private static final String MODULE_QUIZ = "list-it-quiz";
 
@@ -154,52 +161,5 @@ class AdminModuleListIntegrationTest extends AbstractIntegrationTest {
         tenant.setName("Admin Module List IT Tenant");
         tenant.setBillingPlanId(billingPlanId);
         return tenantRepository.save(tenant);
-    }
-
-    /**
-     * Simule 3 modules PIVOT distincts (repos externes) : même pattern que
-     * {@code AdminModuleActivationIntegrationTest}/{@code ModuleOverrideIntegrationTest}.
-     */
-    @TestConfiguration(proxyBeanMethods = false)
-    static class TestModuleConfig {
-
-        @Bean
-        PivotModule listItWhiteboardModule() {
-            return stub(MODULE_WHITEBOARD, "Tableau blanc (IT)");
-        }
-
-        @Bean
-        PivotModule listItRoadmapModule() {
-            return stub(MODULE_ROADMAP, "Roadmap (IT)");
-        }
-
-        @Bean
-        PivotModule listItQuizModule() {
-            return stub(MODULE_QUIZ, "Quiz (IT)");
-        }
-
-        private static PivotModule stub(final String id, final String name) {
-            return new PivotModule() {
-                @Override
-                public String getId() {
-                    return id;
-                }
-
-                @Override
-                public String getName() {
-                    return name;
-                }
-
-                @Override
-                public String getVersion() {
-                    return "1.0.0";
-                }
-
-                @Override
-                public boolean isEnabled(final TenantContext ctx) {
-                    return false;
-                }
-            };
-        }
     }
 }
