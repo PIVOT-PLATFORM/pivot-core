@@ -1,3 +1,11 @@
+# [0.22.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.21.0...v0.22.0) (2026-07-06)
+
+
+### Features
+
+* **backend:** EN04.2 - endpoints Spring Actuator sur port de management séparé ([#158](https://github.com/PIVOT-PLATFORM/pivot-core/issues/158)) ([74d2621](https://github.com/PIVOT-PLATFORM/pivot-core/commit/74d26216982f5e01d25bc05505d4b5a997b11367)), closes [pivot-core#149](https://github.com/pivot-core/issues/149)
+* **observability:** EN04.3 - export Prometheus via Micrometer ([#157](https://github.com/PIVOT-PLATFORM/pivot-core/issues/157)) ([7888839](https://github.com/PIVOT-PLATFORM/pivot-core/commit/7888839e1aa6d7a9af4fd34e1aebc4ea03eb7459)), closes [ModuleActivationService#activate](https://github.com/ModuleActivationService/issues/activate) [#149](https://github.com/PIVOT-PLATFORM/pivot-core/issues/149)
+
 # [0.21.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.20.0...v0.21.0) (2026-07-06)
 
 
