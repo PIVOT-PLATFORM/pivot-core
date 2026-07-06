@@ -1,9 +1,17 @@
 package fr.pivot.auth.controller;
 
 import fr.pivot.auth.dto.AdminUserDto;
+import fr.pivot.auth.dto.UpdateUserRoleRequest;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
+import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.service.AdminUserService;
+import fr.pivot.auth.service.AuditService;
+import fr.pivot.config.CookieHelper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -13,6 +21,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,23 +32,31 @@ import java.util.Map;
 
 /**
  * REST controller d'administration des utilisateurs PIVOT — liste paginée des utilisateurs du
- * tenant courant (US06.1.1 « Admin liste utilisateurs de son tenant »).
+ * tenant courant (US06.1.1 « Admin liste utilisateurs de son tenant ») et modification du rôle
+ * d'un utilisateur (US06.1.3 « Admin modifie le rôle d'un utilisateur »).
  *
  * <p>Responsabilité unique : résolution du contexte tenant/utilisateur depuis le
  * {@link SecurityContextHolder} (même schéma que {@code fr.pivot.modules.api.AdminModuleController}),
  * délégation à {@link AdminUserService}, et traduction des exceptions métier en réponses HTTP.
- * Aucune logique métier (pagination, filtrage) dans ce contrôleur.
+ * Aucune logique métier (pagination, filtrage, révocation de tokens) dans ce contrôleur.
  *
  * <p><strong>Isolation tenant :</strong> le {@code tenantId} n'est jamais accepté depuis un
  * paramètre de requête, le corps ou un en-tête — uniquement depuis l'entité {@link User} posée
  * par {@code fr.pivot.config.TokenAuthenticationFilter} dans les détails de l'authentification
- * courante. Un client qui tente de passer un {@code tenantId} en query param n'a strictement
- * aucun effet : le paramètre n'existe même pas dans la signature de {@link #list}.
+ * courante. Un client qui tente de passer un {@code tenantId} en query param ou en body n'a
+ * strictement aucun effet : le paramètre n'existe dans aucune signature de méthode de ce
+ * contrôleur. Un {@code userId} de path variable (ex. {@link #updateRole}) est systématiquement
+ * revérifié appartenir à ce tenant par {@link AdminUserService} avant tout traitement.
  *
- * <p><strong>RBAC :</strong> porté par {@link AdminUserService#listUsers} ({@code @PreAuthorize}
- * sur le service, pas sur ce contrôleur) — un appel {@code ROLE_USER} lève
+ * <p><strong>RBAC :</strong> porté par {@link AdminUserService} ({@code @PreAuthorize} sur le
+ * service, pas sur ce contrôleur) — un appel {@code ROLE_USER} lève
  * {@link org.springframework.security.access.AccessDeniedException}, traduite en {@code 403}
  * par le comportement par défaut de Spring Security.
+ *
+ * <p><strong>Note d'extension :</strong> une US soeur (désactivation/réactivation de compte)
+ * ajoute {@code PATCH /api/admin/users/{userId}/status} à ce même contrôleur — le helper
+ * {@link #resolveActor()} et le bloc « Exception handling » sont volontairement génériques
+ * (pas de nom spécifique au rôle) pour être réutilisés tels quels par ce futur endpoint.
  */
 @RestController
 @RequestMapping("/api/admin/users")
@@ -46,14 +65,23 @@ public class AdminUserController {
     private static final Logger LOG = LoggerFactory.getLogger(AdminUserController.class);
 
     private final AdminUserService adminUserService;
+    private final AuditService auditService;
+    private final CookieHelper cookieHelper;
 
     /**
-     * Construit le contrôleur avec son collaborateur.
+     * Construit le contrôleur avec ses collaborateurs.
      *
-     * @param adminUserService service de listing réservé aux administrateurs
+     * @param adminUserService service métier réservé aux administrateurs (listing, modification)
+     * @param auditService     journal d'audit applicatif
+     * @param cookieHelper     résolution de l'IP client, partagée avec les autres contrôleurs
      */
-    public AdminUserController(final AdminUserService adminUserService) {
+    public AdminUserController(
+            final AdminUserService adminUserService,
+            final AuditService auditService,
+            final CookieHelper cookieHelper) {
         this.adminUserService = adminUserService;
+        this.auditService = auditService;
+        this.cookieHelper = cookieHelper;
     }
 
     /**
@@ -78,14 +106,52 @@ public class AdminUserController {
             @RequestParam(name = "role", required = false) final String role,
             @RequestParam(name = "status", required = false) final String status,
             @RequestParam(name = "search", required = false) final String search) {
-        final ResolvedAdmin resolved = resolveAdmin();
-        if (resolved == null) {
+        final User actor = resolveActor();
+        if (actor == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        final Page<AdminUserDto> result =
-                adminUserService.listUsers(resolved.tenantId(), page, size, role, status, search);
+        final Page<AdminUserDto> result = adminUserService.listUsers(
+                actor.getTenant().getId(), page, size, role, status, search);
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Modifie le rôle d'un utilisateur du tenant courant.
+     *
+     * @param userId      identifiant de l'utilisateur ciblé (path variable — jamais le corps)
+     * @param request     corps de requête — {@code { "role": "ROLE_ADMIN" | "ROLE_USER" } }
+     * @param httpRequest requête HTTP (résolution IP/User-Agent pour l'audit)
+     * @return {@code 200} avec le {@link AdminUserDto} mis à jour · {@code 400} si {@code role}
+     *     est absent ou hors de {@link fr.pivot.auth.dto.AssignableRole} (ex.
+     *     {@code ROLE_SUPER_ADMIN}) · {@code 401} si le contexte d'authentification est invalide ·
+     *     {@code 403} si l'appelant n'a pas {@code ROLE_ADMIN}, si {@code userId} désigne
+     *     l'appelant lui-même (auto-rétrogradation interdite), ou si le rôle actuel de
+     *     {@code userId} est {@code ROLE_SUPER_ADMIN} (rôle plateforme protégé) · {@code 404} si
+     *     {@code userId} n'existe pas dans le tenant courant. Après un {@code 200}, tous les
+     *     tokens actifs de l'utilisateur ciblé sont immédiatement révoqués (voir
+     *     {@link AdminUserService#updateRole}).
+     */
+    @PatchMapping("/{userId}/role")
+    public ResponseEntity<AdminUserDto> updateRole(
+            @PathVariable("userId") final Long userId,
+            @Valid @RequestBody final UpdateUserRoleRequest request,
+            final HttpServletRequest httpRequest) {
+        final User actor = resolveActor();
+        if (actor == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        final AdminUserDto updated = adminUserService.updateRole(
+                actor.getTenant().getId(), actor.getId(), userId, request.role());
+
+        auditService.log(actor, actor.getTenant(), AuditService.USER_ROLE_CHANGED,
+                cookieHelper.clientIp(httpRequest), httpRequest.getHeader("User-Agent"),
+                "{\"targetUserId\":" + userId + ",\"newRole\":\"" + request.role() + "\"}");
+
+        LOG.info("event=ADMIN_USER_ROLE_CHANGED actorId={} targetUserId={} newRole={}",
+                actor.getId(), userId, request.role());
+        return ResponseEntity.ok(updated);
     }
 
     // ----------------------------------------------------------------
@@ -106,6 +172,51 @@ public class AdminUserController {
                 "error", "INVALID_FILTER",
                 "field", ex.getField(),
                 "message", "Valeur invalide pour le filtre '" + ex.getField() + "'"));
+    }
+
+    /**
+     * Traduit un {@code userId} introuvable dans le tenant courant en {@code 404 Not Found}
+     * (jamais {@code 403} — voir CLAUDE.md « Isolation tenant »).
+     *
+     * @param ex l'exception levée par le service
+     * @return corps d'erreur {@code 404}
+     */
+    @ExceptionHandler(AdminUserNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleUserNotFound(final AdminUserNotFoundException ex) {
+        LOG.warn("event=ADMIN_USER_NOT_FOUND");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "USER_NOT_FOUND",
+                "message", "Cet utilisateur n'existe pas"));
+    }
+
+    /**
+     * Traduit une tentative d'un admin de modifier son propre rôle en {@code 403 Forbidden}.
+     *
+     * @param ex l'exception levée par le service
+     * @return corps d'erreur {@code 403}
+     */
+    @ExceptionHandler(SelfRoleChangeForbiddenException.class)
+    public ResponseEntity<Map<String, Object>> handleSelfRoleChange(final SelfRoleChangeForbiddenException ex) {
+        LOG.warn("event=ADMIN_SELF_ROLE_CHANGE_REJECTED");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "SELF_ROLE_CHANGE_FORBIDDEN",
+                "message", "Vous ne pouvez pas modifier votre propre rôle"));
+    }
+
+    /**
+     * Traduit une tentative de modification du rôle d'un compte {@code ROLE_SUPER_ADMIN} (rôle
+     * plateforme, hors périmètre d'un admin tenant) en {@code 403 Forbidden}.
+     *
+     * @param ex l'exception levée par le service
+     * @return corps d'erreur {@code 403}
+     */
+    @ExceptionHandler(SuperAdminRoleChangeForbiddenException.class)
+    public ResponseEntity<Map<String, Object>> handleSuperAdminRoleChange(
+            final SuperAdminRoleChangeForbiddenException ex) {
+        LOG.warn("event=ADMIN_SUPER_ADMIN_ROLE_CHANGE_REJECTED");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "SUPER_ADMIN_ROLE_PROTECTED",
+                "message", "Le rôle d'un super-administrateur ne peut pas être modifié par ce endpoint"));
     }
 
     // ----------------------------------------------------------------
@@ -131,11 +242,13 @@ public class AdminUserController {
      *
      * <p>Le {@code tenantId} n'est jamais lu ailleurs que dans l'entité {@link User} posée par
      * le filtre d'authentification — jamais depuis le corps, un paramètre ou un en-tête.
+     * Partagé par tous les endpoints de ce contrôleur (voir note d'extension dans le JavaDoc de
+     * classe) — le futur endpoint {@code PATCH .../status} le réutilise tel quel.
      *
-     * @return le tenantId résolu, ou {@code null} si le contexte d'authentification est
+     * @return l'utilisateur authentifié, ou {@code null} si le contexte d'authentification est
      *     invalide ou si l'utilisateur n'appartient à aucun tenant
      */
-    private ResolvedAdmin resolveAdmin() {
+    private User resolveActor() {
         final Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
         if (auth == null || !(auth.getDetails() instanceof User user)) {
@@ -149,14 +262,6 @@ public class AdminUserController {
             return null;
         }
 
-        return new ResolvedAdmin(user.getTenant().getId());
-    }
-
-    /**
-     * Tenant résolu depuis l'administrateur authentifié, interne à ce contrôleur.
-     *
-     * @param tenantId identifiant du tenant de l'administrateur authentifié
-     */
-    private record ResolvedAdmin(Long tenantId) {
+        return user;
     }
 }
