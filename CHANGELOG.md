@@ -1,3 +1,10 @@
+# [0.20.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.19.1...v0.20.0) (2026-07-06)
+
+
+### Features
+
+* **config:** EN07.2 - secret management via Docker secrets ([#150](https://github.com/PIVOT-PLATFORM/pivot-core/issues/150)) ([3d3aaa5](https://github.com/PIVOT-PLATFORM/pivot-core/commit/3d3aaa5c9d74f6a9b6a99b6b5761e0a487e28fac)), closes [#149](https://github.com/PIVOT-PLATFORM/pivot-core/issues/149)
+
 ## [0.19.1](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.19.0...v0.19.1) (2026-07-06)
 
 
