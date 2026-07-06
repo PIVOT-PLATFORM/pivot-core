@@ -5,62 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title th:text="#{email.email-changed.page-title}">Votre adresse email a été modifiée — PIVOT</title>
 </head>
-<body style="margin:0;padding:0;background:#F4F5F7;font-family:'Segoe UI',Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F5F7;padding:40px 0;">
+<body style="margin:0;padding:0;background:#F6F3FD;font-family:'Segoe UI',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F3FD;padding:40px 0;">
     <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:3px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
         <!-- Header -->
-        <tr><td style="background:#1B2A4A;padding:28px 40px;">
+        <tr><td style="background:#6D28D9;padding:28px 40px;">
           <span style="color:#FFFFFF;font-size:22px;font-weight:700;letter-spacing:-0.5px;">PIVOT</span>
         </td></tr>
         <!-- Body -->
         <tr><td style="padding:40px;">
-          <p style="margin:0 0 16px;font-size:16px;color:#1B2A4A;font-weight:600;" th:text="#{email.common.hello(${firstName})}">Bonjour là,</p>
-          <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;" th:text="#{email.email-changed.body}">
+          <p style="margin:0 0 16px;font-size:16px;color:#6D28D9;font-weight:600;" th:text="#{email.common.hello(${firstName})}">Bonjour là,</p>
+          <p style="margin:0 0 24px;font-size:15px;color:#564A76;line-height:1.6;" th:text="#{email.email-changed.body}">
             L'adresse email de votre compte PIVOT a été modifiée avec succès.
           </p>
 
           <!-- Detail block -->
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                 style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;margin:0 0 24px;">
+                 style="background:#F6F3FD;border:1px solid #E9E1F7;border-radius:2px;margin:0 0 24px;">
             <tr>
-              <td style="padding:16px 20px;border-bottom:1px solid #E5E7EB;">
-                <span style="font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.email-changed.label.old-email}">Ancienne adresse</span><br/>
-                <span style="font-size:14px;color:#111827;font-weight:500;" th:text="${oldEmail}">old@example.com</span>
+              <td style="padding:16px 20px;border-bottom:1px solid #E9E1F7;">
+                <span style="font-size:12px;color:#A99BC7;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.email-changed.label.old-email}">Ancienne adresse</span><br/>
+                <span style="font-size:14px;color:#1A1230;font-weight:500;" th:text="${oldEmail}">old@example.com</span>
               </td>
             </tr>
             <tr>
-              <td style="padding:16px 20px;border-bottom:1px solid #E5E7EB;">
-                <span style="font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.email-changed.label.new-email}">Nouvelle adresse</span><br/>
-                <span style="font-size:14px;color:#111827;font-weight:500;" th:text="${newEmail}">new@example.com</span>
+              <td style="padding:16px 20px;border-bottom:1px solid #E9E1F7;">
+                <span style="font-size:12px;color:#A99BC7;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.email-changed.label.new-email}">Nouvelle adresse</span><br/>
+                <span style="font-size:14px;color:#1A1230;font-weight:500;" th:text="${newEmail}">new@example.com</span>
               </td>
             </tr>
             <tr>
-              <td style="padding:16px 20px;border-bottom:1px solid #E5E7EB;">
-                <span style="font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.email-changed.label.date}">Date</span><br/>
-                <span style="font-size:14px;color:#111827;font-weight:500;" th:text="${changedAt}">01/01/2026</span>
+              <td style="padding:16px 20px;border-bottom:1px solid #E9E1F7;">
+                <span style="font-size:12px;color:#A99BC7;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.email-changed.label.date}">Date</span><br/>
+                <span style="font-size:14px;color:#1A1230;font-weight:500;" th:text="${changedAt}">01/01/2026</span>
               </td>
             </tr>
             <tr>
               <td style="padding:16px 20px;">
-                <span style="font-size:12px;color:#9CA3AF;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.email-changed.label.ip}">Adresse IP</span><br/>
-                <span style="font-size:14px;color:#111827;font-weight:500;" th:text="${ip}">0.0.0.0</span>
+                <span style="font-size:12px;color:#A99BC7;text-transform:uppercase;letter-spacing:0.5px;" th:text="#{email.email-changed.label.ip}">Adresse IP</span><br/>
+                <span style="font-size:14px;color:#1A1230;font-weight:500;" th:text="${ip}">0.0.0.0</span>
               </td>
             </tr>
           </table>
 
           <!-- Security warning -->
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-                 style="background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;margin:0 0 24px;">
+                 style="background:#FDE4E6;border:1px solid #F5B8BE;border-radius:2px;margin:0 0 24px;">
             <tr><td style="padding:16px 20px;">
-              <p style="margin:0 0 8px;font-size:14px;color:#991B1B;font-weight:600;" th:text="#{email.email-changed.not-you.title}">
+              <p style="margin:0 0 8px;font-size:14px;color:#A91E1E;font-weight:600;" th:text="#{email.email-changed.not-you.title}">
                 Cette action ne vient pas de vous ?
               </p>
-              <p style="margin:0 0 12px;font-size:13px;color:#7F1D1D;line-height:1.5;" th:text="#{email.email-changed.not-you.body}">
+              <p style="margin:0 0 12px;font-size:13px;color:#7A1620;line-height:1.5;" th:text="#{email.email-changed.not-you.body}">
                 Votre compte est peut-être compromis.
               </p>
               <table role="presentation" cellpadding="0" cellspacing="0">
-                <tr><td style="background:#DC2626;border-radius:4px;">
+                <tr><td style="background:#DC2626;border-radius:2px;">
                   <a th:href="${secureAccountUrl}" th:text="#{email.email-changed.not-you.cta}"
                      style="display:inline-block;padding:10px 20px;color:#FFFFFF;text-decoration:none;font-size:13px;font-weight:600;">
                     Sécuriser mon compte
@@ -70,16 +70,16 @@
             </td></tr>
           </table>
 
-          <p style="margin:0;font-size:13px;color:#6B7280;background:#FEF3C7;border-left:3px solid #D97706;padding:10px 14px;border-radius:0 4px 4px 0;">
+          <p style="margin:0;font-size:13px;color:#8A7EA8;background:#FDEFC4;border-left:3px solid #F59E0B;padding:10px 14px;border-radius:0 2px 2px 0;">
             <span th:text="#{email.common.support.warning}">Si cette action ne vient pas de vous, contactez notre support :</span>
-            <a th:href="'mailto:' + ${supportEmail}" th:text="${supportEmail}" style="color:#2563EB;">support@pivot.app</a>
+            <a th:href="'mailto:' + ${supportEmail}" th:text="${supportEmail}" style="color:#6D28D9;">support@pivot.app</a>
           </p>
         </td></tr>
         <!-- Footer -->
-        <tr><td style="background:#F9FAFB;padding:20px 40px;border-top:1px solid #E5E7EB;">
-          <p style="margin:0;font-size:12px;color:#9CA3AF;text-align:center;">
+        <tr><td style="background:#F6F3FD;padding:20px 40px;border-top:1px solid #E9E1F7;">
+          <p style="margin:0;font-size:12px;color:#A99BC7;text-align:center;">
             <span th:text="#{email.common.footer.copyright}">© 2026 PIVOT Platform</span>
-            — <a th:href="${appUrl}" th:text="#{email.common.footer.pivot}" style="color:#6B7280;text-decoration:none;">pivot.app</a>
+            — <a th:href="${appUrl}" th:text="#{email.common.footer.pivot}" style="color:#8A7EA8;text-decoration:none;">pivot.app</a>
           </p>
         </td></tr>
       </table>

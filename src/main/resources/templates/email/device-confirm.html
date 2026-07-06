@@ -1,34 +1,34 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}">
 <head><meta charset="UTF-8"/><title th:text="#{email.device-confirm.page-title}">Connexion depuis un nouvel appareil — PIVOT</title></head>
-<body style="margin:0;padding:0;background:#F4F5F7;font-family:'Segoe UI',Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F5F7;padding:40px 0;">
+<body style="margin:0;padding:0;background:#F6F3FD;font-family:'Segoe UI',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F3FD;padding:40px 0;">
     <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-        <tr><td style="background:#1B2A4A;padding:28px 40px;">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:3px;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr><td style="background:#6D28D9;padding:28px 40px;">
           <span style="color:#FFFFFF;font-size:22px;font-weight:700;">PIVOT</span>
         </td></tr>
         <tr><td style="padding:40px;">
-          <p style="margin:0 0 16px;font-size:16px;color:#1B2A4A;font-weight:600;" th:text="#{email.common.hello(${firstName})}">Bonjour là,</p>
-          <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;" th:text="#{email.device-confirm.body(${deviceName})}">
+          <p style="margin:0 0 16px;font-size:16px;color:#6D28D9;font-weight:600;" th:text="#{email.common.hello(${firstName})}">Bonjour là,</p>
+          <p style="margin:0 0 16px;font-size:15px;color:#564A76;line-height:1.6;" th:text="#{email.device-confirm.body(${deviceName})}">
             Une tentative de connexion a été détectée.
           </p>
           <!-- OTP code block -->
-          <div style="background:#EFF6FF;border:2px solid #BFDBFE;border-radius:8px;padding:24px;text-align:center;margin:0 0 24px;">
+          <div style="background:#EFF6FF;border:2px solid #BFDBFE;border-radius:3px;padding:24px;text-align:center;margin:0 0 24px;">
             <p style="margin:0 0 8px;font-size:13px;color:#1E40AF;text-transform:uppercase;letter-spacing:1px;font-weight:600;" th:text="#{email.device-confirm.otp-label}">Code de vérification</p>
-            <p style="margin:0;font-size:36px;font-weight:700;color:#1B2A4A;letter-spacing:8px;" th:text="${otp}">000000</p>
+            <p style="margin:0;font-size:36px;font-weight:700;color:#6D28D9;letter-spacing:8px;" th:text="${otp}">000000</p>
           </div>
-          <p style="margin:0 0 12px;font-size:13px;color:#9CA3AF;" th:text="#{email.device-confirm.expiry}">Ce code expire dans 15 minutes.</p>
-          <p style="margin:0 0 12px;font-size:13px;color:#EF4444;font-weight:500;" th:text="#{email.device-confirm.warning}">
+          <p style="margin:0 0 12px;font-size:13px;color:#A99BC7;" th:text="#{email.device-confirm.expiry}">Ce code expire dans 15 minutes.</p>
+          <p style="margin:0 0 12px;font-size:13px;color:#DC2626;font-weight:500;" th:text="#{email.device-confirm.warning}">
             Si ce n'est pas vous, changez immédiatement votre mot de passe.
           </p>
-          <p style="margin:0;font-size:13px;color:#6B7280;background:#FEF3C7;border-left:3px solid #D97706;padding:10px 14px;border-radius:0 4px 4px 0;">
+          <p style="margin:0;font-size:13px;color:#8A7EA8;background:#FDEFC4;border-left:3px solid #F59E0B;padding:10px 14px;border-radius:0 2px 2px 0;">
             <span th:text="#{email.common.support.warning}">Si cette action ne vient pas de vous, contactez notre support :</span>
-            <a th:href="'mailto:' + ${supportEmail}" th:text="${supportEmail}" style="color:#2563EB;">support@pivot.app</a>
+            <a th:href="'mailto:' + ${supportEmail}" th:text="${supportEmail}" style="color:#6D28D9;">support@pivot.app</a>
           </p>
         </td></tr>
-        <tr><td style="background:#F9FAFB;padding:20px 40px;border-top:1px solid #E5E7EB;">
-          <p style="margin:0;font-size:12px;color:#9CA3AF;text-align:center;" th:text="#{email.common.footer.copyright}">© 2026 PIVOT Platform</p>
+        <tr><td style="background:#F6F3FD;padding:20px 40px;border-top:1px solid #E9E1F7;">
+          <p style="margin:0;font-size:12px;color:#A99BC7;text-align:center;" th:text="#{email.common.footer.copyright}">© 2026 PIVOT Platform</p>
         </td></tr>
       </table>
     </td></tr>

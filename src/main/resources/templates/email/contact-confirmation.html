@@ -1,30 +1,30 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}">
 <head><meta charset="UTF-8"/><title th:text="#{email.contact-confirmation.page-title}">Votre message a bien été reçu — PIVOT</title></head>
-<body style="margin:0;padding:0;background:#F4F5F7;font-family:'Segoe UI',Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F5F7;padding:40px 0;">
+<body style="margin:0;padding:0;background:#F6F3FD;font-family:'Segoe UI',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F3FD;padding:40px 0;">
     <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-        <tr><td style="background:linear-gradient(135deg,#1B2A4A 0%,#2563EB 100%);padding:40px;text-align:center;">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:3px;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr><td style="background:linear-gradient(135deg,#6D28D9 0%,#6D28D9 100%);padding:40px;text-align:center;">
           <span style="color:#FFFFFF;font-size:28px;font-weight:700;letter-spacing:-0.5px;">PIVOT</span>
-          <p style="margin:8px 0 0;color:#BFDBFE;font-size:14px;" th:text="#{email.contact-confirmation.tagline}">Plateforme collaborative d'entreprise</p>
+          <p style="margin:8px 0 0;color:#DCC9FB;font-size:14px;" th:text="#{email.contact-confirmation.tagline}">Plateforme collaborative d'entreprise</p>
         </td></tr>
         <tr><td style="padding:40px;">
-          <p style="margin:0 0 16px;font-size:18px;color:#1B2A4A;font-weight:600;" th:text="#{email.contact-confirmation.heading}">Message reçu !</p>
-          <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;" th:text="#{email.contact-confirmation.body}">
+          <p style="margin:0 0 16px;font-size:18px;color:#6D28D9;font-weight:600;" th:text="#{email.contact-confirmation.heading}">Message reçu !</p>
+          <p style="margin:0 0 24px;font-size:15px;color:#564A76;line-height:1.6;" th:text="#{email.contact-confirmation.body}">
             Merci pour votre message. L'équipe PIVOT vous répondra dans les plus brefs délais.
           </p>
-          <div style="background:#F9FAFB;border-left:4px solid #2563EB;border-radius:4px;padding:16px 20px;margin:0 0 24px;">
-            <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;" th:text="#{email.contact-confirmation.message-label}">Votre message</p>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;white-space:pre-wrap;" th:text="${message}"></p>
+          <div style="background:#F6F3FD;border-left:4px solid #6D28D9;border-radius:2px;padding:16px 20px;margin:0 0 24px;">
+            <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#8A7EA8;text-transform:uppercase;letter-spacing:.05em;" th:text="#{email.contact-confirmation.message-label}">Votre message</p>
+            <p style="margin:0;font-size:14px;color:#564A76;line-height:1.6;white-space:pre-wrap;" th:text="${message}"></p>
           </div>
-          <hr style="border:none;border-top:1px solid #E5E7EB;margin:0 0 24px;"/>
-          <p style="margin:0;font-size:13px;color:#6B7280;line-height:1.6;" th:text="#{email.contact-confirmation.footer}">
+          <hr style="border:none;border-top:1px solid #E9E1F7;margin:0 0 24px;"/>
+          <p style="margin:0;font-size:13px;color:#8A7EA8;line-height:1.6;" th:text="#{email.contact-confirmation.footer}">
             Cet email confirme uniquement la réception de votre message.
           </p>
         </td></tr>
-        <tr><td style="background:#F9FAFB;padding:20px 40px;border-top:1px solid #E5E7EB;">
-          <p style="margin:0;font-size:12px;color:#9CA3AF;text-align:center;" th:text="#{email.common.footer.copyright}">© 2026 PIVOT Platform</p>
+        <tr><td style="background:#F6F3FD;padding:20px 40px;border-top:1px solid #E9E1F7;">
+          <p style="margin:0;font-size:12px;color:#A99BC7;text-align:center;" th:text="#{email.common.footer.copyright}">© 2026 PIVOT Platform</p>
         </td></tr>
       </table>
     </td></tr>

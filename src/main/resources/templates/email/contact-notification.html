@@ -1,31 +1,31 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}">
 <head><meta charset="UTF-8"/><title th:text="#{email.contact-notification.page-title}">Nouveau message de contact — PIVOT</title></head>
-<body style="margin:0;padding:0;background:#F4F5F7;font-family:'Segoe UI',Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4F5F7;padding:40px 0;">
+<body style="margin:0;padding:0;background:#F6F3FD;font-family:'Segoe UI',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F3FD;padding:40px 0;">
     <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.08);">
-        <tr><td style="background:linear-gradient(135deg,#1B2A4A 0%,#2563EB 100%);padding:32px 40px;text-align:center;">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#FFFFFF;border-radius:3px;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+        <tr><td style="background:linear-gradient(135deg,#6D28D9 0%,#6D28D9 100%);padding:32px 40px;text-align:center;">
           <span style="color:#FFFFFF;font-size:24px;font-weight:700;letter-spacing:-0.5px;">PIVOT</span>
-          <p style="margin:6px 0 0;color:#BFDBFE;font-size:13px;" th:text="#{email.contact-notification.tagline}">Nouveau message de contact</p>
+          <p style="margin:6px 0 0;color:#DCC9FB;font-size:13px;" th:text="#{email.contact-notification.tagline}">Nouveau message de contact</p>
         </td></tr>
         <tr><td style="padding:40px;">
-          <p style="margin:0 0 24px;font-size:16px;color:#1B2A4A;font-weight:600;" th:text="#{email.contact-notification.heading}">Nouveau message reçu via le formulaire de contact</p>
+          <p style="margin:0 0 24px;font-size:16px;color:#6D28D9;font-weight:600;" th:text="#{email.contact-notification.heading}">Nouveau message reçu via le formulaire de contact</p>
           <table style="width:100%;border-collapse:collapse;margin:0 0 24px;">
             <tr>
-              <td style="padding:10px 12px;background:#F3F4F6;font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;width:120px;" th:text="#{email.contact-notification.from-label}">De</td>
-              <td style="padding:10px 12px;font-size:14px;color:#111827;border-bottom:1px solid #E5E7EB;">
-                <a th:href="'mailto:' + ${from}" th:text="${from}" style="color:#2563EB;text-decoration:none;"></a>
+              <td style="padding:10px 12px;background:#F3EEFC;font-size:12px;font-weight:600;color:#8A7EA8;text-transform:uppercase;letter-spacing:.05em;width:120px;" th:text="#{email.contact-notification.from-label}">De</td>
+              <td style="padding:10px 12px;font-size:14px;color:#1A1230;border-bottom:1px solid #E9E1F7;">
+                <a th:href="'mailto:' + ${from}" th:text="${from}" style="color:#6D28D9;text-decoration:none;"></a>
               </td>
             </tr>
           </table>
-          <div style="background:#F9FAFB;border-left:4px solid #2563EB;border-radius:4px;padding:16px 20px;">
-            <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;" th:text="#{email.contact-notification.message-label}">Message</p>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;white-space:pre-wrap;" th:text="${message}"></p>
+          <div style="background:#F6F3FD;border-left:4px solid #6D28D9;border-radius:2px;padding:16px 20px;">
+            <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#8A7EA8;text-transform:uppercase;letter-spacing:.05em;" th:text="#{email.contact-notification.message-label}">Message</p>
+            <p style="margin:0;font-size:14px;color:#564A76;line-height:1.6;white-space:pre-wrap;" th:text="${message}"></p>
           </div>
         </td></tr>
-        <tr><td style="background:#F9FAFB;padding:20px 40px;border-top:1px solid #E5E7EB;">
-          <p style="margin:0;font-size:12px;color:#9CA3AF;text-align:center;" th:text="#{email.common.footer.copyright}">© 2026 PIVOT Platform</p>
+        <tr><td style="background:#F6F3FD;padding:20px 40px;border-top:1px solid #E9E1F7;">
+          <p style="margin:0;font-size:12px;color:#A99BC7;text-align:center;" th:text="#{email.common.footer.copyright}">© 2026 PIVOT Platform</p>
         </td></tr>
       </table>
     </td></tr>
