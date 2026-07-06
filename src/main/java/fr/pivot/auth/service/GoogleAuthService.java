@@ -140,7 +140,7 @@ public class GoogleAuthService {
         }
 
         if (req.deviceFingerprint() != null && !req.deviceFingerprint().isBlank()) {
-            trustedDeviceService.trust(user, req.deviceFingerprint(), req.deviceName());
+            trustedDeviceService.trust(user, req.deviceFingerprint(), req.deviceName(), ip);
         }
 
         final boolean isNewAccount = user.getLastLoginAt() == null;

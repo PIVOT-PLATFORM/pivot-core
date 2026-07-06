@@ -2,6 +2,7 @@ package fr.pivot.auth.service;
 
 import fr.pivot.auth.entity.TrustedDevice;
 import fr.pivot.auth.entity.User;
+import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.repository.TrustedDeviceRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -31,6 +33,8 @@ class TrustedDeviceServiceTest {
 
     @Mock private TrustedDeviceRepository repo;
     @Mock private FeatureFlagRepository featureFlagRepo;
+    @Mock private AccessTokenRepository tokenRepo;
+    @Mock private ApplicationEventPublisher eventPublisher;
     @Mock private User user;
 
     private TrustedDeviceService service;
@@ -38,7 +42,7 @@ class TrustedDeviceServiceTest {
     @BeforeEach
     void setUp() {
         when(featureFlagRepo.getInt("DEVICE_TTL_DAYS", 90)).thenReturn(90);
-        service = new TrustedDeviceService(repo, featureFlagRepo);
+        service = new TrustedDeviceService(repo, featureFlagRepo, tokenRepo, eventPublisher);
         when(user.getId()).thenReturn(7L);
     }
 
@@ -74,7 +78,7 @@ class TrustedDeviceServiceTest {
     void trust_createsNewRecord_whenNoneExists() {
         when(repo.findByUserIdAndDeviceFingerprint(7L, "fp")).thenReturn(Optional.empty());
 
-        service.trust(user, "fp", "Chrome");
+        service.trust(user, "fp", "Chrome", "203.0.113.1");
 
         verify(repo).save(any(TrustedDevice.class));
     }
@@ -84,7 +88,7 @@ class TrustedDeviceServiceTest {
         final TrustedDevice td = new TrustedDevice();
         when(repo.findByUserIdAndDeviceFingerprint(7L, "fp")).thenReturn(Optional.of(td));
 
-        service.trust(user, "fp", "Firefox");
+        service.trust(user, "fp", "Firefox", "203.0.113.1");
 
         assertThat(td.getDeviceName()).isEqualTo("Firefox");
         assertThat(td.getExpiresAt()).isNotNull();

@@ -185,7 +185,7 @@ class SessionServiceTest {
         verify(auditService).log(user, AuditService.LOGIN, "ip", "ua");
         // No fingerprint at all — nothing to check for "unknown device" (US01.4.3a) or to trust.
         verify(suspiciousLoginService, never()).alertIfUnknownDevice(any(), anyBoolean(), any(), any(), any(), any());
-        verify(trustedDeviceService, never()).trust(any(), any(), any());
+        verify(trustedDeviceService, never()).trust(any(), any(), any(), any());
     }
 
     @Test
@@ -221,7 +221,7 @@ class SessionServiceTest {
         // email sent — asserted independently in SuspiciousLoginServiceTest) and trust() must
         // not be called again — isTrusted() already renewed the sliding TTL.
         verify(suspiciousLoginService).alertIfUnknownDevice(user, true, "fp", "Chrome", "ip", "ua");
-        verify(trustedDeviceService, never()).trust(any(), any(), any());
+        verify(trustedDeviceService, never()).trust(any(), any(), any(), any());
     }
 
     @Test
@@ -240,7 +240,7 @@ class SessionServiceTest {
         assertThat(result.sessionToken()).isEqualTo("raw-token");
         verify(deviceVerifyRepo, never()).save(any(DeviceVerifyToken.class));
         verify(suspiciousLoginService).alertIfUnknownDevice(user, false, "fp", "Chrome", "ip", "ua");
-        verify(trustedDeviceService).trust(user, "fp", "Chrome");
+        verify(trustedDeviceService).trust(user, "fp", "Chrome", "ip");
     }
 
     // ---------------- verifyDeviceOtp ----------------
@@ -301,7 +301,7 @@ class SessionServiceTest {
 
         assertThat(result.sessionToken()).isEqualTo("raw-token");
         assertThat(dvt.getConfirmedAt()).isNotNull();
-        verify(trustedDeviceService).trust(user, "fp", "Chrome");
+        verify(trustedDeviceService).trust(user, "fp", "Chrome", "ip");
         verify(auditService).log(user, AuditService.DEVICE_VERIFIED, "ip", "ua");
     }
 
