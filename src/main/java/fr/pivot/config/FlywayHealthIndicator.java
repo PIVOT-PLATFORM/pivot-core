@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
+import org.flywaydb.core.api.MigrationInfoService;
 import org.flywaydb.core.api.MigrationState;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
@@ -55,10 +56,15 @@ public class FlywayHealthIndicator implements HealthIndicator {
      */
     @Override
     public Health health() {
-        final MigrationInfo[] all = flyway.info().all();
+        // Single flyway.info() call, reused below (all() + current()) — it re-validates
+        // against the DB each time it is invoked (visible as a repeated "Database: jdbc:..."
+        // log line otherwise), so calling it twice per health check is a needless extra
+        // round-trip on a request that is already on the hot path for readiness polling.
+        final MigrationInfoService info = flyway.info();
+        final MigrationInfo[] all = info.all();
 
         final List<MigrationInfo> failed = Arrays.stream(all)
-                .filter(info -> info.getState() == MigrationState.FAILED)
+                .filter(mi -> mi.getState() == MigrationState.FAILED)
                 .toList();
         if (!failed.isEmpty()) {
             return Health.down()
@@ -68,7 +74,7 @@ public class FlywayHealthIndicator implements HealthIndicator {
         }
 
         final List<MigrationInfo> pending = Arrays.stream(all)
-                .filter(info -> info.getState() == MigrationState.PENDING)
+                .filter(mi -> mi.getState() == MigrationState.PENDING)
                 .toList();
         if (!pending.isEmpty()) {
             return Health.down()
@@ -77,7 +83,7 @@ public class FlywayHealthIndicator implements HealthIndicator {
                     .build();
         }
 
-        final MigrationInfo current = flyway.info().current();
+        final MigrationInfo current = info.current();
         return Health.up()
                 .withDetail("schemaVersion", current == null ? "none" : current.getVersion().toString())
                 .build();

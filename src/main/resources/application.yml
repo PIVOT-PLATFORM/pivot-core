@@ -41,6 +41,15 @@ spring:
       # (Docker secret prod) quand SPRING_DATA_REDIS_PASSWORD est absent — voir
       # docs/deployment/secret-management.md.
       password: ${SPRING_DATA_REDIS_PASSWORD:${secret.redis-password:}}
+      # EN04.4 — sans ce timeout, Lettuce attend son défaut (60s) avant d'abandonner une
+      # commande (PING compris — utilisé par le contributeur de santé "redis"). Une panne
+      # Redis ferait alors traîner `/actuator/health(/readiness)` pendant jusqu'à 60s au lieu
+      # d'échouer vite (DOWN), ce qui va à l'encontre du but même de cet Enabler (détecter et
+      # sortir du trafic une instance dégradée rapidement) et bloquerait inutilement les
+      # threads Tomcat servant la requête. Découvert via un test d'intégration qui coupe Redis
+      # (HealthLivenessReadinessIntegrationTest) : sans cette ligne, la requête de readiness
+      # reste bloquée ~9s avant que Lettuce ne signale l'échec de reconnexion.
+      timeout: 2s
 
   messages:
     basename: messages

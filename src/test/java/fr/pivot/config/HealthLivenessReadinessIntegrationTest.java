@@ -8,6 +8,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalManagementPort;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
@@ -34,9 +35,18 @@ import static org.assertj.core.api.Assertions.assertThat;
  * last test in this class can stop it to simulate this Enabler's "module KO" AC scenario
  * without disturbing any other test class or the shared CI Redis service. {@link Order}
  * enforces that this destructive test runs last: the two tests before it need Redis alive.
+ *
+ * <p>{@link DirtiesContext} (class mode {@code AFTER_CLASS}) forces Spring's test context
+ * cache to close this specific {@code ApplicationContext} once this class finishes rather
+ * than keeping it cached for potential reuse — after the last test kills Redis, this
+ * context's Lettuce client is left with a dead target and its background
+ * {@code ConnectionWatchdog} would otherwise keep retrying to reconnect indefinitely (Lettuce
+ * default {@code autoReconnect}), burning CPU for the remainder of the test run and, observed
+ * in CI, degrading unrelated later test classes sharing the same JVM/Surefire fork.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class HealthLivenessReadinessIntegrationTest extends AbstractIntegrationTest {
 
     private static final GenericContainer<?> REDIS =
