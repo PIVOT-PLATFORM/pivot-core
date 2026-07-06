@@ -198,6 +198,50 @@ Travail organisé par sprint. Référence : **`pivot-docs/docs/backlog/sprints/`
 - **Une branche par US / Enabler** — `feat/{us-id}-{slug}` (ex. `feat/us03-1-1-admin-active-module`)
 - **Agents en parallèle** — un agent par item du sprint, branches séparées
 - **Backlog pivot-docs sur la branche courante** — `sprints/sprint-{N}.md` committé sur la branche de l'item (pas de branche docs séparée)
+- **Issue GitHub liée** — avant de démarrer un item, vérifier qu'une issue existe dans **ce repo** pour cet US/Enabler (recherche par id/titre). Absente → la créer (titre `{id} — {titre US}`, corps = lien vers le fichier backlog pivot-docs + AC). Référencer l'issue dans la PR (`Closes #N`) — fermeture automatique à la fusion, jamais de fermeture manuelle en double.
+
+## Workflow — Merge séquentiel autonome (plusieurs PR)
+
+Quand plusieurs PR sont ouvertes/en attente sur ce repo (ex. plusieurs items d'un même sprint),
+Claude détermine seul l'ordre de fusion et l'exécute de bout en bout, sans confirmation par PR :
+
+1. **Ordre** — dépendances fonctionnelles entre items d'abord, puis fichiers partagés
+   (migration Flyway, config Spring commune) pour minimiser les rebases en cascade.
+2. **Par PR, dans cet ordre :**
+   - Rebase sur `main` à jour (jamais de merge commit)
+   - Conflit → résolution manuelle réelle (jamais `--theirs`/`--ours` aveugle) : lire les deux
+     côtés, comprendre l'intention de chacun, fusionner le contenu
+   - Rebase sans conflit mais fichier partagé (ex. `application.yml`, schéma) → vérifier quand
+     même qu'aucune régression sémantique silencieuse ne s'est introduite (ex. une clé de config
+     écrasée par l'auto-merge git)
+   - `mvn verify -q` local avant push (ou vérification équivalente si Docker indisponible en
+     sandbox — s'appuyer sur la CI réelle pour la partie Testcontainers)
+   - Push, attendre la CI réelle en boucle synchrone (jamais d'attente passive d'une notification)
+   - Gate 4 selon les seuils déjà définis ci-dessous → squash-merge dès convergence
+3. **Dernier item du sprint courant** (vérifier `pivot-docs/docs/backlog/sprints/sprint-{N}.md`)
+   → le commit de squash-merge porte le marqueur de release (voir *Workflow — Release*
+   ci-dessous), tous les autres non.
+4. Incident CI (ex. course de versioning, package déjà publié) rencontré en cours de route →
+   diagnostiquer et corriger avant de continuer la séquence, pas de contournement silencieux.
+
+## Workflow — Release
+
+Le déclenchement d'une release (`release.yml` : version, publish Maven/Docker, tag, changelog)
+n'a lieu **qu'en fin de sprint**, jamais à chaque merge — un merge ordinaire ne doit ni bumper de
+version ni publier quoi que ce soit.
+
+- **Déclencheur** : le commit du squash-merge du **dernier item d'un sprint** porte le trailer
+  `Release-Trigger: true` dans son message. `release.yml` ne s'exécute que si ce trailer est
+  présent (`contains(github.event.head_commit.message, 'Release-Trigger: true')`).
+- **Pourquoi** : avant cette règle, chaque merge déclenchait `release.yml` — plusieurs merges
+  rapprochés calculaient tous la même "prochaine version" (aucun tag encore créé entre eux) et le
+  second à publier échouait en conflit sur GitHub Packages (incident du 2026-07-06, versions
+  0.22.0 puis 0.25.0 restées orphelines sans tag, cf. `CHANGELOG.md`).
+- **Effet** : la release qui finit par se déclencher regroupe automatiquement, dans une seule
+  entrée de changelog, tous les commits accumulés depuis le dernier tag — comportement natif de
+  semantic-release (déjà observé sur `v0.22.0` et `v0.26.0`), pas une fonctionnalité à coder.
+- **Ajout du trailer** : `gh pr merge --squash --body "...\n\nRelease-Trigger: true"` uniquement
+  sur le merge identifié comme dernier item du sprint courant.
 
 ## Workflow — Autoloop PR
 
@@ -405,9 +449,10 @@ Chaque gate est consigné en **commentaire de PR** (plus de fichiers `gates/`) :
 ### Post-merge
 
 ```bash
-# 1. Mainteneur : passe Stage → Done dans le frontmatter US (recette humaine — jamais Claude)
-# 2. Débloquer les US dépendantes
-# 3. Nettoyer la branche
+# 1. Fermer l'issue GitHub liée (si "Closes #N" dans la PR ne l'a pas déjà fait automatiquement)
+# 2. Mainteneur : passe Stage → Done dans le frontmatter US (recette humaine — jamais Claude)
+# 3. Débloquer les US dépendantes
+# 4. Nettoyer la branche
 git push origin --delete feat/{us-id}-{slug}
 ```
 
