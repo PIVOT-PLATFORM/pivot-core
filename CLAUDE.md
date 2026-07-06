@@ -158,7 +158,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 | Stage | Backlog / Ready / In progress / Review / Done |
 | Priority | Critical / High / Medium / Low |
 | Module | core / auth / admin / oidc / pilotage / agilite / collaboratif (extensible par domaine) |
-| Phase | MVP / v1-enterprise / phase-3 |
+| Phase | Socle / v1-enterprise / phase-3 |
 | Sprint | Sprint 1…N |
 | Size | XS / S / M / L / XL |
 
