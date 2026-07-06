@@ -3,6 +3,7 @@ package fr.pivot.auth.controller;
 import fr.pivot.auth.dto.SessionDto;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.service.SessionService;
+import fr.pivot.config.CookieHelper;
 import fr.pivot.config.CurrentSessionResolver;
 import fr.pivot.config.TokenAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -49,16 +50,21 @@ public class SessionController {
 
     private final SessionService sessionService;
     private final CurrentSessionResolver sessionResolver;
+    private final CookieHelper cookieHelper;
 
     /**
      * Constructs the controller with its required collaborators.
      *
      * @param sessionService  manages listing and revocation of active sessions
      * @param sessionResolver resolves the authenticated user and current token id from a request
+     * @param cookieHelper    resolves the trusted client IP for the revocation security
+     *                        notification (US01.5.1)
      */
-    public SessionController(final SessionService sessionService, final CurrentSessionResolver sessionResolver) {
+    public SessionController(final SessionService sessionService, final CurrentSessionResolver sessionResolver,
+                              final CookieHelper cookieHelper) {
         this.sessionService = sessionService;
         this.sessionResolver = sessionResolver;
+        this.cookieHelper = cookieHelper;
     }
 
     /**
@@ -92,7 +98,7 @@ public class SessionController {
     public void revokeSession(@PathVariable final Long tokenId, final HttpServletRequest http) {
         final User user = sessionResolver.currentUser(LOG, REJECTED_EVENT);
         final Long currentTokenId = sessionResolver.requireCurrentTokenId(http, LOG, REJECTED_EVENT);
-        sessionService.revokeSession(user, tokenId, currentTokenId);
+        sessionService.revokeSession(user, tokenId, currentTokenId, cookieHelper.clientIp(http));
     }
 
     /**
@@ -108,6 +114,6 @@ public class SessionController {
     public void revokeAllExceptCurrent(final HttpServletRequest http) {
         final User user = sessionResolver.currentUser(LOG, REJECTED_EVENT);
         final Long currentTokenId = sessionResolver.requireCurrentTokenId(http, LOG, REJECTED_EVENT);
-        sessionService.revokeAllSessionsExceptCurrent(user, currentTokenId);
+        sessionService.revokeAllSessionsExceptCurrent(user, currentTokenId, cookieHelper.clientIp(http));
     }
 }

@@ -66,7 +66,7 @@ class AccountPasswordServiceTest {
     @Mock private UserRepository userRepo;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private TokenService tokenService;
-    @Mock private EmailService emailService;
+    @Mock private SecurityNotificationService securityNotificationService;
     @Mock private RateLimiterService rateLimiter;
     @Mock private AuditService auditService;
     @Mock private MessageSource messageSource;
@@ -78,7 +78,7 @@ class AccountPasswordServiceTest {
     @BeforeEach
     void setUp() {
         service = new AccountPasswordService(
-            userRepo, passwordEncoder, tokenService, emailService, rateLimiter, auditService, messageSource);
+            userRepo, passwordEncoder, tokenService, securityNotificationService, rateLimiter, auditService, messageSource);
 
         when(messageSource.getMessage(eq("account.change-password.auth-failure"), any(), eq(Locale.FRENCH)))
             .thenReturn(WRONG_PASSWORD_MESSAGE);
@@ -205,8 +205,7 @@ class AccountPasswordServiceTest {
 
         service.changePassword(USER_ID, request(), IP, USER_AGENT);
 
-        verify(emailService).sendPasswordChangedEmail(
-            eq("user@x.com"), eq("Alice"), any(Instant.class), eq(IP), eq(Locale.FRENCH));
+        verify(securityNotificationService).notifyPasswordChanged(eq(user), any(Instant.class), eq(IP));
         verify(auditService).log(user, AuditService.CHANGE_PASSWORD, IP, USER_AGENT);
     }
 

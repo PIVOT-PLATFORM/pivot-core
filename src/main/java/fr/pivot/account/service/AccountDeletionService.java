@@ -12,6 +12,7 @@ import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.service.AuditService;
 import fr.pivot.auth.service.EmailService;
 import fr.pivot.auth.service.RateLimiterService;
+import fr.pivot.auth.service.SecurityNotificationService;
 import fr.pivot.auth.service.TokenService;
 import fr.pivot.auth.util.CryptoUtils;
 import java.security.SecureRandom;
@@ -80,6 +81,7 @@ public class AccountDeletionService {
     private final TokenService tokenService;
     private final AvatarStorageService avatarStorageService;
     private final EmailService emailService;
+    private final SecurityNotificationService securityNotificationService;
     private final RateLimiterService rateLimiter;
     private final AuditService auditService;
     private final String otpSecret;
@@ -104,7 +106,8 @@ public class AccountDeletionService {
      * @param passwordEncoder      BCrypt encoder for current-password verification
      * @param tokenService         revokes every active session immediately on request
      * @param avatarStorageService deletes the avatar file at anonymization time
-     * @param emailService         transactional email sender
+     * @param emailService         transactional email sender (OTP + cancellation emails)
+     * @param securityNotificationService sends the deletion-requested confirmation email (US01.5.1)
      * @param rateLimiter          sliding-window rate limiter backed by Redis
      * @param auditService         async audit event logger
      * @param otpSecret            HMAC key for OTP hashing ({@code pivot.auth.otp-secret})
@@ -119,6 +122,7 @@ public class AccountDeletionService {
             final TokenService tokenService,
             final AvatarStorageService avatarStorageService,
             final EmailService emailService,
+            final SecurityNotificationService securityNotificationService,
             final RateLimiterService rateLimiter,
             final AuditService auditService,
             @Value("${pivot.auth.otp-secret:}") final String otpSecret,
@@ -131,6 +135,7 @@ public class AccountDeletionService {
         this.tokenService = tokenService;
         this.avatarStorageService = avatarStorageService;
         this.emailService = emailService;
+        this.securityNotificationService = securityNotificationService;
         this.rateLimiter = rateLimiter;
         this.auditService = auditService;
         this.self = self;
@@ -240,8 +245,7 @@ public class AccountDeletionService {
         request.setCancelTokenHash(CryptoUtils.sha256(rawCancelToken));
         deletionRequestRepo.save(request);
 
-        emailService.sendAccountDeletionConfirmationEmail(
-            user.getEmail(), user.getFirstName(), effectiveAt, rawCancelToken, EmailService.toLocale(user.getLocale()));
+        securityNotificationService.notifyAccountDeletionRequested(user, effectiveAt, rawCancelToken, ip);
         auditService.log(user, AuditService.ACCOUNT_DELETED, ip, userAgent);
         LOG.info("event=ACCOUNT_DELETION_REQUESTED userId={} effectiveAt={} method={}",
             user.getId(), effectiveAt, method);

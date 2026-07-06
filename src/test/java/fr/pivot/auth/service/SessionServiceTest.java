@@ -57,6 +57,7 @@ class SessionServiceTest {
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private TokenService tokenService;
     @Mock private EmailService emailService;
+    @Mock private SecurityNotificationService securityNotificationService;
     @Mock private RateLimiterService rateLimiter;
     @Mock private TrustedDeviceService trustedDeviceService;
     @Mock private AuditService auditService;
@@ -73,8 +74,8 @@ class SessionServiceTest {
     void setUp() {
         when(featureFlagRepo.getInt("DEVICE_VERIFY_TTL_MINUTES", 15)).thenReturn(15);
         service = new SessionService(userRepo, tenantRepo, featureFlagRepo, deviceVerifyRepo,
-            passwordEncoder, tokenService, emailService, rateLimiter, trustedDeviceService,
-            auditService, OTP_SECRET, tokenRepo, suspiciousLoginService);
+            passwordEncoder, tokenService, emailService, securityNotificationService, rateLimiter,
+            trustedDeviceService, auditService, OTP_SECRET, tokenRepo, suspiciousLoginService);
 
         when(rateLimiter.loginIpBucket(anyString())).thenReturn("login:ip");
         when(rateLimiter.loginEmailBucket(anyString())).thenReturn("login:email");
@@ -426,11 +427,12 @@ class SessionServiceTest {
     void revokeSession_throws404_whenTokenNotOwnedByUser() {
         when(tokenRepo.findByIdAndUserId(99L, 7L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.revokeSession(user, 99L, 1L))
+        assertThatThrownBy(() -> service.revokeSession(user, 99L, 1L, "ip"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.NOT_FOUND);
         verify(tokenService, never()).revoke(any());
+        verify(securityNotificationService, never()).notifySessionsRevoked(any(), anyInt(), any(), any());
     }
 
     @Test
@@ -439,11 +441,12 @@ class SessionServiceTest {
         when(token.getStatus()).thenReturn(TokenStatus.REVOKED);
         when(tokenRepo.findByIdAndUserId(5L, 7L)).thenReturn(Optional.of(token));
 
-        assertThatThrownBy(() -> service.revokeSession(user, 5L, 1L))
+        assertThatThrownBy(() -> service.revokeSession(user, 5L, 1L, "ip"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.NOT_FOUND);
         verify(tokenService, never()).revoke(any());
+        verify(securityNotificationService, never()).notifySessionsRevoked(any(), anyInt(), any(), any());
     }
 
     @Test
@@ -451,11 +454,12 @@ class SessionServiceTest {
         final AccessToken token = mockToken(1L, "Chrome", "1.2.3.4");
         when(tokenRepo.findByIdAndUserId(1L, 7L)).thenReturn(Optional.of(token));
 
-        assertThatThrownBy(() -> service.revokeSession(user, 1L, 1L))
+        assertThatThrownBy(() -> service.revokeSession(user, 1L, 1L, "ip"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.FORBIDDEN);
         verify(tokenService, never()).revoke(any());
+        verify(securityNotificationService, never()).notifySessionsRevoked(any(), anyInt(), any(), any());
     }
 
     @Test
@@ -463,18 +467,54 @@ class SessionServiceTest {
         final AccessToken token = mockToken(5L, "Chrome", "1.2.3.4");
         when(tokenRepo.findByIdAndUserId(5L, 7L)).thenReturn(Optional.of(token));
 
-        service.revokeSession(user, 5L, 1L);
+        service.revokeSession(user, 5L, 1L, "203.0.113.9");
 
         verify(tokenService).revoke(token);
+    }
+
+    @Test
+    void revokeSession_sendsSingleSessionRevokedNotification() {
+        final AccessToken token = mockToken(5L, "Chrome", "1.2.3.4");
+        when(tokenRepo.findByIdAndUserId(5L, 7L)).thenReturn(Optional.of(token));
+
+        service.revokeSession(user, 5L, 1L, "203.0.113.9");
+
+        verify(securityNotificationService).notifySessionsRevoked(
+            eq(user), eq(1), any(Instant.class), eq("203.0.113.9"));
     }
 
     // ---------------- revokeAllSessionsExceptCurrent ----------------
 
     @Test
     void revokeAllSessionsExceptCurrent_delegatesToRepository() {
-        service.revokeAllSessionsExceptCurrent(user, 1L);
+        when(tokenRepo.revokeAllForUserExceptToken(7L, 1L, TokenStatus.ACTIVE, TokenStatus.REVOKED)).thenReturn(2);
+
+        service.revokeAllSessionsExceptCurrent(user, 1L, "203.0.113.9");
 
         verify(tokenRepo).revokeAllForUserExceptToken(7L, 1L, TokenStatus.ACTIVE, TokenStatus.REVOKED);
+    }
+
+    @Test
+    void revokeAllSessionsExceptCurrent_sendsSingleSummaryNotification_withTotalCount() {
+        when(tokenRepo.revokeAllForUserExceptToken(7L, 1L, TokenStatus.ACTIVE, TokenStatus.REVOKED)).thenReturn(3);
+
+        service.revokeAllSessionsExceptCurrent(user, 1L, "203.0.113.9");
+
+        // Exactly one call regardless of how many sessions were revoked — never one per session.
+        verify(securityNotificationService, Mockito.times(1))
+            .notifySessionsRevoked(eq(user), eq(3), any(Instant.class), eq("203.0.113.9"));
+    }
+
+    @Test
+    void revokeAllSessionsExceptCurrent_delegatesZeroCount_whenNothingWasRevoked() {
+        // SessionService always reports what the repository actually revoked — deciding whether
+        // a zero-count notification is worth sending is SecurityNotificationService's job (see
+        // SecurityNotificationServiceTest), not duplicated here.
+        when(tokenRepo.revokeAllForUserExceptToken(7L, 1L, TokenStatus.ACTIVE, TokenStatus.REVOKED)).thenReturn(0);
+
+        service.revokeAllSessionsExceptCurrent(user, 1L, "203.0.113.9");
+
+        verify(securityNotificationService).notifySessionsRevoked(eq(user), eq(0), any(Instant.class), eq("203.0.113.9"));
     }
 
     private AccessToken mockToken(final Long id, final String deviceName, final String ip) {

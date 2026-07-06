@@ -27,8 +27,21 @@ public class EmailService {
     private static final String KEY_FIRST_NAME = "firstName";
     private static final String KEY_RESET_URL = "resetUrl";
     private static final String KEY_LOGIN_URL = "loginUrl";
+    private static final String KEY_SECURE_ACCOUNT_URL = "secureAccountUrl";
+    private static final String KEY_IP = "ip";
     private static final String PATH_LOGIN = "/auth/login";
     private static final String PATH_FORGOT_PASSWORD = "/auth/forgot-password";
+
+    /**
+     * Target of the "Not me" call-to-action carried by every sensitive-action security
+     * notification (US01.5.1) — password changed, email changed, sessions revoked. Lands on the
+     * account-security screen with a query param the frontend uses to open the "report
+     * suspicious activity" panel directly, rather than the generic forgot-password page these
+     * emails pointed to before this US.
+     */
+    private static final String PATH_ACCOUNT_SECURITY = "/account/security?action=report-suspicious";
+    private static final String DATE_FORMAT_KEY = "email.password-changed.date-format";
+    private static final String UNKNOWN_IP_KEY = "email.password-changed.unknown-ip";
 
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
@@ -133,15 +146,14 @@ public class EmailService {
      */
     @Async
     public void sendPasswordChangedEmail(String to, String firstName, Instant changedAt, String ip, Locale locale) {
-        final String pattern = messageSource.getMessage("email.password-changed.date-format", null, locale);
+        final String pattern = messageSource.getMessage(DATE_FORMAT_KEY, null, locale);
         final String formattedDate = buildDateFormatter(pattern).format(changedAt);
         send(to, subject("email.subject.password-changed", locale),
             "email/password-changed",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
                    "changedAt", formattedDate,
-                   "ip", ip != null ? ip
-                       : messageSource.getMessage("email.password-changed.unknown-ip", null, locale),
-                   KEY_RESET_URL, appUrl + PATH_FORGOT_PASSWORD),
+                   KEY_IP, resolveIp(ip, locale),
+                   KEY_SECURE_ACCOUNT_URL, secureAccountUrl()),
             locale);
     }
 
@@ -181,7 +193,7 @@ public class EmailService {
     @Async
     public void sendEmailChangedNotificationEmail(
             String to, String firstName, String oldEmail, String newEmail, Instant changedAt, String ip, Locale locale) {
-        final String pattern = messageSource.getMessage("email.password-changed.date-format", null, locale);
+        final String pattern = messageSource.getMessage(DATE_FORMAT_KEY, null, locale);
         final String formattedDate = buildDateFormatter(pattern).format(changedAt);
         send(to, subject("email.subject.email-changed", locale),
             "email/email-changed",
@@ -189,9 +201,8 @@ public class EmailService {
                    "oldEmail", oldEmail,
                    "newEmail", newEmail,
                    "changedAt", formattedDate,
-                   "ip", ip != null ? ip
-                       : messageSource.getMessage("email.password-changed.unknown-ip", null, locale),
-                   KEY_RESET_URL, appUrl + PATH_FORGOT_PASSWORD),
+                   KEY_IP, resolveIp(ip, locale),
+                   KEY_SECURE_ACCOUNT_URL, secureAccountUrl()),
             locale);
     }
 
@@ -304,17 +315,19 @@ public class EmailService {
      * @param firstName    the account holder's first name (may be {@code null})
      * @param effectiveAt  the instant the grace period elapses and anonymization runs
      * @param cancelToken  raw single-use cancellation token (SHA-256-hashed in DB)
+     * @param ip           client IP of the deletion request (may be {@code null}) — US01.5.1
      * @param locale       the account holder's preferred locale
      */
     @Async
     public void sendAccountDeletionConfirmationEmail(
-            String to, String firstName, Instant effectiveAt, String cancelToken, Locale locale) {
+            String to, String firstName, Instant effectiveAt, String cancelToken, String ip, Locale locale) {
         final String pattern = messageSource.getMessage("email.account-deletion.date-format", null, locale);
         final String formattedDate = buildDateFormatter(pattern).format(effectiveAt);
         send(to, subject("email.subject.account-deletion-confirm", locale),
             "email/account-deletion-confirm",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
                    "effectiveDate", formattedDate,
+                   KEY_IP, resolveIp(ip, locale),
                    "cancelUrl", appUrl + "/account/deletion/cancel?token=" + cancelToken),
             locale);
     }
@@ -383,6 +396,37 @@ public class EmailService {
     }
 
     /**
+     * Security notification sent after one or more of the user's active sessions were revoked
+     * (US01.5.1) — whether the user themselves signed out a single other device from the active
+     * sessions screen, or every other session was revoked at once. Always a single email per
+     * revocation call, regardless of how many sessions it covered — a bulk revocation (e.g.
+     * {@code DELETE /api/account/sessions}) never fans out into one email per session.
+     *
+     * @param to           the account's email address
+     * @param firstName    the account holder's first name (may be {@code null})
+     * @param revokedCount number of sessions revoked by this call (always &ge; 1)
+     * @param revokedAt    when the revocation happened
+     * @param ip           client IP of the request that triggered the revocation (may be
+     *                     {@code null}) — this is the actor's IP, which matters precisely
+     *                     because that actor might not be the legitimate account owner
+     * @param locale       the account holder's preferred locale
+     */
+    @Async
+    public void sendSessionsRevokedEmail(
+            String to, String firstName, int revokedCount, Instant revokedAt, String ip, Locale locale) {
+        final String pattern = messageSource.getMessage(DATE_FORMAT_KEY, null, locale);
+        final String formattedDate = buildDateFormatter(pattern).format(revokedAt);
+        send(to, subject("email.subject.sessions-revoked", locale),
+            "email/sessions-revoked",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
+                   "revokedCount", revokedCount,
+                   "revokedAt", formattedDate,
+                   KEY_IP, resolveIp(ip, locale),
+                   KEY_SECURE_ACCOUNT_URL, secureAccountUrl()),
+            locale);
+    }
+
+    /**
      * Internal notification forwarded to the owner — Reply-To set to the sender's address
      * so the owner can reply directly to the user.
      *
@@ -420,6 +464,16 @@ public class EmailService {
 
     private String fallback(Locale locale) {
         return messageSource.getMessage("email.common.fallback-name", null, locale);
+    }
+
+    /** Returns {@code ip}, or the localized "unknown" placeholder when it is {@code null}. */
+    private String resolveIp(final String ip, final Locale locale) {
+        return ip != null ? ip : messageSource.getMessage(UNKNOWN_IP_KEY, null, locale);
+    }
+
+    /** Absolute URL of the account-security "report suspicious activity" landing page. */
+    private String secureAccountUrl() {
+        return appUrl + PATH_ACCOUNT_SECURITY;
     }
 
     private void send(String to, String subject, String template, Map<String, Object> vars, Locale locale) {

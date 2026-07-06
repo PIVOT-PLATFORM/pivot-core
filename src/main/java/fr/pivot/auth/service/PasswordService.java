@@ -49,21 +49,23 @@ public class PasswordService {
     private final TokenService tokenService;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final SecurityNotificationService securityNotificationService;
     private final RateLimiterService rateLimiter;
     private final AuditService auditService;
 
     /**
      * Constructs the service with its required collaborators.
      *
-     * @param userRepo          JPA repository for users
-     * @param tenantRepo        JPA repository for tenants
-     * @param passwordResetRepo JPA repository for password reset tokens
-     * @param featureFlagRepo   admin-configurable settings (PASSWORD_RESET_TTL_MINUTES)
-     * @param tokenService      revokes all sessions for a user on password change
-     * @param passwordEncoder   BCrypt encoder for new password hashing
-     * @param emailService      transactional email sender
-     * @param rateLimiter       sliding-window rate limiter backed by Redis
-     * @param auditService      async audit event logger
+     * @param userRepo                    JPA repository for users
+     * @param tenantRepo                  JPA repository for tenants
+     * @param passwordResetRepo           JPA repository for password reset tokens
+     * @param featureFlagRepo             admin-configurable settings (PASSWORD_RESET_TTL_MINUTES)
+     * @param tokenService                revokes all sessions for a user on password change
+     * @param passwordEncoder             BCrypt encoder for new password hashing
+     * @param emailService                sends the reset-link email
+     * @param securityNotificationService sends the "password changed" confirmation email (US01.5.1)
+     * @param rateLimiter                 sliding-window rate limiter backed by Redis
+     * @param auditService                async audit event logger
      */
     public PasswordService(
             final UserRepository userRepo,
@@ -73,6 +75,7 @@ public class PasswordService {
             final TokenService tokenService,
             final PasswordEncoder passwordEncoder,
             final EmailService emailService,
+            final SecurityNotificationService securityNotificationService,
             final RateLimiterService rateLimiter,
             final AuditService auditService) {
         this.userRepo = userRepo;
@@ -82,6 +85,7 @@ public class PasswordService {
         this.tokenService = tokenService;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
+        this.securityNotificationService = securityNotificationService;
         this.rateLimiter = rateLimiter;
         this.auditService = auditService;
     }
@@ -175,7 +179,7 @@ public class PasswordService {
 
         // Revoke all active sessions — password change is a security event
         tokenService.revokeAllForUser(user.getId());
-        emailService.sendPasswordChangedEmail(user.getEmail(), user.getFirstName(), now, ip, EmailService.toLocale(user.getLocale()));
+        securityNotificationService.notifyPasswordChanged(user, now, ip);
         auditService.log(user, AuditService.PASSWORD_RESET, ip, userAgent);
     }
 

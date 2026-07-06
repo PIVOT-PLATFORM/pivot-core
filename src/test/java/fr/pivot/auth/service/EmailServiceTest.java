@@ -151,6 +151,54 @@ class EmailServiceTest {
         verify(mailSender).send(any(MimeMessage.class));
     }
 
+    // ----------------------------------------------------------------
+    // sendAccountDeletionConfirmationEmail (US01.5.1 — IP added)
+    // ----------------------------------------------------------------
+
+    @Test
+    void sendAccountDeletionConfirmationEmail_rendersAndSends() {
+        service.sendAccountDeletionConfirmationEmail(
+            "user@x.com", "Henri", java.time.Instant.now().plusSeconds(2_592_000), "cancel-tok", "1.2.3.4", Locale.FRENCH);
+
+        verify(templateEngine).process(eq("email/account-deletion-confirm"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendAccountDeletionConfirmationEmail_handlesNullFirstNameAndIp() {
+        service.sendAccountDeletionConfirmationEmail(
+            "user@x.com", null, java.time.Instant.now().plusSeconds(2_592_000), "cancel-tok", null, Locale.FRENCH);
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    // ----------------------------------------------------------------
+    // sendSessionsRevokedEmail (US01.5.1)
+    // ----------------------------------------------------------------
+
+    @Test
+    void sendSessionsRevokedEmail_rendersAndSends_forSingleSession() {
+        service.sendSessionsRevokedEmail("user@x.com", "Ivy", 1, java.time.Instant.now(), "1.2.3.4", Locale.FRENCH);
+
+        verify(templateEngine).process(eq("email/sessions-revoked"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendSessionsRevokedEmail_rendersAndSends_forBulkRevocation() {
+        service.sendSessionsRevokedEmail("user@x.com", "Ivy", 4, java.time.Instant.now(), "1.2.3.4", Locale.ENGLISH);
+
+        verify(templateEngine).process(eq("email/sessions-revoked"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendSessionsRevokedEmail_handlesNullFirstNameAndIp() {
+        service.sendSessionsRevokedEmail("user@x.com", null, 2, java.time.Instant.now(), null, Locale.FRENCH);
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
     @Test
     void sendSuspiciousLoginAlertEmail_rendersAndSends() {
         service.sendSuspiciousLoginAlertEmail(
