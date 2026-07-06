@@ -3,6 +3,7 @@ package fr.pivot.notification.config;
 import fr.pivot.auth.entity.AccessToken;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.service.TokenService;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -49,7 +50,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     }
 
     @Override
-    public Message<?> preSend(final Message<?> message, final MessageChannel channel) {
+    public @Nullable Message<?> preSend(final Message<?> message, final MessageChannel channel) {
         final StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 
         if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())) {

@@ -13,6 +13,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.time.Instant;
 
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -59,6 +60,6 @@ class NotificationPushListenerTest {
 
         // GET /api/notifications/unread-count (polling) reste le filet de sécurité — un échec de
         // push ne doit jamais remonter à l'appelant (voir NotificationPushListener JavaDoc).
-        listener.onNotificationCreated(event);
+        assertThatCode(() -> listener.onNotificationCreated(event)).doesNotThrowAnyException();
     }
 }

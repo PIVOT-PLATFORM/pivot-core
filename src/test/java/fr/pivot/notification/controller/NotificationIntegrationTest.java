@@ -217,12 +217,12 @@ class NotificationIntegrationTest extends AbstractIntegrationTest {
     void http_list_returnsPagedNotifications_sortedCreatedAtDesc() throws Exception {
         final User user = createUser(tenantAId, "erin@notif-a.test");
         final String token = issueToken(user);
+        // createdAt has no public setter (immutable audit column) — no Thread.sleep (Sonar
+        // java:S2925) needed to guarantee a distinct, strictly later timestamp for the second
+        // notification: each create() below is a full JPA persist + flush + commit against the
+        // real Testcontainers Postgres instance, which alone takes well over 1ms, far above
+        // Instant.now() resolution.
         notificationService.create(user.getId(), NotificationType.ROLE_CHANGED, NotificationPayload.of("ROLE_ADMIN"));
-        // createdAt has no public setter (immutable audit column) — a short real delay
-        // guarantees a distinct, strictly later Instant.now() for the second notification without
-        // relying on clock resolution, avoiding flakiness in the DESC-ordering assertion below
-        // (same technique as SuperAdminTenantIntegrationTest#ac_defaultSort_ordersByCreatedAtDescending).
-        Thread.sleep(5);
         notificationService.create(user.getId(), NotificationType.ACCOUNT_DEACTIVATED, NotificationPayload.of());
 
         mockMvc.perform(get("/notifications").header("Authorization", "Bearer " + token))

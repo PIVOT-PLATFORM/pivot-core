@@ -126,8 +126,9 @@ class NotificationServiceTest {
     @Test
     void create_throwsIllegalArgument_whenUserIdUnknown() {
         when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        final NotificationPayload payload = NotificationPayload.of("X");
 
-        assertThatThrownBy(() -> service.create(999L, NotificationType.ROLE_CHANGED, NotificationPayload.of("X")))
+        assertThatThrownBy(() -> service.create(999L, NotificationType.ROLE_CHANGED, payload))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verifyNoInteractions(notificationRepository, eventPublisher);

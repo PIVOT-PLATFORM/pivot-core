@@ -19,8 +19,8 @@
  * lues en diff au moment de l'implémentation de cet enabler) mais aucune ne publie
  * d'{@code ApplicationEvent} aujourd'hui — il n'y a donc rien à écouter avec un
  * {@code @EventListener} réel sans inventer une classe d'événement qui n'existe pas encore sur
- * ces branches. Pas de TODO silencieux : le point d'intégration exact est documenté ci-dessous,
- * y compris pour un futur agent qui reprendrait ces branches après fusion.
+ * ces branches. Pas de tâche en suspens laissée sans trace : le point d'intégration exact est
+ * documenté ci-dessous, y compris pour un futur agent qui reprendrait ces branches après fusion.
  *
  * <ul>
  *   <li><strong>US01.5.1</strong> — core PR <a href="https://github.com/PIVOT-PLATFORM/pivot-core/pull/154">#154</a>
