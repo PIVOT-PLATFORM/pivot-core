@@ -207,7 +207,7 @@ Après implémentation sur `feat/{us-id}-{slug}` :
 3. Gate 4 ≥ 85 (convergence confirmée, cf. étape 2) :
    - Sortir la PR du mode draft (`gh pr ready`)
    - `Stage: Review` dans frontmatter US + SPRINTS.md (backlog pivot-docs sur la branche courante, cf. règle ci-dessus — pas de branche docs séparée)
-   - **Gate 5** — générer/mettre à jour la spec fonctionnelle et technique figée `pivot-docs/docs/specs/{EPIC}/{us-id}-{slug}.md` (branche/PR `pivot-docs` dédiée — jamais de commit cross-repo, voir `pivot-docs/docs/workflow/README.md`)
+   - **Gate 5** — générer/mettre à jour la spec fonctionnelle et technique figée `pivot-docs/docs/specs/{EPIC}/{us-id}-{slug}.md` (branche/PR `pivot-docs` dédiée — jamais de commit cross-repo, voir `pivot-docs/docs/workflow/README.md` ; ce document décrit le processus Gate 5 mais utilise son propre seuil `Gate 4 = 100/100`, propre à pivot-docs et distinct du `Gate 4 ≥ 85` ci-dessus — chaque repo garde son seuil, cf. règle d'isolation par repo ; alignement en cours côté pivot-docs, voir pivot-docs#73)
    - Signal mainteneur
 4. Blocage 20 boucles → Breaking Point 2
 
