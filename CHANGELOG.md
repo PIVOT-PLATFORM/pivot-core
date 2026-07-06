@@ -1,3 +1,10 @@
+# [0.23.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.22.0...v0.23.0) (2026-07-06)
+
+
+### Features
+
+* **US03.3.1:** SUPER_ADMIN définit modules disponibles par plan ([#153](https://github.com/PIVOT-PLATFORM/pivot-core/issues/153)) ([0ce37be](https://github.com/PIVOT-PLATFORM/pivot-core/commit/0ce37be8d13728056aea54cb1fb9c4e3709c8b28)), closes [SuperAdminTenantController#updateStatus](https://github.com/SuperAdminTenantController/issues/updateStatus) [PlanService#getModules](https://github.com/PlanService/issues/getModules) [#161](https://github.com/PIVOT-PLATFORM/pivot-core/issues/161)
+
 # [0.22.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.21.0...v0.22.0) (2026-07-06)
 
 
