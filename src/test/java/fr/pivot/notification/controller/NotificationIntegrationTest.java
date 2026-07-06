@@ -278,9 +278,16 @@ class NotificationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void http_list_returns401_whenNoToken() throws Exception {
+    void http_list_returns403_whenNoToken() throws Exception {
+        // No AuthenticationEntryPoint is registered in SecurityConfig (httpBasic/formLogin both
+        // disabled — stateless opaque-token auth only), so Spring Security's
+        // ExceptionTranslationFilter falls back to Http403ForbiddenEntryPoint for an
+        // unauthenticated request: 403, not 401 — existing, application-wide SecurityConfig
+        // behaviour (see SuperAdminTenantIntegrationTest#ac_security_http_deniesWith403_whenCallerUnauthenticated),
+        // not specific to this endpoint. NotificationController#resolveActor's own 401 branch is
+        // for a different case: an Authentication present but without a real User principal.
         mockMvc.perform(get("/notifications"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isForbidden());
     }
 
     // ----------------------------------------------------------------
