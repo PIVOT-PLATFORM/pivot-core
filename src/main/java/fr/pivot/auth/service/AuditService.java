@@ -131,6 +131,18 @@ public class AuditService {
     public static final String EMAIL_CHANGE_TARGET_TAKEN = "auth.email_change_target_taken";
     public static final String MODULE_ACTIVATED = "module.activated";
     public static final String MODULE_DEACTIVATED = "module.deactivated";
+
+    /**
+     * US03.3.2 — a super admin set (created or replaced) an override forcing a module's
+     * activation state for a tenant ({@code ModuleOverrideSet}).
+     */
+    public static final String MODULE_OVERRIDE_SET = "module.override_set";
+
+    /**
+     * US03.3.2 — a super admin removed a module override for a tenant, reverting it to the
+     * tenant admin's own activation choice ({@code ModuleOverrideRemoved}).
+     */
+    public static final String MODULE_OVERRIDE_REMOVED = "module.override_removed";
     public static final String PROFILE_UPDATED = "account.profile_updated";
     public static final String AVATAR_UPDATED = "account.avatar_updated";
     /** RGPD Art. 20 — logged when a user requests a personal-data export (US02.3.1). */

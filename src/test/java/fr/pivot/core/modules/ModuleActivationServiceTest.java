@@ -22,6 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -48,6 +49,9 @@ class ModuleActivationServiceTest {
     private ModuleActivationRepository repository;
 
     @Mock
+    private ModuleOverrideRepository overrideRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     private MeterRegistry meterRegistry;
@@ -61,7 +65,12 @@ class ModuleActivationServiceTest {
         // Real registry (not mocked) — EN04.3's counter assertions read actual accumulated
         // counts/tags back out, same pattern as ModuleActivationCacheServiceTest.
         meterRegistry = new SimpleMeterRegistry();
-        service = new ModuleActivationService(moduleRegistry, repository, eventPublisher, meterRegistry);
+        service = new ModuleActivationService(moduleRegistry, repository, overrideRepository, eventPublisher, meterRegistry);
+        // Défaut : aucun override actif — la plupart des tests EN03.1 pré-existants ne
+        // connaissent pas le concept US03.3.2 et n'ont pas besoin de le stubber explicitement.
+        // lenient() : non consommé par les tests qui lèvent avant d'atteindre isEnabled()
+        // (module inconnu) — MockitoExtension (STRICT_STUBS) ne doit pas s'en plaindre.
+        lenient().when(overrideRepository.findByTenantIdAndModuleId(any(), any())).thenReturn(Optional.empty());
     }
 
     @AfterEach
@@ -289,6 +298,180 @@ class ModuleActivationServiceTest {
                 .tag("module", moduleId)
                 .tag("tenant", String.valueOf(tenantId))
                 .counter();
+    }
+
+    // ----------------------------------------------------------------
+    // isEnabled — priorité de l'override SUPER_ADMIN (US03.3.2)
+    // ----------------------------------------------------------------
+
+    @Test
+    void isEnabled_shouldReturnOverrideEnabled_whenOverridePresent_evenIfNoActivationRow() {
+        when(overrideRepository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID))
+                .thenReturn(Optional.of(new ModuleOverride(TENANT_ID, MODULE_ID, true)));
+
+        assertThat(service.isEnabled(TENANT_ID, MODULE_ID)).isTrue();
+        // Court-circuit : un override présent gagne toujours, module_activations n'est même
+        // jamais consulté (voir isEnabled — .orElseGet paresseux).
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void isEnabled_shouldReturnOverrideDisabled_whenOverridePresent_regardlessOfActivationRow() {
+        when(overrideRepository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID))
+                .thenReturn(Optional.of(new ModuleOverride(TENANT_ID, MODULE_ID, false)));
+
+        assertThat(service.isEnabled(TENANT_ID, MODULE_ID)).isFalse();
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void isEnabled_shouldFallBackToActivationRow_whenNoOverride() {
+        final ModuleActivation existing = new ModuleActivation(TENANT_ID, MODULE_ID);
+        existing.setEnabled(true);
+        when(overrideRepository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.of(existing));
+
+        assertThat(service.isEnabled(TENANT_ID, MODULE_ID)).isTrue();
+    }
+
+    // ----------------------------------------------------------------
+    // setOverride (US03.3.2)
+    // ----------------------------------------------------------------
+
+    @Test
+    void setOverride_shouldCreateOverride_andPublishActivatedEvent_whenForcingEnabledOnDisabledModule() {
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+        when(overrideRepository.save(any(ModuleOverride.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        final ModuleOverride result = service.setOverride(TENANT_ID, MODULE_ID, true);
+
+        assertThat(result.isEnabled()).isTrue();
+        assertThat(result.getTenantId()).isEqualTo(TENANT_ID);
+        assertThat(result.getModuleId()).isEqualTo(MODULE_ID);
+        verify(eventPublisher).publishEvent(any(ModuleActivatedEvent.class));
+    }
+
+    @Test
+    void setOverride_shouldReplaceExistingOverride_andPublishDeactivatedEvent_whenFlippingToDisabled() {
+        final ModuleOverride existingOverride = new ModuleOverride(TENANT_ID, MODULE_ID, true);
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(overrideRepository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID))
+                .thenReturn(Optional.of(existingOverride));
+        when(overrideRepository.save(existingOverride)).thenReturn(existingOverride);
+
+        final ModuleOverride result = service.setOverride(TENANT_ID, MODULE_ID, false);
+
+        assertThat(result.isEnabled()).isFalse();
+        verify(eventPublisher).publishEvent(any(ModuleDeactivatedEvent.class));
+    }
+
+    @Test
+    void setOverride_shouldNotPublishEvent_whenForcedValueMatchesCurrentEffectiveState() {
+        final ModuleActivation existingActivation = new ModuleActivation(TENANT_ID, MODULE_ID);
+        existingActivation.setEnabled(true);
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.of(existingActivation));
+        when(overrideRepository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+        when(overrideRepository.save(any(ModuleOverride.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Le module est déjà effectivement activé (via module_activations) ; forcer enabled=true
+        // ne change rien à ce qui est effectivement servi.
+        service.setOverride(TENANT_ID, MODULE_ID, true);
+
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void setOverride_shouldThrow_whenModuleNotRegistered() {
+        when(moduleRegistry.isRegistered("ghost")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.setOverride(TENANT_ID, "ghost", true))
+                .isInstanceOf(UnknownModuleException.class)
+                .hasMessageContaining("ghost");
+
+        verifyNoInteractions(repository, eventPublisher);
+        verify(overrideRepository, never()).save(any());
+    }
+
+    // ----------------------------------------------------------------
+    // removeOverride (US03.3.2)
+    // ----------------------------------------------------------------
+
+    @Test
+    void removeOverride_shouldRevertToActivationState_andPublishDeactivatedEvent() {
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        // Override force enabled=true, mais l'admin du tenant n'avait jamais activé le module.
+        when(overrideRepository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID))
+                .thenReturn(Optional.of(new ModuleOverride(TENANT_ID, MODULE_ID, true)));
+        when(overrideRepository.deleteByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(1L);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+
+        final boolean effective = service.removeOverride(TENANT_ID, MODULE_ID);
+
+        assertThat(effective).isFalse();
+        verify(eventPublisher).publishEvent(any(ModuleDeactivatedEvent.class));
+    }
+
+    @Test
+    void removeOverride_shouldBeIdempotent_noEventPublished_whenNoOverrideExisted() {
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(overrideRepository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+        when(overrideRepository.deleteByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(0L);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+
+        final boolean effective = service.removeOverride(TENANT_ID, MODULE_ID);
+
+        assertThat(effective).isFalse();
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void removeOverride_shouldThrow_whenModuleNotRegistered() {
+        when(moduleRegistry.isRegistered("ghost")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.removeOverride(TENANT_ID, "ghost"))
+                .isInstanceOf(UnknownModuleException.class);
+
+        verifyNoInteractions(repository, eventPublisher);
+        verify(overrideRepository, never()).deleteByTenantIdAndModuleId(any(), any());
+    }
+
+    // ----------------------------------------------------------------
+    // Interaction changeState / override : l'admin de tenant ne peut jamais écraser
+    // silencieusement un override SUPER_ADMIN (US03.3.2)
+    // ----------------------------------------------------------------
+
+    @Test
+    void deactivate_shouldPersistChoice_withoutPublishingEvent_whenOverrideForcesEnabled() {
+        final ModuleActivation existingActivation = new ModuleActivation(TENANT_ID, MODULE_ID);
+        existingActivation.setEnabled(true);
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(overrideRepository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID))
+                .thenReturn(Optional.of(new ModuleOverride(TENANT_ID, MODULE_ID, true)));
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.of(existingActivation));
+        when(repository.save(existingActivation)).thenReturn(existingActivation);
+
+        final ModuleActivation result = service.deactivate(TENANT_ID, MODULE_ID);
+
+        // module_activations est bien mis à jour (prendra effet une fois l'override retiré)...
+        assertThat(result.isEnabled()).isFalse();
+        // ...mais rien n'a observablement changé : l'override continue de forcer l'activation.
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void activate_shouldPersistChoice_withoutPublishingEvent_whenOverrideForcesDisabled() {
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(overrideRepository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID))
+                .thenReturn(Optional.of(new ModuleOverride(TENANT_ID, MODULE_ID, false)));
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+        when(repository.save(any(ModuleActivation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        final ModuleActivation result = service.activate(TENANT_ID, MODULE_ID);
+
+        assertThat(result.isEnabled()).isTrue();
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     // ----------------------------------------------------------------
