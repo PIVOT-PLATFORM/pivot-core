@@ -113,15 +113,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      # server.servlet.context-path=/api applies to actuator too (no separate
-      # management.server.port configured) → the real path is /api/actuator/health, not
-      # /actuator/health (see README.md fix in this same PR). EN04.2 (Sprint 4, still ⬜) will
-      # move Actuator to its own management port (:8081, not routed through nginx) — when
-      # that lands, this healthcheck target changes to http://localhost:8081/actuator/health.
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/api/actuator/health || exit 1"]
-      interval: 15s
+      # EN04.4 — target + timing exactly per this Enabler's AC. `curl` (not `wget`): the
+      # Dockerfile's own HEALTHCHECK already installs curl in the runtime image for this
+      # exact purpose (EN04.2) — reusing it here keeps a single tool instead of two. Port
+      # :8081, no /api prefix: EN04.2 moved Actuator to its own `management.server.port`,
+      # which does NOT inherit `server.servlet.context-path` (see application.yml, README.md)
+      # — the real path is http://localhost:8081/actuator/health, never
+      # http://localhost:8080/api/actuator/health (this file's target before EN04.2 existed;
+      # stale as of this PR, corrected here). This is the root/aggregate health group (db +
+      # redis + flyway + diskSpace + ...) — the dedicated `/actuator/health/readiness` and
+      # `/actuator/health/liveness` groups this Enabler also adds (application.yml) are not
+      # used by this Docker-level check: Compose (non-Swarm) only gates `depends_on:
+      # condition: service_healthy` on it and surfaces `docker ps` status, it never restarts
+      # a container on health-check failure alone, so the root group's broader signal (any
+      # dependency down = don't let dependents start yet) is the more useful one here.
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 3
       start_period: 30s
 
   # --- Module-core services — NOT wired yet -----------------------------------------
@@ -137,7 +146,8 @@ services:
   #     environment: { SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot, ... }
   #     secrets: [...]                               # its own DB/mail/etc. secrets, same pattern
   #     depends_on: { postgres: {condition: service_healthy}, redis: {condition: service_healthy} }
-  #     healthcheck: same wget /actuator/health pattern as pivot-core (mind its context-path)
+  #     healthcheck: same curl :8081/actuator/health pattern as pivot-core above (EN04.4) —
+  #     no context-path on the management port, interval 10s/timeout 5s/start_period 30s/retries 3
   #     restart: unless-stopped
   #
   # Same shape for pivot-agilite-core and pivot-collaboratif-core. nginx (pivot-ui repo) then
