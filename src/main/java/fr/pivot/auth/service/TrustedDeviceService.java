@@ -54,7 +54,11 @@ public class TrustedDeviceService {
         return true;
     }
 
-    /** Trust a device (after OTP confirmation or first-time OIDC). */
+    /**
+     * Trust a device — after OTP confirmation (US01.4.1), first-time OIDC, or a passive
+     * suspicious-login alert with no active OTP gate (US01.4.3a, so the same device does not
+     * re-alert on every subsequent login).
+     */
     @Transactional
     public void trust(User user, String fingerprint, String deviceName) {
         final int ttlDays = featureFlagRepo.getInt("DEVICE_TTL_DAYS", DEVICE_TTL_DEFAULT_DAYS);
@@ -66,5 +70,18 @@ public class TrustedDeviceService {
         td.setLastSeenAt(Instant.now());
         td.setExpiresAt(Instant.now().plus(ttlDays, ChronoUnit.DAYS));
         repo.save(td);
+    }
+
+    /**
+     * Revokes trust for a specific device — used when the account owner confirms (via full
+     * re-authentication) that a flagged login was not them (US01.4.3a "Not me" link). No-op if
+     * the device is not (or no longer) trusted.
+     *
+     * @param user        the account owner
+     * @param fingerprint the device fingerprint to untrust
+     */
+    @Transactional
+    public void revoke(User user, String fingerprint) {
+        repo.findByUserIdAndDeviceFingerprint(user.getId(), fingerprint).ifPresent(repo::delete);
     }
 }

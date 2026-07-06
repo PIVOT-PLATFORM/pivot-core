@@ -355,6 +355,34 @@ public class EmailService {
     }
 
     /**
+     * Passive suspicious-login alert (US01.4.3a) — sent when a login succeeds from a device
+     * unknown to {@code trusted_devices} while the US01.4.1 device-OTP gate did not apply. Never
+     * blocks the login; carries the "Not me" single-use link (TTL 1h) that redirects to a full
+     * re-authentication page (current password required) rather than directly revoking anything.
+     *
+     * @param to         the account's email address
+     * @param firstName  the account holder's first name (may be {@code null})
+     * @param deviceName human-readable device label, or {@code null} if not provided
+     * @param loginAt    when the flagged login occurred
+     * @param notMeToken raw single-use "Not me" token to embed in the link (SHA-256-hashed in DB)
+     * @param locale     the account holder's preferred locale
+     */
+    @Async
+    public void sendSuspiciousLoginAlertEmail(
+            String to, String firstName, String deviceName, Instant loginAt, String notMeToken, Locale locale) {
+        final String pattern = messageSource.getMessage("email.password-changed.date-format", null, locale);
+        final String formattedDate = buildDateFormatter(pattern).format(loginAt);
+        send(to, subject("email.subject.suspicious-login", locale),
+            "email/suspicious-login",
+            Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
+                   "deviceName", deviceName != null ? deviceName
+                       : messageSource.getMessage("email.device-confirm.unknown-device", null, locale),
+                   "loginAt", formattedDate,
+                   "notMeUrl", appUrl + "/auth/suspicious-login/confirm?token=" + notMeToken),
+            locale);
+    }
+
+    /**
      * Internal notification forwarded to the owner — Reply-To set to the sender's address
      * so the owner can reply directly to the user.
      *

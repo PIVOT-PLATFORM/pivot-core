@@ -61,6 +61,7 @@ class SessionServiceTest {
     @Mock private TrustedDeviceService trustedDeviceService;
     @Mock private AuditService auditService;
     @Mock private AccessTokenRepository tokenRepo;
+    @Mock private SuspiciousLoginService suspiciousLoginService;
     @Mock private User user;
     @Mock private Tenant tenant;
 
@@ -73,7 +74,7 @@ class SessionServiceTest {
         when(featureFlagRepo.getInt("DEVICE_VERIFY_TTL_MINUTES", 15)).thenReturn(15);
         service = new SessionService(userRepo, tenantRepo, featureFlagRepo, deviceVerifyRepo,
             passwordEncoder, tokenService, emailService, rateLimiter, trustedDeviceService,
-            auditService, OTP_SECRET, tokenRepo);
+            auditService, OTP_SECRET, tokenRepo, suspiciousLoginService);
 
         when(rateLimiter.loginIpBucket(anyString())).thenReturn("login:ip");
         when(rateLimiter.loginEmailBucket(anyString())).thenReturn("login:email");
@@ -182,6 +183,9 @@ class SessionServiceTest {
         assertThat(result.sessionToken()).isEqualTo("raw-token");
         verify(userRepo).updateLastLoginAt(7L);
         verify(auditService).log(user, AuditService.LOGIN, "ip", "ua");
+        // No fingerprint at all — nothing to check for "unknown device" (US01.4.3a) or to trust.
+        verify(suspiciousLoginService, never()).alertIfUnknownDevice(any(), anyBoolean(), any(), any(), any(), any());
+        verify(trustedDeviceService, never()).trust(any(), any(), any());
     }
 
     @Test
@@ -198,6 +202,9 @@ class SessionServiceTest {
         assertThat(result.pendingDeviceFingerprint()).isEqualTo("fp");
         verify(deviceVerifyRepo).save(any(DeviceVerifyToken.class));
         verify(emailService).sendDeviceVerifyEmail(eq("user@x.com"), eq("Alice"), anyString(), eq("Chrome"), any(Locale.class));
+        // US01.4.3a's passive alert is a DISTINCT, additive path: it must never fire on the
+        // US01.4.1 blocking OTP-gate branch (login returns before reaching that code at all).
+        verify(suspiciousLoginService, never()).alertIfUnknownDevice(any(), anyBoolean(), any(), any(), any(), any());
     }
 
     @Test
@@ -210,6 +217,30 @@ class SessionServiceTest {
 
         assertThat(result.requiresDeviceVerification()).isFalse();
         verify(tokenService).issue(eq(user), eq("fp"), eq("Chrome"), eq("ua"), eq("ip"), eq(AuthMethod.PASSWORD), eq(false));
+        // Known device (US01.4.3a): the passive alert must see deviceAlreadyTrusted=true (no
+        // email sent — asserted independently in SuspiciousLoginServiceTest) and trust() must
+        // not be called again — isTrusted() already renewed the sliding TTL.
+        verify(suspiciousLoginService).alertIfUnknownDevice(user, true, "fp", "Chrome", "ip", "ua");
+        verify(trustedDeviceService, never()).trust(any(), any(), any());
+    }
+
+    @Test
+    void login_returnsSuccess_andSendsPassiveAlert_whenUntrustedDeviceAndMfaGateDisabled() {
+        // US01.4.3a: regular user (not ROLE_SUPER_ADMIN), MFA_NEW_DEVICE_OTP disabled (default
+        // mock) — the US01.4.1 OTP gate does NOT trigger, so login completes directly and the
+        // passive suspicious-login alert fires instead, then the device is marked trusted so it
+        // does not re-alert on the next login.
+        when(userRepo.findByTenantIdAndEmailAndDeletedAtIsNull(1L, "user@x.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("pw", "hash")).thenReturn(true);
+        when(trustedDeviceService.isTrusted(user, "fp")).thenReturn(false);
+
+        final LoginResult result = service.login(loginReq("fp"), "ip", "ua");
+
+        assertThat(result.requiresDeviceVerification()).isFalse();
+        assertThat(result.sessionToken()).isEqualTo("raw-token");
+        verify(deviceVerifyRepo, never()).save(any(DeviceVerifyToken.class));
+        verify(suspiciousLoginService).alertIfUnknownDevice(user, false, "fp", "Chrome", "ip", "ua");
+        verify(trustedDeviceService).trust(user, "fp", "Chrome");
     }
 
     // ---------------- verifyDeviceOtp ----------------

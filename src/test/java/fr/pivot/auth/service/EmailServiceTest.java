@@ -152,6 +152,23 @@ class EmailServiceTest {
     }
 
     @Test
+    void sendSuspiciousLoginAlertEmail_rendersAndSends() {
+        service.sendSuspiciousLoginAlertEmail(
+            "user@x.com", "Ivan", "Chrome · Windows", java.time.Instant.now(), "not-me-tok", Locale.FRENCH);
+
+        verify(templateEngine).process(eq("email/suspicious-login"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendSuspiciousLoginAlertEmail_handlesNullFirstNameAndDeviceName() {
+        service.sendSuspiciousLoginAlertEmail(
+            "user@x.com", null, null, java.time.Instant.now(), "not-me-tok", Locale.FRENCH);
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
     void send_throwsEmailDeliveryException_onMessagingException() throws Exception {
         final MimeMessage broken = mock(MimeMessage.class);
         doThrow(new MessagingException("SMTP failure"))

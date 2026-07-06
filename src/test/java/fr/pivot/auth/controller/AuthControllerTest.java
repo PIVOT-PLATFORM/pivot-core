@@ -7,9 +7,11 @@ import fr.pivot.auth.dto.LoginRequest;
 import fr.pivot.auth.dto.LoginResult;
 import fr.pivot.auth.dto.RegisterRequest;
 import fr.pivot.auth.dto.ResetPasswordRequest;
+import fr.pivot.auth.dto.SuspiciousLoginConfirmRequest;
 import fr.pivot.auth.service.PasswordService;
 import fr.pivot.auth.service.RegistrationService;
 import fr.pivot.auth.service.SessionService;
+import fr.pivot.auth.service.SuspiciousLoginService;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +42,7 @@ class AuthControllerTest {
     @Mock private RegistrationService registrationService;
     @Mock private SessionService sessionService;
     @Mock private PasswordService passwordService;
+    @Mock private SuspiciousLoginService suspiciousLoginService;
 
     private AuthController controller;
     private MockHttpServletRequest req;
@@ -48,6 +51,7 @@ class AuthControllerTest {
     @BeforeEach
     void setUp() {
         controller = new AuthController(registrationService, sessionService, passwordService,
+            suspiciousLoginService,
             new fr.pivot.config.CookieHelper("pivot_session", true),
             new fr.pivot.auth.validation.PasswordPolicyProperties(12, 1, 1, 1));
         req = new MockHttpServletRequest();
@@ -212,5 +216,15 @@ class AuthControllerTest {
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resp.getBody()).containsKey("message");
         verify(passwordService).checkResetToken("valid-token");
+    }
+
+    @Test
+    void confirmSuspiciousLoginNotMe_returnsOk_andDelegates() {
+        final ResponseEntity<Map<String, String>> resp = controller.confirmSuspiciousLoginNotMe(
+            new SuspiciousLoginConfirmRequest("tok", "current-pw"), req);
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resp.getBody()).containsKey("message");
+        verify(suspiciousLoginService).confirmNotMe(eq("tok"), eq("current-pw"), eq("9.9.9.9"), anyString());
     }
 }

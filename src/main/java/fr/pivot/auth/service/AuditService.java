@@ -175,4 +175,23 @@ public class AuditService {
     public static final String ACCOUNT_DELETION_CANCELLED = "account.deletion_cancelled";
     /** US02.2.4 — the grace period elapsed; {@code AccountDeletionScheduler} anonymized the row. */
     public static final String ACCOUNT_ANONYMIZED = "account.anonymized";
+
+    /**
+     * US01.4.3a — a login succeeded from a device unknown to {@code trusted_devices} while the
+     * US01.4.1 device-OTP gate did not apply (disabled, or a non-{@code ROLE_SUPER_ADMIN}
+     * account). Logged regardless of whether the "Not me" alert email was actually sent (it may
+     * be throttled) — this event tracks detection, not delivery. The AC-mandated
+     * {@code SuspiciousLoginDetected} event.
+     */
+    public static final String SUSPICIOUS_LOGIN_DETECTED = "auth.suspicious_login_detected";
+    /**
+     * US01.4.3a — the "Not me" link was clicked and the caller failed the required current-
+     * password re-authentication (token left unconsumed, so a retry within the TTL is possible).
+     */
+    public static final String SUSPICIOUS_LOGIN_NOT_ME_FAILED = "auth.suspicious_login_not_me_failed";
+    /**
+     * US01.4.3a — the account owner confirmed (via full re-authentication) that a flagged login
+     * was not them: the flagged device's trust was revoked and every active session terminated.
+     */
+    public static final String SUSPICIOUS_LOGIN_NOT_ME_CONFIRMED = "auth.suspicious_login_not_me_confirmed";
 }
