@@ -7,10 +7,12 @@ import fr.pivot.plan.entity.Plan;
 import fr.pivot.plan.repository.PlanRepository;
 import fr.pivot.tenant.entity.Tenant;
 import fr.pivot.tenant.repository.TenantRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -63,6 +65,27 @@ class AdminModuleListIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private ModuleOverrideRepository moduleOverrideRepository;
+
+    // Tenants/plans créés par les helpers ci-dessous, nettoyés dans tearDown() : le conteneur
+    // Testcontainers Postgres est partagé par TOUTES les classes *IntegrationTest de la suite
+    // (champ static de AbstractIntegrationTest), pas seulement par celles qui partagent le même
+    // ApplicationContext. Sans ce nettoyage, un tenant laissé ici avec un billing_plan_id non
+    // nul empêcherait indéfiniment SuperAdminPlanIntegrationTest#tearDown (qui fait un blanket
+    // planRepository.deleteAll() après chacun de ses propres tests) de supprimer CE plan via
+    // fk_tenants_billing_plan (RESTRICT) — plantage observé en CI
+    // ("DataIntegrityViolation ... still referenced from table tenants"), quel que soit l'ordre
+    // d'exécution relatif des deux classes.
+    private final List<Tenant> createdTenants = new ArrayList<>();
+    private final List<Plan> createdPlans = new ArrayList<>();
+
+    @AfterEach
+    void tearDown() {
+        // Tenants d'abord : module_overrides référence tenants en CASCADE (nettoyé au passage),
+        // et tenants.billing_plan_id référence plans en RESTRICT — les plans ne peuvent être
+        // supprimés qu'une fois plus aucun tenant ne les référence.
+        tenantRepository.deleteAll(createdTenants);
+        planRepository.deleteAll(createdPlans);
+    }
 
     // ----------------------------------------------------------------
     // AC : 2 tenants de plans différents
@@ -152,7 +175,9 @@ class AdminModuleListIntegrationTest extends AbstractIntegrationTest {
         final Plan plan = new Plan();
         plan.setName("list-it-plan-" + System.nanoTime());
         plan.setModuleIds(moduleIds);
-        return planRepository.save(plan);
+        final Plan saved = planRepository.save(plan);
+        createdPlans.add(saved);
+        return saved;
     }
 
     private Tenant createTenant(final Long billingPlanId) {
@@ -160,6 +185,8 @@ class AdminModuleListIntegrationTest extends AbstractIntegrationTest {
         tenant.setSlug("admin-module-list-it-" + System.nanoTime());
         tenant.setName("Admin Module List IT Tenant");
         tenant.setBillingPlanId(billingPlanId);
-        return tenantRepository.save(tenant);
+        final Tenant saved = tenantRepository.save(tenant);
+        createdTenants.add(saved);
+        return saved;
     }
 }
