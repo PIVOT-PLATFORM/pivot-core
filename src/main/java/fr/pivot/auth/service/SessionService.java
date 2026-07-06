@@ -239,7 +239,7 @@ public class SessionService {
             if (!deviceTrusted) {
                 // Device is now known — the alert already told the owner about it once;
                 // it must not re-fire on every subsequent login from this same device.
-                trustedDeviceService.trust(user, fingerprint, req.deviceName());
+                trustedDeviceService.trust(user, fingerprint, req.deviceName(), ip);
             }
         }
 
@@ -293,7 +293,7 @@ public class SessionService {
         deviceVerifyRepo.save(dvt);
 
         final User user = dvt.getUser();
-        trustedDeviceService.trust(user, req.deviceFingerprint(), req.deviceName());
+        trustedDeviceService.trust(user, req.deviceFingerprint(), req.deviceName(), ip);
         userRepo.updateLastLoginAt(user.getId());
         rateLimiter.reset(rateLimiter.deviceOtpBucket(user.getId().toString()));
 
