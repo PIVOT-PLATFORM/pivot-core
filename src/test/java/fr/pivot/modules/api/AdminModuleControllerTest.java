@@ -7,9 +7,6 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.auth.service.AuditService;
 import fr.pivot.config.CookieHelper;
 import fr.pivot.core.modules.ModuleActivation;
-import fr.pivot.core.modules.ModuleActivationService;
-import fr.pivot.core.modules.ModuleRegistry;
-import fr.pivot.core.modules.PivotModule;
 import fr.pivot.tenant.entity.Tenant;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.AfterEach;
@@ -58,10 +55,7 @@ class AdminModuleControllerTest {
     private AdminModuleActivationService adminModuleActivationService;
 
     @Mock
-    private ModuleActivationService moduleActivationService;
-
-    @Mock
-    private ModuleRegistry moduleRegistry;
+    private AdminModuleListService adminModuleListService;
 
     @Mock
     private AuditService auditService;
@@ -75,7 +69,7 @@ class AdminModuleControllerTest {
     @BeforeEach
     void setUp() {
         controller = new AdminModuleController(
-                adminModuleActivationService, moduleActivationService, moduleRegistry, auditService, cookieHelper);
+                adminModuleActivationService, adminModuleListService, auditService, cookieHelper);
         request = mock(HttpServletRequest.class);
     }
 
@@ -197,21 +191,16 @@ class AdminModuleControllerTest {
     // ----------------------------------------------------------------
 
     @Test
-    void list_shouldReturn200WithModulesAndEmptyDescription() {
+    void list_shouldReturn200WithModulesFromListService() {
         setAuthentication(buildUser(1L, 42L, "ROLE_ADMIN"));
-        final PivotModule module = stubModule(MODULE_ID, "Tableau blanc");
-        when(moduleRegistry.getModules()).thenReturn(List.of(module));
-        when(moduleActivationService.isEnabled(42L, MODULE_ID)).thenReturn(true);
+        final AdminModuleDto dto = new AdminModuleDto(MODULE_ID, "Tableau blanc", true, "", "plan");
+        when(adminModuleListService.list(42L)).thenReturn(List.of(dto));
 
         final ResponseEntity<List<AdminModuleDto>> response = controller.list();
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).hasSize(1);
-        final AdminModuleDto dto = response.getBody().get(0);
-        assertThat(dto.id()).isEqualTo(MODULE_ID);
-        assertThat(dto.name()).isEqualTo("Tableau blanc");
-        assertThat(dto.enabled()).isTrue();
-        assertThat(dto.description()).isEmpty();
+        assertThat(response.getBody()).containsExactly(dto);
+        verify(adminModuleListService).list(42L);
     }
 
     @Test
@@ -224,7 +213,7 @@ class AdminModuleControllerTest {
         final ResponseEntity<List<AdminModuleDto>> response = controller.list();
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        verify(moduleRegistry, never()).getModules();
+        verify(adminModuleListService, never()).list(any());
     }
 
     // ----------------------------------------------------------------
@@ -252,13 +241,6 @@ class AdminModuleControllerTest {
     // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
-
-    private static PivotModule stubModule(final String id, final String name) {
-        final PivotModule module = mock(PivotModule.class);
-        when(module.getId()).thenReturn(id);
-        when(module.getName()).thenReturn(name);
-        return module;
-    }
 
     // "role" is stubbed on the mock for readability at call sites — the RBAC check itself is
     // not exercised here (AdminModuleActivationService is mocked); it is covered by
