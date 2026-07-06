@@ -3,9 +3,6 @@ package fr.pivot.modules.api;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.service.AuditService;
 import fr.pivot.config.CookieHelper;
-import fr.pivot.core.modules.ModuleActivationService;
-import fr.pivot.core.modules.ModuleRegistry;
-import fr.pivot.core.modules.PivotModule;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,15 +24,15 @@ import java.util.Map;
 
 /**
  * REST controller d'administration des modules PIVOT — activation/désactivation par tenant
- * (US03.1.1 « Admin active un module », US03.1.2 « Admin désactive un module »).
+ * (US03.1.1 « Admin active un module », US03.1.2 « Admin désactive un module ») et listing
+ * filtré par plan (US03.3.3 « Admin tenant voit uniquement modules de son plan »).
  *
  * <p>Responsabilité unique : résolution du contexte tenant/utilisateur depuis le
  * {@link SecurityContextHolder} (même schéma que {@link ModuleController}, mais avec un
  * identifiant tenant {@code Long} brut — {@link AdminModuleActivationService} et
- * {@link ModuleActivationService} consomment directement {@code Long}, pas
- * {@link fr.pivot.core.tenant.TenantContext}), délégation à
- * {@link AdminModuleActivationService}, et traduction des exceptions métier en réponses HTTP.
- * Aucune logique métier dans ce contrôleur.
+ * {@link AdminModuleListService} consomment directement {@code Long}, pas
+ * {@link fr.pivot.core.tenant.TenantContext}), délégation à ces deux services, et traduction
+ * des exceptions métier en réponses HTTP. Aucune logique métier dans ce contrôleur.
  *
  * <p><strong>Isolation tenant :</strong> le {@code tenantId} n'est jamais accepté depuis le
  * corps de requête, un paramètre de requête ou un en-tête — uniquement depuis l'entité
@@ -44,10 +41,11 @@ import java.util.Map;
  *
  * <p><strong>RBAC :</strong> pour {@code activate}/{@code deactivate}, l'autorisation
  * {@code ROLE_ADMIN} est portée par {@link AdminModuleActivationService} ({@code @PreAuthorize}
- * sur le service, pas sur ce contrôleur). Pour {@code list()}, qui ne délègue à aucun service
- * dédié ({@link ModuleRegistry} et {@link ModuleActivationService} sont partagés avec des
- * endpoints non-admin), le {@code @PreAuthorize("hasRole('ADMIN')")} est porté directement par
- * la méthode du contrôleur. Dans les deux cas, un appel non autorisé lève
+ * sur le service, pas sur ce contrôleur). Pour {@code list()}, qui délègue à
+ * {@link AdminModuleListService} (pas de {@code @PreAuthorize} porté par ce service partagé —
+ * même motif historique que le registre/l'activation partagés avec des endpoints non-admin), le
+ * {@code @PreAuthorize("hasRole('ADMIN')")} est porté directement par la méthode du contrôleur.
+ * Dans les deux cas, un appel non autorisé lève
  * {@link org.springframework.security.access.AccessDeniedException}, traduite en {@code 403}
  * par le comportement par défaut de Spring Security (pas de gestionnaire custom nécessaire ici).
  */
@@ -58,8 +56,7 @@ public class AdminModuleController {
     private static final Logger LOG = LoggerFactory.getLogger(AdminModuleController.class);
 
     private final AdminModuleActivationService adminModuleActivationService;
-    private final ModuleActivationService moduleActivationService;
-    private final ModuleRegistry moduleRegistry;
+    private final AdminModuleListService adminModuleListService;
     private final AuditService auditService;
     private final CookieHelper cookieHelper;
 
@@ -67,20 +64,18 @@ public class AdminModuleController {
      * Construit le contrôleur avec ses collaborateurs.
      *
      * @param adminModuleActivationService service d'activation réservé aux administrateurs
-     * @param moduleActivationService      service partagé de lecture d'état d'activation (listing)
-     * @param moduleRegistry               registre des modules disponibles (listing)
+     * @param adminModuleListService       résolution de la liste de modules visibles (filtrage
+     *                                     par plan + overrides, US03.3.3)
      * @param auditService                 journal d'audit applicatif
      * @param cookieHelper                 résolution de l'IP client
      */
     public AdminModuleController(
             final AdminModuleActivationService adminModuleActivationService,
-            final ModuleActivationService moduleActivationService,
-            final ModuleRegistry moduleRegistry,
+            final AdminModuleListService adminModuleListService,
             final AuditService auditService,
             final CookieHelper cookieHelper) {
         this.adminModuleActivationService = adminModuleActivationService;
-        this.moduleActivationService = moduleActivationService;
-        this.moduleRegistry = moduleRegistry;
+        this.adminModuleListService = adminModuleListService;
         this.auditService = auditService;
         this.cookieHelper = cookieHelper;
     }
@@ -145,14 +140,20 @@ public class AdminModuleController {
     }
 
     /**
-     * Liste les modules PIVOT disponibles avec leur état d'activation pour le tenant de
+     * Liste les modules PIVOT visibles, avec leur état d'activation, pour le tenant de
      * l'administrateur authentifié.
+     *
+     * <p><strong>Filtrage par plan (US03.3.3) :</strong> seuls les modules inclus dans le plan
+     * commercial du tenant (ou rendus visibles par un override SUPER_ADMIN actif) sont retournés
+     * — un module hors plan est simplement absent de la liste, jamais {@code 403}. Voir
+     * {@link AdminModuleListService} pour la résolution complète, y compris le champ
+     * {@code source} de chaque {@link AdminModuleDto}.
      *
      * <p><strong>Limitation documentée :</strong> {@code description} est toujours vide —
      * voir {@link AdminModuleDto}.
      *
-     * @return {@code 200} avec la liste des {@link AdminModuleDto}, ou {@code 401} si le
-     *     contexte d'authentification est invalide
+     * @return {@code 200} avec la liste des {@link AdminModuleDto} visibles, ou {@code 401} si
+     *     le contexte d'authentification est invalide
      */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -162,10 +163,7 @@ public class AdminModuleController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        final List<AdminModuleDto> modules = moduleRegistry.getModules().stream()
-                .map(module -> toAdminDto(module, resolved.tenantId()))
-                .toList();
-        return ResponseEntity.ok(modules);
+        return ResponseEntity.ok(adminModuleListService.list(resolved.tenantId()));
     }
 
     // ----------------------------------------------------------------
@@ -202,11 +200,6 @@ public class AdminModuleController {
     // ----------------------------------------------------------------
     // Private helpers
     // ----------------------------------------------------------------
-
-    private AdminModuleDto toAdminDto(final PivotModule module, final Long tenantId) {
-        final boolean enabled = moduleActivationService.isEnabled(tenantId, module.getId());
-        return new AdminModuleDto(module.getId(), module.getName(), enabled, "");
-    }
 
     /**
      * Neutralise les caractères de contrôle CR/LF d'une valeur avant de la loguer.
