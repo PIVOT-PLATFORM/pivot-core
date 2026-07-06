@@ -147,6 +147,7 @@ Sur main uniquement :
 | Instructions Claude Code + agents IA | [`CLAUDE.md`](CLAUDE.md) |
 | Contribuer | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | Sécurité & divulgation | [`SECURITY.md`](SECURITY.md) |
+| Gestion des secrets (Docker secrets, rotation) | [`docs/deployment/secret-management.md`](docs/deployment/secret-management.md) |
 | Décisions d'architecture | [`docs/adr/`](docs/adr/) |
 | Audits | [`docs/audits/`](docs/audits/) |
 
