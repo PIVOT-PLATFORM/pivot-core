@@ -123,6 +123,34 @@ management:
       # par composant (DB, Redis) à quiconque atteint :8081, ce qui est acceptable puisque ce
       # port n'est, par conception, jamais atteignable hors du réseau Docker interne.
       show-details: always
+      probes:
+        # EN04.4 — active explicitement les groupes "liveness"/"readiness". Spring Boot les
+        # active déjà par défaut hors Kubernetes (AvailabilityProbesAutoConfiguration,
+        # `@ConditionalOnBooleanProperty(matchIfMissing = true)` — vérifié dans le jar
+        # spring-boot-health 4.1.0, aucune condition Kubernetes trouvée) : cette ligne ne
+        # change donc rien au comportement, elle documente l'intention et protège d'un futur
+        # changement de défaut Spring Boot qui la rendrait implicite différemment.
+        enabled: true
+      group:
+        # readinessState seul (comportement Spring Boot par défaut) ne reflète que l'état
+        # applicatif interne (ApplicationAvailability) — jamais REFUSING_TRAFFIC de lui-même
+        # tant que rien ne le déclenche explicitement. On y ajoute les dépendances externes
+        # dont ce service a réellement besoin pour servir du trafic : "db" (connexion
+        # PostgreSQL, DataSourceHealthContributorAutoConfiguration), "redis" (cache statut
+        # activation module, DataRedisHealthContributorAutoConfiguration) et "flyway" (bean
+        # custom FlywayHealthIndicator — aucun contributeur Flyway natif dans Spring Boot 4.1,
+        # vérifié : `spring-boot-flyway`/`spring-boot-actuator-autoconfigure`/
+        # `spring-boot-autoconfigure` n'en embarquent aucun).
+        readiness:
+          include: readinessState,db,redis,flyway
+        # livenessState seul : uniquement "le process JVM répond-il ?", jamais les dépendances
+        # externes — une panne Redis/DB transitoire doit faire échouer la readiness (sortir du
+        # pool nginx) sans faire échouer la liveness (un redémarrage du conteneur ne répare
+        # pas une panne Redis/DB externe ; il ne ferait que perdre l'état JVM en cours pour
+        # rien). Explicite ici bien qu'égal au défaut Spring Boot, pour la symétrie avec le
+        # groupe readiness ci-dessus et parce que c'est le cœur de l'AC de cet Enabler.
+        liveness:
+          include: livenessState
   metrics:
     distribution:
       percentiles-histogram:

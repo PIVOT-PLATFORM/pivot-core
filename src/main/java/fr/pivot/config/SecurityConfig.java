@@ -104,7 +104,14 @@ public class SecurityConfig {
                     // must fail closed here until this list is deliberately updated too, not
                     // silently inherit permitAll from a blanket pattern.
                     .requestMatchers("/actuator/health", "/actuator/info", "/actuator/metrics",
-                        "/actuator/metrics/**").permitAll()
+                        "/actuator/metrics/**",
+                        // EN04.4 — readiness/liveness health groups (application.yml,
+                        // management.endpoint.health.group.*) are served as sub-paths of the
+                        // "health" endpoint, e.g. /actuator/health/readiness — NOT matched by
+                        // the exact "/actuator/health" pattern above (this is exact request
+                        // matching, not a path prefix), so listed explicitly here too, same
+                        // least-exposure discipline as the rest of this list.
+                        "/actuator/health/readiness", "/actuator/health/liveness").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/auth/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/account/email/confirm").permitAll()

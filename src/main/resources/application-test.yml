@@ -71,6 +71,16 @@ management:
   endpoint:
     health:
       show-details: always
+      probes:
+        enabled: true
+      group:
+        # EN04.4 — mêmes groupes qu'en production (voir application.yml pour la justification
+        # complète) : readiness inclut les dépendances externes (db, redis, flyway), liveness
+        # reste JVM-only.
+        readiness:
+          include: readinessState,db,redis,flyway
+        liveness:
+          include: livenessState
   # info.git.mode: défaut Spring Boot ("simple") — voir application.yml.
 
 logging:
