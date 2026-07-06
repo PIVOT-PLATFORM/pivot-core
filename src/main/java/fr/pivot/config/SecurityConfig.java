@@ -56,12 +56,28 @@ public class SecurityConfig {
     /**
      * Configures the security filter chain.
      *
-     * <p>Public routes: actuator health/info, CORS preflight, all {@code /auth/**} endpoints,
-     * and {@code GET /account/email/confirm} — the email-change confirmation link (US02.2.2)
+     * <p>Public routes: CORS preflight, all {@code /auth/**} endpoints, and
+     * {@code GET /account/email/confirm} — the email-change confirmation link (US02.2.2)
      * is opened from an emailed link and must work even without an active PIVOT session on
      * that device; identity there comes solely from the single-use token, never from a bearer
      * token. All other routes require a valid opaque token validated by
      * {@link TokenAuthenticationFilter}.
+     *
+     * <p>{@code /actuator/**} is also permitted here (EN04.2) — not because it is reachable
+     * through this port's own routes (it moved to a separate management port,
+     * {@code management.server.port}, see {@code application.yml}, no longer mapped at all
+     * on this main context), but because Spring Boot's own
+     * {@code ServletManagementChildContextConfiguration} <strong>reuses this exact assembled
+     * filter</strong> as the management child context's own security filter whenever it
+     * detects one configured in the parent context ({@code @ConditionalOnBean(name =
+     * "springSecurityFilterChain", search = ANCESTORS)}) — a deliberate Spring Boot default so
+     * a separately-ported management endpoint never becomes an accidental bypass of the main
+     * application's security. A dedicated {@code SecurityFilterChain} bean scoped to the
+     * management child context (tried first) is therefore not the right lever here: it never
+     * becomes the filter Tomcat actually invokes for that context, only this one does. Access
+     * control for the management port is meant to be enforced at the network layer (Docker
+     * internal network only, no published host port — EN07.1), not by application-level
+     * authentication — hence permitAll rather than a narrower rule, on both ports at once.
      *
      * @param http Spring Security HTTP configuration
      * @return configured {@link SecurityFilterChain}
@@ -79,7 +95,16 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/actuator/health", "/actuator/info", "/error").permitAll()
+                    .requestMatchers("/error").permitAll()
+                    // EN04.2 — see Javadoc above: reused verbatim as the management child
+                    // context's own security filter, that is where this rule actually matters.
+                    // Listed explicitly (not a "/actuator/**" wildcard) to mirror
+                    // management.endpoints.web.exposure.include (application.yml) exactly —
+                    // a future endpoint added to that include list (env, shutdown, heapdump…)
+                    // must fail closed here until this list is deliberately updated too, not
+                    // silently inherit permitAll from a blanket pattern.
+                    .requestMatchers("/actuator/health", "/actuator/info", "/actuator/metrics",
+                        "/actuator/metrics/**").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/auth/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/account/email/confirm").permitAll()

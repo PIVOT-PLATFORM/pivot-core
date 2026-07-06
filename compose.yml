@@ -49,6 +49,10 @@ services:
     container_name: pivot-backend
     ports:
       - "8080:8080"
+      # EN04.2 — Actuator management port. Published here for local developer convenience
+      # only (dev compose, already bound to the dev machine's loopback/LAN, not the public
+      # Internet) — docker-compose.prod.yml (EN07.1) does NOT publish this port.
+      - "8081:8081"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot_dev
       SPRING_DATASOURCE_USERNAME: pivot

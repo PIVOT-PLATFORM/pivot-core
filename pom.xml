@@ -161,13 +161,43 @@
 				<executions>
 					<!-- EN04.1 — generates target/classes/META-INF/build-info.properties, consumed
 					     by StartupLogListener (via the BuildProperties bean) for the service
-					     version in the startup log line. -->
+					     version in the startup log line.
+					     EN04.2 — the same generated file is also read automatically by Spring Boot
+					     Actuator's BuildPropertiesInfoContributor to populate /actuator/info
+					     (build.version, build.artifact, build.time…) — no extra dependency or
+					     bean needed for that consumer either. -->
 					<execution>
 						<goals>
 							<goal>build-info</goal>
 						</goals>
 					</execution>
 				</executions>
+			</plugin>
+
+			<!-- EN04.2 — génère target/classes/git.properties (commit SHA, branche, date de
+			     commit), lu automatiquement par Spring Boot Actuator pour peupler
+			     /actuator/info (GitInfoContributor). commitIdGenerationMode=full : la clé
+			     `git.commit.id` porte le SHA complet (40 caractères), pas sa forme abrégée. -->
+			<plugin>
+				<groupId>io.github.git-commit-id</groupId>
+				<artifactId>git-commit-id-maven-plugin</artifactId>
+				<version>10.0.0</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>revision</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<generateGitPropertiesFile>true</generateGitPropertiesFile>
+					<commitIdGenerationMode>full</commitIdGenerationMode>
+					<!-- /actuator/info doit rester disponible même si le build tourne hors
+					     dépôt Git ou sans historique complet (ex. archive source) — ne jamais
+					     faire échouer le build pour des métadonnées Git absentes. -->
+					<failOnNoGitDirectory>false</failOnNoGitDirectory>
+					<failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
+				</configuration>
 			</plugin>
 
 			<!-- Cible Java 24 (class 68) : JaCoCo 0.8.13 + SpotBugs ASM 9.7 ne supportent pas class 69 -->

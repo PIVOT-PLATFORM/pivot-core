@@ -96,13 +96,39 @@ server:
       internal-proxies: ${PIVOT_TRUSTED_PROXIES:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|0:0:0:0:0:0:0:1}
 
 management:
+  # EN04.2 — port de management séparé, non routé par nginx (voir docker-compose.prod.yml,
+  # EN07.1). Spring Boot n'expose alors les endpoints Actuator QUE sur ce port : ils
+  # disparaissent de :8080/api, et server.servlet.context-path (/api) ne s'applique pas à ce
+  # second connecteur — le chemin réel est bien http://localhost:8081/actuator/health, jamais
+  # /api/actuator/health (contrairement à l'ancien comportement, port partagé). Voir README.md.
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:8081}
   endpoints:
     web:
+      # health,info,metrics uniquement (principe de moindre exposition) — pas de wildcard `*`.
+      # `prometheus` retiré : nécessite micrometer-registry-prometheus (absent du classpath
+      # aujourd'hui) — scope EN04.3, pas de celui-ci.
       exposure:
-        include: health,info,prometheus
+        include: health,info,metrics
   endpoint:
     health:
-      show-details: when_authorized
+      # Spring Boot réutilise tel quel le SecurityFilterChain assemblé du contexte principal
+      # comme filtre du contexte enfant de management dès qu'il en détecte un
+      # (ServletManagementChildContextConfiguration, @ConditionalOnBean ancestor) — d'où le
+      # permitAll("/actuator/**") dans SecurityConfig (voir son Javadoc) plutôt qu'une config
+      # dédiée ici. L'isolation réseau Docker (réseau interne, aucun port publié — EN07.1) est
+      # le SEUL contrôle d'accès voulu sur ce port, jamais une authentification applicative :
+      # `when_authorized` masquerait donc systématiquement le détail (aucun principal
+      # authentifié n'existe jamais sur ce port) — sans intérêt ici. `always` expose le détail
+      # par composant (DB, Redis) à quiconque atteint :8081, ce qui est acceptable puisque ce
+      # port n'est, par conception, jamais atteignable hors du réseau Docker interne.
+      show-details: always
+  # info.git.mode reste au défaut Spring Boot ("simple", pas de surcharge ici) — expose
+  # uniquement branch + commit.id (abrégé) + commit.time, qui satisfait déjà l'AC "git commit
+  # sha". `full` republierait l'intégralité brute de git.properties sous /actuator/info,
+  # committer/auteur email et message de commit complet inclus (git.build.user.email,
+  # git.commit.user.email, git.commit.message.full) — à l'opposé du principe de moindre
+  # exposition déjà appliqué juste au-dessus pour le choix des endpoints exposés.
 
 logging:
   level:
