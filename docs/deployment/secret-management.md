@@ -25,7 +25,8 @@ entièrement sur les fonctionnalités natives de Spring Boot 4.x.
    → clé, contenu → valeur). `optional:` évite tout échec de démarrage si le répertoire est
    absent (ex. exécution du profil `prod` sans secrets montés). `SECRET_FILE_PATH` permet de
    surcharger le chemin (défaut : `/run/secrets`, point de montage standard des Docker
-   secrets/Compose `secrets:`).
+   secrets/Compose `secrets:`) — ne pas le faire terminer par `/` (déjà ajouté par le
+   placeholder) : sans effet fonctionnel mais superflu.
 
 2. Chaque secret est référencé dans `application.yml` (commun à tous les profils) via un
    placeholder à deux niveaux :
@@ -36,7 +37,11 @@ entièrement sur les fonctionnalités natives de Spring Boot 4.x.
 
    Ordre de résolution : variable d'environnement classique (dev, `compose.yml`) **>** secret
    Docker (`prod`, via config tree) **>** défaut local codé en dur (dev uniquement, jamais
-   utilisé en prod car aucune des deux premières sources n'y est absente).
+   utilisé en prod car aucune des deux premières sources n'y est absente). Note : le relaxed
+   binding Spring Boot fait déjà gagner une variable d'environnement classique
+   (`SPRING_DATASOURCE_PASSWORD`) sur une valeur en dur sans le moindre placeholder — le rôle
+   du placeholder `${...:${...}}` ici n'est pas d'activer cette précédence (déjà acquise
+   nativement), mais d'ouvrir explicitement le second niveau de repli vers le secret Docker.
 
 3. **Pourquoi le namespace `secret.*`** plutôt que d'importer directement sous la clé Spring
    finale (ex. `spring.datasource.password`) : évite toute ambiguïté sur la précédence entre la
@@ -54,6 +59,17 @@ entièrement sur les fonctionnalités natives de Spring Boot 4.x.
 | Clé HMAC OTP (device / suppression compte) | `secret.auth-otp-secret` | `pivot.auth.otp-secret` | `PIVOT_AUTH_OTP_SECRET` | *(vide → clé éphémère, cf. `CryptoUtils.resolveOtpSecret`)* |
 
 ## Intégration `docker-compose.prod.yml` (EN07.1)
+
+> **Point de réconciliation ouvert (2026-07-06) :** la version actuelle de `docker-compose.prod.yml`
+> sur `feat/en07-1-docker-compose-prod` (PR #149) câble les `target:` directement sur les clés
+> Spring finales (`SPRING_DATASOURCE_PASSWORD`, `SPRING_MAIL_PASSWORD`, `pivot.auth.otp-secret`)
+> et déclare `SPRING_CONFIG_IMPORT` en variable d'environnement séparée, plutôt que le namespace
+> `secret.*` décrit ci-dessous — PR #149 anticipe elle-même explicitement ce point ("expect to
+> reconcile... whichever PR merges second"). À réconcilier avant que les deux PR soient mergées :
+> voir le commentaire de coordination sur les PR #149/#150. Le contrat `secret.*` ci-dessous
+> reste la cible car il élimine la dépendance à la précédence exacte entre le config tree
+> importé et une clé homonyme déjà déclarée dans `application.yml` (cf. § Mécanisme, point 3) —
+> une garantie que le ciblage direct des clés finales n'offre pas.
 
 Contrat attendu par ce mécanisme — à câbler dans `docker-compose.prod.yml` (EN07.1) : chaque
 secret est déclaré au niveau racine `secrets:`, adossé à un fichier externe (jamais une valeur

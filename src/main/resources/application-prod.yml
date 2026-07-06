@@ -14,6 +14,10 @@
 # Spring finales (ex. spring.datasource.password) : élimine toute ambiguïté de précédence
 # entre la valeur importée du config tree et le placeholder ${...} déjà présent dans
 # application.yml — les deux ne partagent jamais la même clé.
+#
+# SECRET_FILE_PATH : ne pas terminer par "/" (déjà ajouté ci-dessous) — un "/" final produirait
+# un chemin "//"-terminé, sans effet fonctionnel (toléré par configtree/NIO) mais à éviter par
+# propreté. Exemple correct : SECRET_FILE_PATH=/run/secrets (pas /run/secrets/).
 spring:
   config:
     import: "optional:configtree:${SECRET_FILE_PATH:/run/secrets}/"

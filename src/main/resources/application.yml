@@ -5,9 +5,13 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pivot}
     username: ${SPRING_DATASOURCE_USERNAME:pivot}
-    # EN07.2 — prod : ${SECRET_FILE_PATH}/secret.datasource-password (Docker secret, cf.
-    # application-prod.yml + docs/deployment/secret-management.md). Ordre de résolution :
-    # env var (dev/compose) > Docker secret (prod) > défaut local "pivot".
+    # EN07.2 — Docker secret en prod : ${SECRET_FILE_PATH}/secret.datasource-password (cf.
+    # application-prod.yml + docs/deployment/secret-management.md). Le relaxed binding Spring
+    # Boot fait déjà gagner SPRING_DATASOURCE_PASSWORD sur une valeur en dur sans placeholder —
+    # le rôle du placeholder ici n'est pas d'activer cette précédence (déjà acquise), mais
+    # d'ouvrir un second niveau de repli vers secret.datasource-password quand la variable
+    # d'env est absente. Ordre effectif : env var (dev/compose) > Docker secret (prod) >
+    # défaut local "pivot".
     password: ${SPRING_DATASOURCE_PASSWORD:${secret.datasource-password:pivot}}
     driver-class-name: org.postgresql.Driver
 
@@ -31,8 +35,11 @@ spring:
       # par le relaxed binding Spring Boot (Spring Boot 4.x, pas de placeholder ${...} nécessaire).
       host: localhost
       port: 6379
-      # EN07.2 — vide par défaut (pas d'AUTH Redis en dev). Prod : ${SECRET_FILE_PATH}/secret.redis-password
-      # si l'instance Redis partagée exige un mot de passe (cf. docs/deployment/secret-management.md).
+      # EN07.2 — vide par défaut (pas d'AUTH Redis en dev, équivalent à une clé absente —
+      # RedisPassword.of("") == RedisPassword.none()). Placeholder à deux niveaux comme
+      # spring.datasource.password ci-dessus : ouvre le repli vers secret.redis-password
+      # (Docker secret prod) quand SPRING_DATA_REDIS_PASSWORD est absent — voir
+      # docs/deployment/secret-management.md.
       password: ${SPRING_DATA_REDIS_PASSWORD:${secret.redis-password:}}
 
   messages:
@@ -55,7 +62,8 @@ spring:
     host: ${SPRING_MAIL_HOST:localhost}
     port: ${SPRING_MAIL_PORT:1025}
     username: ${SPRING_MAIL_USERNAME:}
-    # EN07.2 — prod : ${SECRET_FILE_PATH}/secret.mail-password (Docker secret).
+    # EN07.2 — repli vers ${SECRET_FILE_PATH}/secret.mail-password (Docker secret prod) quand
+    # SPRING_MAIL_PASSWORD est absent — même mécanisme qu'au-dessus (spring.datasource.password).
     password: ${SPRING_MAIL_PASSWORD:${secret.mail-password:}}
     properties:
       mail:
