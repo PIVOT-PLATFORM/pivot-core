@@ -15,7 +15,14 @@ jobs:
     name: Compute release version
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.actor != 'dependabot[bot]'
+    # Release en fin de sprint uniquement, jamais à chaque merge : sans ce marqueur, plusieurs
+    # merges rapprochés calculent tous la même "prochaine version" (aucun tag encore créé entre
+    # eux) et le second à publier échoue en conflit (incident du 2026-07-06, versions 0.22.0/
+    # 0.25.0 orphelines). Le marqueur `Release-Trigger: true` est posé uniquement sur le commit
+    # de squash-merge du dernier item d'un sprint (voir pivot-core/CLAUDE.md, Workflow — Release).
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      contains(github.event.head_commit.message, 'Release-Trigger: true')
     outputs:
       version: ${{ steps.version.outputs.version }}
     permissions:
