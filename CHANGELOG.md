@@ -1,3 +1,10 @@
+# [0.18.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.17.0...v0.18.0) (2026-07-06)
+
+
+### Features
+
+* **api:** admin désactive/réactive un compte utilisateur (US06.1.4/US06.1.5) ([#142](https://github.com/PIVOT-PLATFORM/pivot-core/issues/142)) ([351cc61](https://github.com/PIVOT-PLATFORM/pivot-core/commit/351cc618e26ecde49c243fd1f7886fc0a01f42db)), closes [TokenService#validate](https://github.com/TokenService/issues/validate) [#141](https://github.com/PIVOT-PLATFORM/pivot-core/issues/141) [AdminUserService#updateStatus](https://github.com/AdminUserService/issues/updateStatus)
+
 # [0.17.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.16.1...v0.17.0) (2026-07-06)
 
 
