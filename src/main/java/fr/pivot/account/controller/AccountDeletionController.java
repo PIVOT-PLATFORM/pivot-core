@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * REST controller for the account-deletion flow (US02.2.4, RGPD Art. 17).
@@ -132,7 +133,8 @@ public class AccountDeletionController {
      * @param req     the raw cancellation token
      * @param request incoming request (IP, User-Agent extraction)
      * @return {@code 200} on success · {@code 400} if the token is invalid/already used ·
-     *     {@code 410} if the account was already anonymized (too late to cancel)
+     *     {@code 410} if the account was already anonymized (too late to cancel) ·
+     *     {@code 429} if rate-limited
      */
     @PostMapping("/deletion/cancel")
     public ResponseEntity<Map<String, String>> cancel(
@@ -168,13 +170,12 @@ public class AccountDeletionController {
      * shape a manual 401 into.
      *
      * @return the authenticated {@link User}
-     * @throws org.springframework.web.server.ResponseStatusException 401 if the authentication
-     *     context is invalid
+     * @throws ResponseStatusException 401 if the authentication context is invalid
      */
     private User resolveUserOrThrow() {
         final User user = resolveUser();
         if (user == null) {
-            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
         return user;
     }

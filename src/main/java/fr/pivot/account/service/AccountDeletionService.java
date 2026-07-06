@@ -66,6 +66,8 @@ public class AccountDeletionService {
     private static final int OTP_MAX_ATTEMPTS = 5;
     private static final int OTP_RATE_LIMIT_MAX = 5;
     private static final Duration OTP_RATE_LIMIT_WINDOW = Duration.ofMinutes(15);
+    private static final int CANCEL_RATE_LIMIT_MAX = 10;
+    private static final Duration CANCEL_RATE_LIMIT_WINDOW = Duration.ofHours(1);
 
     private static final String MSG_CONFIRMATION_REJECTED = "Confirmation de suppression invalide";
     private static final String MSG_ALREADY_PENDING = "Une suppression est déjà en cours pour ce compte";
@@ -251,14 +253,25 @@ public class AccountDeletionService {
      * cancellation link. Unauthenticated by design — every session was revoked when the
      * deletion was requested, so the link must work with no active PIVOT session.
      *
+     * <p>Rate-limited by IP ({@link RateLimiterService#accountDeletionCancelIpBucket}) like every
+     * other unauthenticated single-use-token endpoint ({@code PasswordService#resetPassword},
+     * {@code EmailChangeService#confirmEmailChange}) — the token itself is high-entropy, but
+     * defense-in-depth against brute-force guessing is the established convention for this class
+     * of endpoint, checked before the token lookup so a flood of guesses cannot even reach the DB.
+     *
      * @param rawToken  raw cancellation token from the link
-     * @param ip        client IP — audit
+     * @param ip        client IP — rate limiting and audit
      * @param userAgent browser user-agent — audit
      * @throws ResponseStatusException 400 if the token is unknown or already cancelled, 410 if
-     *     the account was already anonymized (too late to cancel)
+     *     the account was already anonymized (too late to cancel), 429 if rate-limited
      */
     @Transactional
     public void cancelDeletion(final String rawToken, final String ip, final String userAgent) {
+        if (!rateLimiter.checkAndRecord(
+                rateLimiter.accountDeletionCancelIpBucket(ip), CANCEL_RATE_LIMIT_MAX, CANCEL_RATE_LIMIT_WINDOW)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
+        }
+
         final AccountDeletionRequest request = deletionRequestRepo
             .findByCancelTokenHashAndCancelledAtIsNull(CryptoUtils.sha256(rawToken))
             .orElseThrow(() -> new ResponseStatusException(

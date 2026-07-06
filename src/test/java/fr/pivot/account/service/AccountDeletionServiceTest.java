@@ -95,6 +95,7 @@ class AccountDeletionServiceTest {
         when(user.getFirstName()).thenReturn("Alice");
         when(user.getLocale()).thenReturn("fr");
         when(rateLimiter.accountDeletionOtpBucket(anyString())).thenReturn("account-deletion-otp:user:42");
+        when(rateLimiter.accountDeletionCancelIpBucket(anyString())).thenReturn("account-deletion-cancel:ip:ip");
         when(rateLimiter.checkAndRecord(anyString(), anyInt(), any())).thenReturn(true);
         when(featureFlagRepo.getInt(eq("ACCOUNT_DELETION_GRACE_DAYS"), anyInt())).thenReturn(30);
         when(featureFlagRepo.getInt(eq("ACCOUNT_DELETION_OTP_TTL_MINUTES"), anyInt())).thenReturn(10);
@@ -349,6 +350,17 @@ class AccountDeletionServiceTest {
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void cancelDeletion_throws429_whenRateLimited() {
+        when(rateLimiter.checkAndRecord(anyString(), anyInt(), any())).thenReturn(false);
+
+        assertThatThrownBy(() -> service.cancelDeletion("any-token", "ip", "ua"))
+            .isInstanceOf(ResponseStatusException.class)
+            .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+            .isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        verify(deletionRequestRepo, never()).findByCancelTokenHashAndCancelledAtIsNull(any());
     }
 
     @Test

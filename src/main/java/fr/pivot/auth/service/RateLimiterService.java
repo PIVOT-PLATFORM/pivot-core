@@ -97,6 +97,14 @@ public class RateLimiterService {
     /** Bucket for POST /account/deletion/otp — US02.2.4 (OIDC/no-local-password accounts). */
     public String accountDeletionOtpBucket(String userId) { return "account-deletion-otp:user:" + userId; }
 
+    /**
+     * Bucket for POST /account/deletion/cancel — US02.2.4. This endpoint is unauthenticated by
+     * design (every session was revoked when the deletion was requested), so it is keyed by IP
+     * like every other unauthenticated single-use-token consumer ({@link #resetPasswordBucket},
+     * {@link #emailChangeConfirmIpBucket}), not by user.
+     */
+    public String accountDeletionCancelIpBucket(String ip) { return "account-deletion-cancel:ip:" + ip; }
+
     /** Bucket for POST /api/superadmin/tenants — keyed by SUPER_ADMIN account id (US06.2.1). */
     public String tenantCreationBucket(String superAdminId) { return "tenant-creation:superadmin:" + superAdminId; }
 }
