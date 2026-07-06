@@ -13,12 +13,17 @@ skill:
 
 migrations:
 
+  single_file_before_beta:
+    rule: >
+      Avant la première BETA du produit, un seul fichier de migration : tout changement de
+      schéma est plié dans V1__schema_init.sql, jamais un nouveau V2__/V3__… Pas de nouveau
+      fichier numéroté sans feu vert explicite du mainteneur (déclenché au démarrage de la BETA).
+    exception: "db/seeds/V2__test_seeds.sql (profil test uniquement) n'est pas concerné — seeds, pas schéma."
+
   naming:
     rule: "V{version}__{description}.sql — double underscore, snake_case"
     examples:
-      - "V1__create_tenant_table.sql"
-      - "V2__create_module_registry.sql"
-      - "V3__add_user_roles.sql"
+      - "V1__schema_init.sql (fichier unique avant BETA — voir single_file_before_beta)"
 
   rules:
     - "Jamais modifier une migration existante — créer une nouvelle"
