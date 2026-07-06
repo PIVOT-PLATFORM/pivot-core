@@ -1,3 +1,10 @@
+## [0.19.1](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.19.0...v0.19.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* **docs:** étend l'Autoloop PR à toutes les branches, pas seulement feat/{us-id} ([#147](https://github.com/PIVOT-PLATFORM/pivot-core/issues/147)) ([04519ba](https://github.com/PIVOT-PLATFORM/pivot-core/commit/04519ba9f1e9e3bbc0b8e732e739b975dfe6827f)), closes [chore#146](https://github.com/chore/issues/146)
+
 # [0.19.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.18.0...v0.19.0) (2026-07-06)
 
 
