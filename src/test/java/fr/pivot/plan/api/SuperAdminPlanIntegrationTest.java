@@ -238,7 +238,9 @@ class SuperAdminPlanIntegrationTest extends AbstractIntegrationTest {
         assertThat(result.moduleIds()).isEmpty();
         final Plan persisted = planRepository.findById(result.id()).orElseThrow();
         assertThat(persisted.getName()).isEqualTo("Starter");
-        assertThat(persisted.getModuleIds()).isEmpty();
+        // moduleIds is a LAZY @ElementCollection (open-in-view disabled) — read it through the
+        // @Transactional service method, not directly off a detached entity fetched here.
+        assertThat(planService.getModules(result.id()).moduleIds()).isEmpty();
     }
 
     // ----------------------------------------------------------------
@@ -289,8 +291,7 @@ class SuperAdminPlanIntegrationTest extends AbstractIntegrationTest {
 
         planService.replaceModules(planId, List.of(MODULE_ID));
 
-        final Plan persisted = planRepository.findById(planId).orElseThrow();
-        assertThat(persisted.getModuleIds()).containsExactly(MODULE_ID);
+        assertThat(planService.getModules(planId).moduleIds()).containsExactly(MODULE_ID);
     }
 
     @Test
@@ -302,8 +303,7 @@ class SuperAdminPlanIntegrationTest extends AbstractIntegrationTest {
         final PlanModulesResponse result = planService.replaceModules(planId, List.of());
 
         assertThat(result.moduleIds()).isEmpty();
-        final Plan persisted = planRepository.findById(planId).orElseThrow();
-        assertThat(persisted.getModuleIds()).isEmpty();
+        assertThat(planService.getModules(planId).moduleIds()).isEmpty();
     }
 
     @Test
@@ -323,7 +323,7 @@ class SuperAdminPlanIntegrationTest extends AbstractIntegrationTest {
 
         assertThatThrownBy(() -> planService.replaceModules(planId, moduleIds))
                 .isInstanceOf(UnknownModuleIdException.class);
-        assertThat(planRepository.findById(planId).orElseThrow().getModuleIds()).isEmpty();
+        assertThat(planService.getModules(planId).moduleIds()).isEmpty();
     }
 
     // ----------------------------------------------------------------
@@ -349,7 +349,7 @@ class SuperAdminPlanIntegrationTest extends AbstractIntegrationTest {
         final PlanModulesResponse result = planService.addModule(planId, MODULE_ID);
 
         assertThat(result.moduleIds()).containsExactly(MODULE_ID);
-        assertThat(planRepository.findById(planId).orElseThrow().getModuleIds()).hasSize(1);
+        assertThat(planService.getModules(planId).moduleIds()).hasSize(1);
     }
 
     @Test
@@ -367,7 +367,7 @@ class SuperAdminPlanIntegrationTest extends AbstractIntegrationTest {
 
         assertThatThrownBy(() -> planService.addModule(planId, "ghost-module"))
                 .isInstanceOf(UnknownModuleIdException.class);
-        assertThat(planRepository.findById(planId).orElseThrow().getModuleIds()).isEmpty();
+        assertThat(planService.getModules(planId).moduleIds()).isEmpty();
     }
 
     // ----------------------------------------------------------------

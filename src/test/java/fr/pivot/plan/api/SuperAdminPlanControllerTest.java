@@ -169,6 +169,16 @@ class SuperAdminPlanControllerTest {
     }
 
     @Test
+    void replaceModules_returns400_whenModuleIdElementIsBlank() throws Exception {
+        mockMvc.perform(put(ENDPOINT + "/{planId}/modules", 7L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"moduleIds\":[\"\"]}"))
+                .andExpect(status().isBadRequest());
+
+        verify(planService, never()).replaceModules(anyLong(), any());
+    }
+
+    @Test
     void replaceModules_returns400_whenUnknownModuleId() throws Exception {
         when(planService.replaceModules(eq(7L), any())).thenThrow(new UnknownModuleIdException("ghost"));
 
