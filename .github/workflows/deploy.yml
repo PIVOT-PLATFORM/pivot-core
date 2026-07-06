@@ -1,15 +1,62 @@
 name: Deploy
 
-# Déploiement production — déclenché UNIQUEMENT à la publication d'une GitHub Release (créée
-# par Semantic Release dans release.yml). Event-based : ne tourne donc que sur de vraies
-# releases (jamais "skipped" sur les pushs sans release) et conserve les garde-fous de
-# l'environnement GitHub `production` : approvals, secrets d'environnement, règles de
-# déploiement et historique des deployments.
+# Déploiement production — EN07.5 (pivot-docs/docs/backlog/EPIC-infrastructure/ENABLERS/en-deploy-ci.md).
+#
+# Déclenchement — lecture de l'AC "tag v* ou merge sur main" : les deux sont déjà couverts par
+# `release.yml` (push sur main -> calcule la version -> build/scan/push GHCR -> Semantic Release
+# crée le tag vX.Y.Z + la GitHub Release). Dupliquer un déclencheur `push: tags: v*` ici
+# reconstruirait/repousserait l'image une seconde fois pour rien (déjà fait dans release.yml) et
+# tournerait deux fois pour le même événement. `on: release: published` capture exactement
+# l'intention de l'AC (une vraie release, jamais un run "skipped" sur un push sans release) tout
+# en réutilisant l'image déjà scannée/publiée par release.yml — pattern identique et déjà en
+# place côté pivot-ui (`pivot-ui/.github/workflows/deploy.yml`, même stub avant cette PR).
+# `workflow_dispatch` permet un rollback / re-déploiement manuel d'une version précise.
+#
+# Périmètre — image pivot-ui : ce workflow ne touche QUE le service `pivot-core` du
+# `docker-compose.prod.yml` (racine du repo, EN07.1/PR #149). Le build+push de l'image pivot-ui
+# et son propre déploiement (service `nginx`) sont la responsabilité du `deploy.yml` de pivot-ui,
+# déclenché par SA propre release — jamais mélangés ici (règle d'isolation par repo,
+# `pivot-platform/CLAUDE.md`).
+#
+# Secrets requis (à créer par le mainteneur — absents des secrets d'organisation actuels,
+# vérifiés via TODO-SETUP.md des autres repos bootstrappés : seuls SONAR_TOKEN,
+# GITLEAKS_LICENCE_KEY, PLUMBER_TOKEN, SEMANTIC_RELEASE_TOKEN, SEMGREP_APP_TOKEN,
+# PLUMBER_METADATA_TOKEN existent aujourd'hui) :
+#   - PROD_SSH_HOST, PROD_SSH_USER, PROD_SSH_KEY   : accès SSH au serveur de production
+#   - PROD_SSH_PORT                                : optionnel, défaut 22
+#   - PROD_DEPLOY_PATH                             : répertoire serveur contenant
+#                                                     docker-compose.prod.yml (synchronisé sur
+#                                                     le serveur hors CI — hors périmètre de ce
+#                                                     workflow, qui ne fait que piloter les
+#                                                     conteneurs à partir de ce répertoire déjà
+#                                                     présent)
+#   - SLACK_WEBHOOK_URL                            : optionnel — absent = notification Slack
+#                                                     dégradée en warning explicite (aucun
+#                                                     webhook Slack connu dans l'org à ce jour),
+#                                                     le run reste visible sans aucun secret
+#                                                     via l'onglet Environments/Deployments
+#                                                     (natif GitHub, déjà actif via
+#                                                     `environment: production` ci-dessous)
+#
+# Image versionnée : release.yml (même PR) ajoute un tag `${VERSION}` (semver, ex. "1.4.0") en
+# plus de `${GITHUB_SHA}` et `latest` — nécessaire ici car le tag Git / la Release que ce
+# workflow observe pointe sur le commit de bump créé par @semantic-release/git (CHANGELOG.md +
+# pom.xml), PAS sur le commit dont l'image a été buildée (GITHUB_SHA au moment du job `release`).
+# Sans tag stable, ce workflow n'aurait aucune façon fiable de retrouver l'image correspondant à
+# la release. Utiliser `:latest` ici serait en outre interdit par
+# `.plumber.yaml` (`containerImageMustNotUseForbiddenTags`).
 
 on:
   release:
     types: [published]
-  workflow_dispatch:   # déclenchement manuel possible (rollback, re-déploiement)
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Version à (re)déployer (ex. "1.4.0", sans le préfixe "v"). Optionnel si le run suit un
+          événement "release" (résolue depuis le tag) — obligatoire en déclenchement manuel.
+        required: false
+        type: string
 
 permissions: read-all
 
@@ -21,7 +68,130 @@ jobs:
     environment: production
     permissions:
       contents: read
+    env:
+      # Lu une fois ici : évite de référencer `secrets.*` directement dans les `if:` des steps
+      # de notification plus bas (autorisé via le contexte `env`, pas directement via `secrets`).
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
     steps:
-      - name: Deploy (TODO)
-        run: echo "TODO — brancher ici le déploiement (SSH + docker compose, Kubernetes, etc.)"
+      - name: Resolve target version
+        id: version
+        env:
+          # Indirection par `env:` plutôt qu'interpolation directe de `github.event.*` dans le
+          # script (workflowMustNotInjectUserInputInScripts) — même si ces deux champs ne sont
+          # pas du texte libre arbitraire ici (tag de release / input workflow_dispatch, tous
+          # deux nécessitant un accès en écriture au repo pour être déclenchés).
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DISPATCH_VERSION:-}" ]; then
+            VERSION="${DISPATCH_VERSION#v}"
+          elif [ -n "${RELEASE_TAG:-}" ]; then
+            VERSION="${RELEASE_TAG#v}"
+          else
+            echo "::error::Aucune version résolue — déclenchement manuel sans input 'version' et hors événement 'release'."
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Version cible : pivot-core:${VERSION}"
+
+      - name: Deploy — pull image & restart pivot-core
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          PIVOT_CORE_VERSION: ${{ steps.version.outputs.version }}
+          DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT || '22' }}
+          envs: PIVOT_CORE_VERSION,DEPLOY_PATH
+          script: |
+            set -euo pipefail
+            cd "${DEPLOY_PATH:?PROD_DEPLOY_PATH not set}"
+            echo "Pull + restart pivot-core:${PIVOT_CORE_VERSION}"
+            docker compose -f docker-compose.prod.yml pull pivot-core
+            docker compose -f docker-compose.prod.yml up -d pivot-core
+
+      - name: Smoke test + automatic rollback on failure
+        id: smoke
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          PIVOT_CORE_VERSION: ${{ steps.version.outputs.version }}
+          DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT || '22' }}
+          envs: PIVOT_CORE_VERSION,DEPLOY_PATH
+          script: |
+            set -euo pipefail
+            cd "${DEPLOY_PATH:?PROD_DEPLOY_PATH not set}"
+
+            # Fichier marqueur local (sur le serveur) = source de vérité du rollback. Écrit
+            # uniquement après un smoke test réussi — jamais avant. C'est délibérément un simple
+            # fichier plutôt qu'une inspection `docker inspect` de l'état courant : le mécanisme
+            # doit survivre même si le conteneur ne démarre pas du tout.
+            VERSION_FILE=".pivot-core-version"
+            NEW_VERSION="${PIVOT_CORE_VERSION}"
+            PREVIOUS_VERSION="$(cat "${VERSION_FILE}" 2>/dev/null || true)"
+
+            # server.servlet.context-path=/api s'applique aussi à Actuator (voir
+            # SecurityConfig#permitAll sur /actuator/health, application.yml) — le vrai chemin
+            # est /api/actuator/health, pas /actuator/health. Testé en localhost sur le serveur
+            # (pas depuis le runner GitHub) : évite tout faux négatif lié au pare-feu / réseau
+            # entre GitHub et le serveur prod, et couvre exactement ce que nginx proxifie.
+            smoke_test() {
+              for _ in $(seq 1 10); do
+                if curl -fsS -m 5 http://localhost/api/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
+                  return 0
+                fi
+                sleep 6
+              done
+              return 1
+            }
+
+            if smoke_test; then
+              echo "${NEW_VERSION}" > "${VERSION_FILE}"
+              echo "Smoke test OK — pivot-core:${NEW_VERSION} déployé, marqué comme dernière version saine."
+              exit 0
+            fi
+
+            echo "::error::Smoke test échoué pour pivot-core:${NEW_VERSION}."
+
+            if [ -z "${PREVIOUS_VERSION}" ]; then
+              echo "::error::Aucune version précédente connue (${VERSION_FILE} absent — probablement le tout premier déploiement) — rollback impossible, intervention manuelle requise."
+              exit 1
+            fi
+
+            echo "Rollback automatique vers pivot-core:${PREVIOUS_VERSION}…"
+            export PIVOT_CORE_VERSION="${PREVIOUS_VERSION}"
+            docker compose -f docker-compose.prod.yml pull pivot-core
+            docker compose -f docker-compose.prod.yml up -d pivot-core
+
+            if smoke_test; then
+              echo "::error::Rollback vers pivot-core:${PREVIOUS_VERSION} réussi et sain — pivot-core:${NEW_VERSION} n'a PAS été retenu. Investiguer avant de retenter ce déploiement."
+            else
+              echo "::error::Rollback vers pivot-core:${PREVIOUS_VERSION} a AUSSI échoué le smoke test — état du serveur incertain, intervention manuelle URGENTE."
+            fi
+            # Échec du job dans les deux cas ci-dessus : le déploiement de ${NEW_VERSION} a
+            # échoué son smoke test, une alerte est nécessaire que le rollback ait réussi ou non.
+            exit 1
+
+      - name: Notify — Slack
+        if: always() && env.SLACK_WEBHOOK_URL != ''
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        with:
+          webhook: ${{ env.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && ':white_check_mark:' || ':x:' }} Déploiement pivot-core ${{ steps.version.outputs.version }} — ${{ job.status }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Notify — fallback (aucun webhook configuré)
+        if: always() && env.SLACK_WEBHOOK_URL == ''
+        run: |
+          echo "::warning::Aucun secret SLACK_WEBHOOK_URL configuré — notification Slack non envoyée (gap externe, voir commentaire de tête de ce fichier). Statut de ce déploiement visible sans aucun secret via l'onglet Environments/Deployments (natif GitHub, déjà actif) : ${{ github.server_url }}/${{ github.repository }}/deployments"
