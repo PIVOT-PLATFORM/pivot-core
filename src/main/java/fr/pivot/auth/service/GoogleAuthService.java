@@ -162,7 +162,10 @@ public class GoogleAuthService {
     // Private helpers
     // ----------------------------------------------------------------
 
-    private GoogleIdToken.Payload verifyGoogleToken(final String idTokenStr) {
+    // Package-private (not private) so unit tests can spy() and stub only the network-bound
+    // verification step, exercising the rest of authenticate() — including branches that only
+    // run after a successful verify() — with real business logic instead of Google's SDK.
+    GoogleIdToken.Payload verifyGoogleToken(final String idTokenStr) {
         try {
             final GoogleIdToken token = verifier.verify(idTokenStr);
             if (token == null) {
