@@ -12,6 +12,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
 import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.AuditEventRepository;
 import fr.pivot.auth.repository.UserRepository;
@@ -404,6 +405,28 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(AccessDeniedException.class);
     }
 
+    /**
+     * Sécurité — {@code ROLE_SUPER_ADMIN} est un rôle plateforme qui peut cohabiter, en base,
+     * avec des comptes {@code ROLE_ADMIN} dans le même tenant (le « tenant système », voir seed
+     * {@code super_admin@pivot.test}/{@code admin@pivot.test} sur {@code tenant_id=1} en
+     * production). Sans cette garde, un simple {@code ROLE_ADMIN} de ce tenant pourrait
+     * rétrograder un super-admin en {@code ROLE_USER} par ce endpoint tenant.
+     */
+    @Test
+    void ac0613Sec05_throwsSuperAdminRoleChangeForbidden_whenTargetIsSuperAdminInSameTenant() {
+        final User admin = createUser(tenantAId, "admin5@tenant-a.test", "Admin", "Five", "ROLE_ADMIN", true, false);
+        final User superAdmin =
+                createUser(tenantAId, "super5@tenant-a.test", "Super", "Five", "ROLE_SUPER_ADMIN", true, false);
+        setAuthentication("ROLE_ADMIN");
+
+        assertThatThrownBy(() ->
+                adminUserService.updateRole(tenantAId, admin.getId(), superAdmin.getId(), AssignableRole.ROLE_USER))
+                .isInstanceOf(SuperAdminRoleChangeForbiddenException.class);
+
+        assertThat(userRepository.findById(superAdmin.getId()).orElseThrow().getRole())
+                .isEqualTo("ROLE_SUPER_ADMIN");
+    }
+
     // ----------------------------------------------------------------
     // US06.1.3 : bout-en-bout HTTP (token réel, filtre de sécurité réel)
     // ----------------------------------------------------------------
@@ -530,6 +553,29 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         assertThat(tokens).hasSize(1);
         assertThat(tokens.get(0).getStatus()).isEqualTo(TokenStatus.REVOKED);
         assertThat(tokens.get(0).getRevokedAt()).isNotNull();
+    }
+
+    /**
+     * Sécurité bout-en-bout — même garde que {@link #ac0613Sec05_throwsSuperAdminRoleChangeForbidden_whenTargetIsSuperAdminInSameTenant}
+     * mais via HTTP complet (token réel, filtre de sécurité réel) : un {@code ROLE_ADMIN} ne peut
+     * pas rétrograder un {@code ROLE_SUPER_ADMIN} du même tenant.
+     */
+    @Test
+    void ac0613Http06_returns403_whenTargetIsSuperAdminInSameTenant_platformRoleProtected() throws Exception {
+        final User adminA = createUser(tenantAId, "http-admin6@tenant-a.test", "Admin", "Six", "ROLE_ADMIN", true, false);
+        final User superAdmin =
+                createUser(tenantAId, "http-super6@tenant-a.test", "Super", "Six", "ROLE_SUPER_ADMIN", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/role", superAdmin.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ROLE_USER\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("SUPER_ADMIN_ROLE_PROTECTED"));
+
+        assertThat(userRepository.findById(superAdmin.getId()).orElseThrow().getRole())
+                .isEqualTo("ROLE_SUPER_ADMIN");
     }
 
     // ----------------------------------------------------------------

@@ -6,6 +6,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
 import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.service.AdminUserService;
 import fr.pivot.auth.service.AuditService;
 import fr.pivot.config.CookieHelper;
@@ -124,10 +125,11 @@ public class AdminUserController {
      * @return {@code 200} avec le {@link AdminUserDto} mis à jour · {@code 400} si {@code role}
      *     est absent ou hors de {@link fr.pivot.auth.dto.AssignableRole} (ex.
      *     {@code ROLE_SUPER_ADMIN}) · {@code 401} si le contexte d'authentification est invalide ·
-     *     {@code 403} si l'appelant n'a pas {@code ROLE_ADMIN}, ou si {@code userId} désigne
-     *     l'appelant lui-même (auto-rétrogradation interdite) · {@code 404} si {@code userId}
-     *     n'existe pas dans le tenant courant. Après un {@code 200}, tous les tokens actifs de
-     *     l'utilisateur ciblé sont immédiatement révoqués (voir
+     *     {@code 403} si l'appelant n'a pas {@code ROLE_ADMIN}, si {@code userId} désigne
+     *     l'appelant lui-même (auto-rétrogradation interdite), ou si le rôle actuel de
+     *     {@code userId} est {@code ROLE_SUPER_ADMIN} (rôle plateforme protégé) · {@code 404} si
+     *     {@code userId} n'existe pas dans le tenant courant. Après un {@code 200}, tous les
+     *     tokens actifs de l'utilisateur ciblé sont immédiatement révoqués (voir
      *     {@link AdminUserService#updateRole}).
      */
     @PatchMapping("/{userId}/role")
@@ -199,6 +201,22 @@ public class AdminUserController {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
                 "error", "SELF_ROLE_CHANGE_FORBIDDEN",
                 "message", "Vous ne pouvez pas modifier votre propre rôle"));
+    }
+
+    /**
+     * Traduit une tentative de modification du rôle d'un compte {@code ROLE_SUPER_ADMIN} (rôle
+     * plateforme, hors périmètre d'un admin tenant) en {@code 403 Forbidden}.
+     *
+     * @param ex l'exception levée par le service
+     * @return corps d'erreur {@code 403}
+     */
+    @ExceptionHandler(SuperAdminRoleChangeForbiddenException.class)
+    public ResponseEntity<Map<String, Object>> handleSuperAdminRoleChange(
+            final SuperAdminRoleChangeForbiddenException ex) {
+        LOG.warn("event=ADMIN_SUPER_ADMIN_ROLE_CHANGE_REJECTED");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "SUPER_ADMIN_ROLE_PROTECTED",
+                "message", "Le rôle d'un super-administrateur ne peut pas être modifié par ce endpoint"));
     }
 
     // ----------------------------------------------------------------

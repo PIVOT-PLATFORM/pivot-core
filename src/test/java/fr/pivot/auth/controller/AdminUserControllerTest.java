@@ -10,6 +10,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
 import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.service.AdminUserService;
 import fr.pivot.auth.service.AuditService;
 import fr.pivot.config.CookieHelper;
@@ -315,6 +316,25 @@ class AdminUserControllerTest {
                         .content("{\"role\":\"ROLE_ADMIN\"}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").value("USER_NOT_FOUND"));
+
+        verify(auditService, never()).log(any(), any(), any(), any(), any(), any());
+    }
+
+    // ----------------------------------------------------------------
+    // AC sécurité : rôle plateforme protégé -> 403 (ROLE_SUPER_ADMIN jamais modifiable ici)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0613Sec03_returns403_whenServiceRejectsSuperAdminRoleChange() throws Exception {
+        setAuthentication(buildUser(1L, 42L));
+        when(adminUserService.updateRole(42L, 1L, 77L, AssignableRole.ROLE_USER))
+                .thenThrow(new SuperAdminRoleChangeForbiddenException(77L));
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/role", 77L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ROLE_USER\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("SUPER_ADMIN_ROLE_PROTECTED"));
 
         verify(auditService, never()).log(any(), any(), any(), any(), any(), any());
     }

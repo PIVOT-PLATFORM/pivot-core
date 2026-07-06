@@ -7,6 +7,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
 import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -254,6 +255,28 @@ class AdminUserServiceTest {
         assertThatThrownBy(() -> service.updateRole(TENANT_ID, 1L, 123L, AssignableRole.ROLE_USER))
                 .isInstanceOf(AdminUserNotFoundException.class);
 
+        verify(tokenService, never()).revokeAllForUser(any());
+    }
+
+    /**
+     * Sécurité — {@code ROLE_SUPER_ADMIN} est un rôle plateforme qui peut cohabiter, en base,
+     * avec des comptes {@code ROLE_ADMIN} dans le tenant système (voir seed
+     * {@code super_admin@pivot.test}/{@code admin@pivot.test} sur le même {@code tenant_id}).
+     * Sans cette garde, un {@code ROLE_ADMIN} de ce tenant pourrait rétrograder un super-admin
+     * via ce endpoint tenant.
+     */
+    @Test
+    void ac0613Sec03_throwsSuperAdminRoleChangeForbidden_whenTargetIsSuperAdmin() {
+        final User target = mock(User.class);
+        when(target.getRole()).thenReturn("ROLE_SUPER_ADMIN");
+        when(userRepository.findByIdAndTenantIdAndDeletedAtIsNull(77L, TENANT_ID))
+                .thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> service.updateRole(TENANT_ID, 1L, 77L, AssignableRole.ROLE_USER))
+                .isInstanceOf(SuperAdminRoleChangeForbiddenException.class);
+
+        verify(target, never()).setRole(any());
+        verify(userRepository, never()).save(any());
         verify(tokenService, never()).revokeAllForUser(any());
     }
 
