@@ -68,6 +68,8 @@ import java.util.Map;
 public class AdminUserController {
 
     private static final Logger LOG = LoggerFactory.getLogger(AdminUserController.class);
+    private static final String KEY_ERROR = "error";
+    private static final String KEY_MESSAGE = "message";
 
     private final AdminUserService adminUserService;
     private final AuditService auditService;
@@ -214,12 +216,14 @@ public class AdminUserController {
      */
     @ExceptionHandler(InvalidUserFilterException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidFilter(final InvalidUserFilterException ex) {
-        LOG.warn("event=ADMIN_USERS_INVALID_FILTER field={} value={}",
-                sanitizeForLog(ex.getField()), sanitizeForLog(ex.getValue()));
+        if (LOG.isWarnEnabled()) {
+            LOG.warn("event=ADMIN_USERS_INVALID_FILTER field={} value={}",
+                    sanitizeForLog(ex.getField()), sanitizeForLog(ex.getValue()));
+        }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "error", "INVALID_FILTER",
+                KEY_ERROR, "INVALID_FILTER",
                 "field", ex.getField(),
-                "message", "Valeur invalide pour le filtre '" + ex.getField() + "'"));
+                KEY_MESSAGE, "Valeur invalide pour le filtre '" + ex.getField() + "'"));
     }
 
     /**
@@ -233,8 +237,8 @@ public class AdminUserController {
     public ResponseEntity<Map<String, Object>> handleUserNotFound(final AdminUserNotFoundException ex) {
         LOG.warn("event=ADMIN_USER_NOT_FOUND");
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "error", "USER_NOT_FOUND",
-                "message", "Cet utilisateur n'existe pas"));
+                KEY_ERROR, "USER_NOT_FOUND",
+                KEY_MESSAGE, "Cet utilisateur n'existe pas"));
     }
 
     /**
@@ -247,8 +251,8 @@ public class AdminUserController {
     public ResponseEntity<Map<String, Object>> handleSelfRoleChange(final SelfRoleChangeForbiddenException ex) {
         LOG.warn("event=ADMIN_SELF_ROLE_CHANGE_REJECTED");
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                "error", "SELF_ROLE_CHANGE_FORBIDDEN",
-                "message", "Vous ne pouvez pas modifier votre propre rôle"));
+                KEY_ERROR, "SELF_ROLE_CHANGE_FORBIDDEN",
+                KEY_MESSAGE, "Vous ne pouvez pas modifier votre propre rôle"));
     }
 
     /**
@@ -263,8 +267,8 @@ public class AdminUserController {
             final SuperAdminRoleChangeForbiddenException ex) {
         LOG.warn("event=ADMIN_SUPER_ADMIN_ROLE_CHANGE_REJECTED");
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                "error", "SUPER_ADMIN_ROLE_PROTECTED",
-                "message", "Le rôle d'un super-administrateur ne peut pas être modifié par ce endpoint"));
+                KEY_ERROR, "SUPER_ADMIN_ROLE_PROTECTED",
+                KEY_MESSAGE, "Le rôle d'un super-administrateur ne peut pas être modifié par ce endpoint"));
     }
 
     /**
@@ -277,8 +281,8 @@ public class AdminUserController {
     public ResponseEntity<Map<String, Object>> handleSelfStatusChange(final SelfStatusChangeForbiddenException ex) {
         LOG.warn("event=ADMIN_SELF_STATUS_CHANGE_REJECTED");
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                "error", "SELF_STATUS_CHANGE_FORBIDDEN",
-                "message", "Vous ne pouvez pas désactiver votre propre compte"));
+                KEY_ERROR, "SELF_STATUS_CHANGE_FORBIDDEN",
+                KEY_MESSAGE, "Vous ne pouvez pas désactiver votre propre compte"));
     }
 
     // ----------------------------------------------------------------

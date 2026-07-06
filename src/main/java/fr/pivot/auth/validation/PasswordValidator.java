@@ -52,7 +52,8 @@ public class PasswordValidator implements ConstraintValidator<StrongPassword, St
         int uppercase = 0;
         int digits = 0;
         int special = 0;
-        for (int i = 0; i < password.length(); ) {
+        int i = 0;
+        while (i < password.length()) {
             final int cp = password.codePointAt(i);
             if (Character.isUpperCase(cp)) {
                 uppercase++;
