@@ -84,7 +84,9 @@ Services :
 - Frontend : http://localhost:4200
 - API : http://localhost:8080
 - Healthcheck : http://localhost:8081/actuator/health (port de management séparé — EN04.2 —
-  distinct de l'API `:8080/api` ; `server.servlet.context-path` ne s'applique pas à ce port)
+  distinct de l'API `:8080/api` ; `server.servlet.context-path` ne s'applique pas à ce port).
+  Groupes dédiés (EN04.4) : `/actuator/health/liveness` (JVM uniquement) et
+  `/actuator/health/readiness` (JVM + DB + Redis + migrations Flyway)
 - Métriques Prometheus : http://localhost:8081/actuator/prometheus
 - API Docs (OpenAPI) : http://localhost:8080/swagger-ui.html
 
