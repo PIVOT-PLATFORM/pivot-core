@@ -67,6 +67,10 @@ class TokenServiceTest {
         tokenService = new TokenService(tokenRepo, flagRepo, meterRegistry, self, 60L);
         Mockito.lenient().when(user.getId()).thenReturn(42L);
         Mockito.lenient().when(user.getEmail()).thenReturn("test@pivot.app");
+        // Defaults to an ACTIVE account so existing tests unrelated to US06.1.4 (deactivation)
+        // are unaffected by the isUserDeactivated() check added to validate() — overridden
+        // explicitly by the tests in the "US06.1.4" section below.
+        Mockito.lenient().when(user.isActive()).thenReturn(true);
         // Mockito 5 does NOT delegate to default interface methods — wire them explicitly.
         // With findByFlagKey returning Optional.empty() (default mock), the real getInt()
         // falls back to the defaultValue parameter, mimicking the production fallback path.
@@ -301,6 +305,40 @@ class TokenServiceTest {
         // production (NOT NULL FK), but validate() must not NPE if that ever changes.
         final String raw = "no-user-token";
         final AccessToken stored = validToken(raw, 3600);
+        when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(stored));
+
+        assertThat(tokenService.validate(raw)).isPresent();
+    }
+
+    // ----------------------------------------------------------------
+    // validate() — US06.1.4 per-request account-status re-check
+    // ----------------------------------------------------------------
+
+    @Test
+    void validate_returnsEmpty_whenUserAccountDeactivated() {
+        // AC US06.1.4: "La validation du token dans TokenService vérifie que user.status ==
+        // ACTIVE (retourne 401 sinon, même si le token n'est pas expiré)". Re-read from the DB
+        // on every call — not a cached/point-in-time revocation — so a re-deactivation is
+        // airtight even if AdminUserService's explicit revokeAllForUser() call were ever skipped
+        // or raced.
+        final String raw = "deactivated-account";
+        final AccessToken stored = validToken(raw, 3600);
+        stored.setUser(user);
+        when(user.isActive()).thenReturn(false);
+        when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(stored));
+
+        assertThat(tokenService.validate(raw)).isEmpty();
+        verify(self, never()).touchLastUsed(any(), any());
+    }
+
+    @Test
+    void validate_returnsToken_whenUserAccountActive() {
+        final String raw = "active-account";
+        final AccessToken stored = validToken(raw, 3600);
+        stored.setUser(user);
+        when(user.isActive()).thenReturn(true);
         when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
             .thenReturn(Optional.of(stored));
 

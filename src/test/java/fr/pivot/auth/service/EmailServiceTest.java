@@ -114,6 +114,21 @@ class EmailServiceTest {
     }
 
     @Test
+    void sendAccountReactivatedEmail_rendersAndSends() {
+        service.sendAccountReactivatedEmail("user@x.com", "Hugo", Locale.FRENCH);
+
+        verify(templateEngine).process(eq("email/account-reactivated"), any(Context.class));
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
+    void sendAccountReactivatedEmail_handlesNullFirstName() {
+        service.sendAccountReactivatedEmail("user@x.com", null, Locale.FRENCH);
+
+        verify(mailSender).send(any(MimeMessage.class));
+    }
+
+    @Test
     void sendVerificationReminderEmail_rendersAndSends() {
         service.sendVerificationReminderEmail("user@x.com", "Frank", "remind-tok", Locale.FRENCH);
 

@@ -143,4 +143,10 @@ public class AuditService {
 
     /** Audit event US06.1.3 — a tenant admin changed another user's role ({@code UserRoleChanged}). */
     public static final String USER_ROLE_CHANGED = "user.role_changed";
+
+    /** Audit event US06.1.4 — a tenant admin deactivated a user account ({@code UserDeactivated}). */
+    public static final String USER_DEACTIVATED = "user.deactivated";
+
+    /** Audit event US06.1.5 — a tenant admin reactivated a user account ({@code UserReactivated}). */
+    public static final String USER_REACTIVATED = "user.reactivated";
 }

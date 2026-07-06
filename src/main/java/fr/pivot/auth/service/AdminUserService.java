@@ -2,11 +2,13 @@ package fr.pivot.auth.service;
 
 import fr.pivot.auth.dto.AdminUserDto;
 import fr.pivot.auth.dto.AssignableRole;
+import fr.pivot.auth.dto.AssignableStatus;
 import fr.pivot.auth.dto.UserStatus;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
 import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SelfStatusChangeForbiddenException;
 import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.repository.UserSpecifications;
@@ -24,7 +26,9 @@ import java.util.Set;
 
 /**
  * Service d'administration exposant la liste paginée des utilisateurs du tenant courant
- * (US06.1.1 — {@code GET /api/admin/users}).
+ * (US06.1.1 — {@code GET /api/admin/users}), la modification de rôle (US06.1.3 — {@code PATCH
+ * .../role}) et l'activation/désactivation de compte (US06.1.4 / US06.1.5 — {@code PATCH
+ * .../status}).
  *
  * <p>Service dédié admin (comme {@code AdminModuleActivationService}) : porte lui-même
  * {@code @PreAuthorize("hasRole('ADMIN')")}, évalué par le proxy Spring Method Security
@@ -62,17 +66,24 @@ public class AdminUserService {
 
     private final UserRepository userRepository;
     private final TokenService tokenService;
+    private final EmailService emailService;
 
     /**
      * Construit le service avec ses collaborateurs.
      *
      * @param userRepository accès aux utilisateurs, avec support {@link Specification}
      * @param tokenService   révocation des tokens actifs — US06.1.3 : un changement de rôle doit
-     *                       invalider immédiatement toute session portant l'ancien rôle en cache
+     *                       invalider immédiatement toute session portant l'ancien rôle en cache ;
+     *                       US06.1.4 : une désactivation doit produire le même effet
+     * @param emailService   notification transactionnelle envoyée au compte réactivé (US06.1.5)
      */
-    public AdminUserService(final UserRepository userRepository, final TokenService tokenService) {
+    public AdminUserService(
+            final UserRepository userRepository,
+            final TokenService tokenService,
+            final EmailService emailService) {
         this.userRepository = userRepository;
         this.tokenService = tokenService;
+        this.emailService = emailService;
     }
 
     /**
@@ -185,6 +196,88 @@ public class AdminUserService {
         // survivre au changement de rôle, même si un futur appelant du token oublie de relire
         // le rôle depuis la BDD.
         tokenService.revokeAllForUser(target.getId());
+
+        return AdminUserDto.from(target);
+    }
+
+    /**
+     * Active ou désactive le compte d'un utilisateur du tenant courant ({@code PATCH
+     * /api/admin/users/{userId}/status}) — endpoint unique partagé par US06.1.4 (« Admin
+     * désactive un compte utilisateur ») et US06.1.5 (« Admin réactive un compte utilisateur »),
+     * une seule direction distinguée par {@code status}.
+     *
+     * <p><strong>Isolation tenant :</strong> comme {@link #updateRole}, {@code targetUserId} est
+     * vérifié appartenir à {@code tenantId} avant tout traitement — un {@code targetUserId}
+     * inexistant ou d'un autre tenant lève {@link AdminUserNotFoundException} ({@code 404}, jamais
+     * {@code 403}).
+     *
+     * <p><strong>Désactivation ({@code status == INACTIVE}) :</strong>
+     * <ul>
+     *   <li>rejette toute tentative d'auto-désactivation ({@code targetUserId == callerUserId})
+     *       avant toute lecture en base — voir {@link SelfStatusChangeForbiddenException} ;</li>
+     *   <li>persiste {@code is_active = false} puis révoque immédiatement tous les tokens actifs
+     *       de la cible ({@link TokenService#revokeAllForUser}) — défense en profondeur
+     *       symétrique de {@link #updateRole}, complétée par la vérification {@code user.isActive()}
+     *       ajoutée à {@link TokenService#validate} (US06.1.4) : même un token non révoqué (relecture
+     *       en base à chaque requête) devient inutilisable, ce qui rend une re-désactivation
+     *       immédiate fiable sans dépendre de la propagation de la révocation ;</li>
+     *   <li>ré-exécutable sans erreur sur une cible déjà {@code INACTIVE} (re-désactivation
+     *       idempotente — aucune AC ne l'interdit, et la revalidation ci-dessus la rend sûre).</li>
+     * </ul>
+     *
+     * <p><strong>Réactivation ({@code status == ACTIVE}) :</strong>
+     * <ul>
+     *   <li><strong>idempotente</strong> — réactiver un compte déjà {@code ACTIVE} retourne
+     *       {@code 200} sans erreur (AC US06.1.5) ;</li>
+     *   <li>l'email de notification ({@link EmailService#sendAccountReactivatedEmail}) n'est
+     *       envoyé que si le compte transitionne réellement de {@code INACTIVE} vers
+     *       {@code ACTIVE} — un appel idempotent sur un compte déjà actif ne ré-envoie pas
+     *       l'email : le bouton "Réactiver" de l'IHM n'est de toute façon proposé que sur les
+     *       comptes {@code INACTIVE} (AC US06.1.5), ce garde-fou ne protège donc qu'un appel
+     *       API rejoué/concurrent, pas un usage normal.</li>
+     * </ul>
+     *
+     * @param tenantId     identifiant du tenant de l'administrateur appelant
+     * @param callerUserId identifiant de l'administrateur appelant
+     * @param targetUserId identifiant de l'utilisateur dont le statut doit changer (path variable)
+     * @param status       nouveau statut demandé, restreint par construction à
+     *                     {@link AssignableStatus}
+     * @return le {@link AdminUserDto} de l'utilisateur après modification
+     * @throws SelfStatusChangeForbiddenException si {@code targetUserId} désigne l'appelant
+     *                                             lui-même et {@code status == INACTIVE}
+     * @throws AdminUserNotFoundException         si {@code targetUserId} n'existe pas dans
+     *                                             {@code tenantId}
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public AdminUserDto updateStatus(
+            final Long tenantId,
+            final Long callerUserId,
+            final Long targetUserId,
+            final AssignableStatus status) {
+        if (status == AssignableStatus.INACTIVE && targetUserId.equals(callerUserId)) {
+            throw new SelfStatusChangeForbiddenException(callerUserId);
+        }
+
+        final User target = userRepository.findByIdAndTenantIdAndDeletedAtIsNull(targetUserId, tenantId)
+                .orElseThrow(() -> new AdminUserNotFoundException(targetUserId));
+
+        if (status == AssignableStatus.INACTIVE) {
+            target.setActive(false);
+            userRepository.save(target);
+            // Défense en profondeur : voir JavaDoc ci-dessus. Complète la revalidation
+            // user.isActive() de TokenService — la révocation reste immédiate même si la
+            // relecture en base n'était pas en place.
+            tokenService.revokeAllForUser(target.getId());
+        } else {
+            final boolean wasInactive = !target.isActive();
+            target.setActive(true);
+            userRepository.save(target);
+            if (wasInactive) {
+                emailService.sendAccountReactivatedEmail(
+                        target.getEmail(), target.getFirstName(), EmailService.toLocale(target.getLocale()));
+            }
+        }
 
         return AdminUserDto.from(target);
     }

@@ -3,6 +3,7 @@ package fr.pivot.auth.controller;
 import fr.pivot.AbstractIntegrationTest;
 import fr.pivot.auth.dto.AdminUserDto;
 import fr.pivot.auth.dto.AssignableRole;
+import fr.pivot.auth.dto.AssignableStatus;
 import fr.pivot.auth.dto.UserStatus;
 import fr.pivot.auth.entity.AccessToken;
 import fr.pivot.auth.entity.AuditEvent;
@@ -12,6 +13,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.auth.exception.AdminUserNotFoundException;
 import fr.pivot.auth.exception.InvalidUserFilterException;
 import fr.pivot.auth.exception.SelfRoleChangeForbiddenException;
+import fr.pivot.auth.exception.SelfStatusChangeForbiddenException;
 import fr.pivot.auth.exception.SuperAdminRoleChangeForbiddenException;
 import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.AuditEventRepository;
@@ -576,6 +578,320 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(userRepository.findById(superAdmin.getId()).orElseThrow().getRole())
                 .isEqualTo("ROLE_SUPER_ADMIN");
+    }
+
+    // ----------------------------------------------------------------
+    // US06.1.4 / US06.1.5 : activation/désactivation de compte — service (BDD réelle)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0614_01_deactivatesUser_persistsInactive_andRevokesAllTokens() {
+        final User admin = createUser(tenantAId, "admin-status1@tenant-a.test", "Admin", "One", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "target-status1@tenant-a.test", "Target", "One", "ROLE_USER", true, false);
+        issueToken(target);
+        setAuthentication("ROLE_ADMIN");
+
+        final AdminUserDto dto = adminUserService.updateStatus(tenantAId, admin.getId(), target.getId(), AssignableStatus.INACTIVE);
+
+        assertThat(dto.status()).isEqualTo(UserStatus.INACTIVE);
+        assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isFalse();
+        assertThat(accessTokenRepository.findByUserIdOrderByCreatedAtDesc(target.getId()))
+                .allSatisfy(t -> assertThat(t.getStatus()).isEqualTo(TokenStatus.REVOKED));
+    }
+
+    @Test
+    void ac0614Sec01_throwsSelfStatusChangeForbidden_whenAdminTargetsOwnAccount() {
+        final User admin = createUser(tenantAId, "admin-status2@tenant-a.test", "Admin", "Two", "ROLE_ADMIN", true, false);
+        setAuthentication("ROLE_ADMIN");
+
+        assertThatThrownBy(() ->
+                adminUserService.updateStatus(tenantAId, admin.getId(), admin.getId(), AssignableStatus.INACTIVE))
+                .isInstanceOf(SelfStatusChangeForbiddenException.class);
+
+        assertThat(userRepository.findById(admin.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void ac0614Sec02_throwsAdminUserNotFound_whenTargetBelongsToAnotherTenant() {
+        final User admin = createUser(tenantAId, "admin-status3@tenant-a.test", "Admin", "Three", "ROLE_ADMIN", true, false);
+        final User targetInB = createUser(tenantBId, "target-status-b@tenant-b.test", "Target", "B", "ROLE_USER", true, false);
+        setAuthentication("ROLE_ADMIN");
+
+        assertThatThrownBy(() ->
+                adminUserService.updateStatus(tenantAId, admin.getId(), targetInB.getId(), AssignableStatus.INACTIVE))
+                .isInstanceOf(AdminUserNotFoundException.class);
+
+        // Isolation tenant : la ressource d'un autre tenant reste intacte, jamais modifiée.
+        assertThat(userRepository.findById(targetInB.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void ac0614Sec03_throwsAccessDenied_whenCallerIsRoleUser() {
+        // Symétrique de ac0613Sec04 (US06.1.3) : @PreAuthorize("hasRole('ADMIN')") est porté par
+        // AdminUserService#updateStatus lui-même, effectivement évalué par le proxy Spring Method
+        // Security — un porteur ROLE_USER est rejeté avant toute lecture en base.
+        final User target = createUser(tenantAId, "victim-status@tenant-a.test", "Victim", "One", "ROLE_USER", true, false);
+        setAuthentication("ROLE_USER");
+
+        assertThatThrownBy(() ->
+                adminUserService.updateStatus(tenantAId, 999L, target.getId(), AssignableStatus.INACTIVE))
+                .isInstanceOf(AccessDeniedException.class);
+
+        assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void ac0615_01_reactivatesInactiveUser_persistsActive() {
+        final User admin = createUser(tenantAId, "admin-status4@tenant-a.test", "Admin", "Four", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "target-status4@tenant-a.test", "Target", "Four", "ROLE_USER", false, false);
+        setAuthentication("ROLE_ADMIN");
+
+        final AdminUserDto dto = adminUserService.updateStatus(tenantAId, admin.getId(), target.getId(), AssignableStatus.ACTIVE);
+
+        assertThat(dto.status()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void ac0615_02_reactivatingAlreadyActiveUser_isIdempotent_noError() {
+        final User admin = createUser(tenantAId, "admin-status5@tenant-a.test", "Admin", "Five", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "target-status5@tenant-a.test", "Target", "Five", "ROLE_USER", true, false);
+        setAuthentication("ROLE_ADMIN");
+
+        final AdminUserDto dto = adminUserService.updateStatus(tenantAId, admin.getId(), target.getId(), AssignableStatus.ACTIVE);
+
+        assertThat(dto.status()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    // ----------------------------------------------------------------
+    // US06.1.4 / US06.1.5 : bout-en-bout HTTP (token réel, filtre de sécurité réel)
+    // ----------------------------------------------------------------
+
+    @Test
+    void ac0614Http01_returns200_andPersistsInactive_whenCallerIsAdminOfSameTenant() throws Exception {
+        final User adminA = createUser(tenantAId, "http-status-admin1@tenant-a.test", "Admin", "A", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "http-status-target1@tenant-a.test", "Target", "A", "ROLE_USER", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(target.getId()))
+                .andExpect(jsonPath("$.status").value("INACTIVE"));
+
+        assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void ac0614Http02_returns404_whenUserIdBelongsToAnotherTenant_crossTenantIsolation() throws Exception {
+        final User adminA = createUser(tenantAId, "http-status-admin2@tenant-a.test", "Admin", "A", "ROLE_ADMIN", true, false);
+        final User targetB = createUser(tenantBId, "http-status-target-b@tenant-b.test", "Target", "B", "ROLE_USER", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", targetB.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("USER_NOT_FOUND"));
+
+        assertThat(userRepository.findById(targetB.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void ac0614Http03_returns403_whenAdminTargetsOwnAccount_selfDeactivationForbidden() throws Exception {
+        final User adminA = createUser(tenantAId, "http-status-self-admin@tenant-a.test", "Self", "Admin", "ROLE_ADMIN", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", adminA.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("SELF_STATUS_CHANGE_FORBIDDEN"));
+
+        assertThat(userRepository.findById(adminA.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void ac0614Http04_logsUserDeactivatedAuditEvent_onSuccessfulDeactivation() throws Exception {
+        final User adminA = createUser(tenantAId, "http-status-audit-admin@tenant-a.test", "Admin", "Au", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "http-status-audit-target@tenant-a.test", "Target", "Au", "ROLE_USER", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isOk());
+
+        final List<AuditEvent> events = auditEventRepository.findByUserIdOrderByCreatedAtDesc(adminA.getId());
+        assertThat(events).anySatisfy(e -> assertThat(e.getEventType()).isEqualTo(AuditService.USER_DEACTIVATED));
+    }
+
+    /**
+     * AC — « Utilisateur désactivé → 401 [403, voir écart documenté sur
+     * {@code ac0613Http05_oldTokenRevoked_rejectedImmediatelyAfterRoleChange}] à la prochaine
+     * requête (tokens révoqués) » (US06.1.4) — variante bout-en-bout : la désactivation via cet
+     * endpoint révoque explicitement les tokens ({@link AdminUserService#updateStatus}), exactement
+     * comme le changement de rôle (US06.1.3).
+     */
+    @Test
+    void ac0614Http05_oldTokenRevoked_rejectedImmediatelyAfterDeactivation() throws Exception {
+        final User adminA = createUser(tenantAId, "http-status-revoke-admin@tenant-a.test", "Admin", "R", "ROLE_ADMIN", true, false);
+        final User targetAdmin =
+                createUser(tenantAId, "http-status-revoke-target@tenant-a.test", "Target", "R", "ROLE_ADMIN", true, false);
+        final String adminToken = issueToken(adminA);
+        final String targetOldToken = issueToken(targetAdmin);
+
+        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetOldToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", targetAdmin.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INACTIVE\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetOldToken))
+                .andExpect(status().isForbidden());
+
+        final List<AccessToken> tokens = accessTokenRepository.findByUserIdOrderByCreatedAtDesc(targetAdmin.getId());
+        assertThat(tokens).hasSize(1);
+        assertThat(tokens.get(0).getStatus()).isEqualTo(TokenStatus.REVOKED);
+    }
+
+    /**
+     * AC — « La validation du token dans TokenService vérifie que user.status == ACTIVE (retourne
+     * 401 [403, voir écart documenté ci-dessus] sinon, même si le token n'est pas expiré) »
+     * (US06.1.4). Contrairement au test précédent, ce test ne passe <strong>jamais</strong> par
+     * l'endpoint admin — le compte est désactivé directement en base, sans aucun appel à
+     * {@code TokenService#revokeAllForUser}. Si {@link fr.pivot.auth.service.TokenService#validate}
+     * ne faisait que s'appuyer sur la révocation explicite (comme pour un changement de rôle avant
+     * cette US), ce token — jamais révoqué, {@code status} toujours {@code ACTIVE} en base —
+     * resterait valide indéfiniment. Il est ici rejeté malgré tout, ce qui prouve que le statut du
+     * compte est bien relu en base à chaque requête, indépendamment de toute révocation — exactement
+     * la garantie demandée : une re-désactivation reste fiable même si la révocation explicite
+     * était un jour omise ou retardée.
+     */
+    @Test
+    void ac0614Http06_tokenRejected_evenWithoutExplicitRevocation_perRequestStatusCheck() throws Exception {
+        final User target = createUser(tenantAId, "http-status-norevoke-target@tenant-a.test", "Target", "N", "ROLE_ADMIN", true, false);
+        final String targetToken = issueToken(target);
+
+        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetToken))
+                .andExpect(status().isOk());
+
+        // Désactivation directe en base — ne passe pas par AdminUserService.updateStatus, donc
+        // aucune révocation de token n'a lieu.
+        target.setActive(false);
+        userRepository.save(target);
+        assertThat(accessTokenRepository.findByUserIdOrderByCreatedAtDesc(target.getId()))
+                .allSatisfy(t -> assertThat(t.getStatus()).isEqualTo(TokenStatus.ACTIVE));
+
+        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void ac0615Http01_returns200_andReactivatesUser_fromInactive() throws Exception {
+        final User adminA = createUser(tenantAId, "http-reactivate-admin1@tenant-a.test", "Admin", "A", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "http-reactivate-target1@tenant-a.test", "Target", "A", "ROLE_USER", false, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void ac0615Http02_returns404_whenUserIdBelongsToAnotherTenant_crossTenantIsolation() throws Exception {
+        final User adminA = createUser(tenantAId, "http-reactivate-admin2@tenant-a.test", "Admin", "A", "ROLE_ADMIN", true, false);
+        final User targetB = createUser(tenantBId, "http-reactivate-target-b@tenant-b.test", "Target", "B", "ROLE_USER", false, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", targetB.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    void ac0615Http03_idempotentReactivation_returns200_whenAlreadyActive() throws Exception {
+        final User adminA = createUser(tenantAId, "http-reactivate-admin3@tenant-a.test", "Admin", "A", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "http-reactivate-target3@tenant-a.test", "Target", "A", "ROLE_USER", true, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void ac0615Http04_logsUserReactivatedAuditEvent_withActorIdAndTargetUserId() throws Exception {
+        final User adminA = createUser(tenantAId, "http-reactivate-audit-admin@tenant-a.test", "Admin", "Au", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "http-reactivate-audit-target@tenant-a.test", "Target", "Au", "ROLE_USER", false, false);
+        final String adminToken = issueToken(adminA);
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isOk());
+
+        final List<AuditEvent> events = auditEventRepository.findByUserIdOrderByCreatedAtDesc(adminA.getId());
+        assertThat(events).anySatisfy(e -> {
+            assertThat(e.getEventType()).isEqualTo(AuditService.USER_REACTIVATED);
+            // Round-trip through the JSONB column reformats the text (Postgres jsonb does not
+            // preserve original whitespace/key order) — assert on the values without depending
+            // on exact formatting rather than a literal substring match.
+            final String meta = e.getMeta().replace(" ", "");
+            assertThat(meta).contains("\"targetUserId\":" + target.getId())
+                    .contains("\"actorId\":" + adminA.getId());
+        });
+    }
+
+    /**
+     * Preuve bout-en-bout du cycle complet désactivation → réactivation (US06.1.4 + US06.1.5) :
+     * un token émis pendant que le compte est {@code INACTIVE} est rejeté ({@code 403}) — la
+     * vérification {@code user.isActive()} de {@link fr.pivot.auth.service.TokenService#validate}
+     * s'applique même à un token jamais concerné par une révocation puisqu'émis après coup — puis
+     * ce même token redevient utilisable dès que l'admin réactive le compte via cet endpoint,
+     * sans qu'il soit nécessaire de ré-émettre un nouveau token.
+     */
+    @Test
+    void ac0615Http05_tokenIssuedWhileInactive_rejectedThenAcceptedAfterReactivation() throws Exception {
+        final User adminA = createUser(tenantAId, "http-reactivate-cycle-admin@tenant-a.test", "Admin", "C", "ROLE_ADMIN", true, false);
+        final User target = createUser(tenantAId, "http-reactivate-cycle-target@tenant-a.test", "Target", "C", "ROLE_ADMIN", false, false);
+        final String adminToken = issueToken(adminA);
+        final String targetToken = issueToken(target);
+
+        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ACTIVE\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetToken))
+                .andExpect(status().isOk());
     }
 
     // ----------------------------------------------------------------
