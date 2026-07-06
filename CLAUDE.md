@@ -231,8 +231,13 @@ n'a lieu **qu'en fin de sprint**, jamais à chaque merge — un merge ordinaire 
 version ni publier quoi que ce soit.
 
 - **Déclencheur** : le commit du squash-merge du **dernier item d'un sprint** porte le trailer
-  `Release-Trigger: true` dans son message. `release.yml` ne s'exécute que si ce trailer est
-  présent (`contains(github.event.head_commit.message, 'Release-Trigger: true')`).
+  `Release-Trigger: true` **sur sa propre ligne, seul, rien d'autre** (`grep -qxE` — match exact
+  de ligne entière, jamais une simple sous-chaîne). Cette exactitude n'est pas cosmétique : une
+  simple recherche de sous-chaîne matcherait n'importe quelle phrase qui *mentionne* le trailer
+  (documentation, description de PR expliquant la fonctionnalité) — vécu en pratique le
+  2026-07-06, sauvé de justesse par le fait que le commit fautif était de type `docs:` (aucune
+  version calculée par semantic-release pour ce type, sinon la release se serait réellement
+  déclenchée par accident).
 - **Pourquoi** : avant cette règle, chaque merge déclenchait `release.yml` — plusieurs merges
   rapprochés calculaient tous la même "prochaine version" (aucun tag encore créé entre eux) et le
   second à publier échouait en conflit sur GitHub Packages (incident du 2026-07-06, versions
@@ -240,8 +245,10 @@ version ni publier quoi que ce soit.
 - **Effet** : la release qui finit par se déclencher regroupe automatiquement, dans une seule
   entrée de changelog, tous les commits accumulés depuis le dernier tag — comportement natif de
   semantic-release (déjà observé sur `v0.22.0` et `v0.26.0`), pas une fonctionnalité à coder.
-- **Ajout du trailer** : `gh pr merge --squash --body "...\n\nRelease-Trigger: true"` uniquement
-  sur le merge identifié comme dernier item du sprint courant.
+- **Ajout du trailer** : `gh pr merge --squash --body "...
+
+Release-Trigger: true"` — trailer sur sa propre ligne finale, précédée d'une ligne vide, jamais
+  intégré dans une phrase. Uniquement sur le merge identifié comme dernier item du sprint courant.
 
 ## Workflow — Autoloop PR
 
