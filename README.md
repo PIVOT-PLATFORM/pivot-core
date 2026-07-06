@@ -88,6 +88,15 @@ Services :
 - Métriques Prometheus : http://localhost:8081/actuator/prometheus
 - API Docs (OpenAPI) : http://localhost:8080/swagger-ui.html
 
+### Production
+
+`docker-compose.prod.yml` (racine du repo) — stack production : `nginx` (image `pivot-ui`,
+gateway API + SPA statique), `pivot-core`, `postgres`, `redis`. Réseaux isolés
+(`pivot-net-app` / `pivot-net-data`), aucun port backend exposé, secrets via Docker secrets
+(pas de `.env` en prod), health checks sur chaque service. Détail complet (mapping des
+secrets, procédure de déploiement, limitations connues) :
+[pivot-docs — déploiement Docker Compose production](https://pivot-platform.github.io/pivot-docs/deployment/docker-compose-prod).
+
 ## Prérequis (développement local)
 
 | Outil | Version |
