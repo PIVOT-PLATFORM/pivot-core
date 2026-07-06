@@ -49,6 +49,17 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
+		<!--
+		  EN04.3 — Prometheus export for Micrometer. Version comes from spring-boot-starter-parent's
+		  imported micrometer-bom; without this artifact on the classpath, Spring Boot's
+		  PrometheusMetricsExportAutoConfiguration never activates and /actuator/prometheus
+		  (already listed in management.endpoints.web.exposure.include) 404s despite being
+		  "exposed".
+		-->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>

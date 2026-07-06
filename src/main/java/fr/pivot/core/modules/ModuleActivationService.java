@@ -3,6 +3,7 @@ package fr.pivot.core.modules;
 import fr.pivot.core.modules.event.ModuleActivatedEvent;
 import fr.pivot.core.modules.event.ModuleDeactivatedEvent;
 import fr.pivot.core.modules.event.ModuleLifecycleEvent;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -28,15 +29,24 @@ import java.util.Optional;
  *
  * <p>Isolation tenant : le {@code tenantId} reçu ici provient exclusivement du
  * {@code TenantContext} du token porteur, résolu par la couche appelante.
+ *
+ * <p><strong>Observabilité (EN04.3)</strong> : chaque appel réussi à {@link #activate} incrémente
+ * le compteur Micrometer {@code pivot.module.activations} (exporté en Prometheus sous
+ * {@code pivot_module_activations_total}), tagué {@code module}/{@code tenant} — {@code tenant}
+ * porte l'identifiant technique du tenant, jamais un nom ou email (pas de PII dans les tags de
+ * métrique, qui sont conservés en clair par le backend Prometheus).
  */
 @Service
 public class ModuleActivationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ModuleActivationService.class);
 
+    private static final String METRIC_ACTIVATIONS = "pivot.module.activations";
+
     private final ModuleRegistry moduleRegistry;
     private final ModuleActivationRepository repository;
     private final ApplicationEventPublisher eventPublisher;
+    private final MeterRegistry meterRegistry;
 
     /**
      * Construit le service avec ses collaborateurs.
@@ -44,13 +54,16 @@ public class ModuleActivationService {
      * @param moduleRegistry registre des modules disponibles
      * @param repository     accès BDD aux états d'activation
      * @param eventPublisher bus d'événements Spring inter-modules
+     * @param meterRegistry  registre Micrometer pour le compteur {@link #METRIC_ACTIVATIONS}
      */
     public ModuleActivationService(final ModuleRegistry moduleRegistry,
                                    final ModuleActivationRepository repository,
-                                   final ApplicationEventPublisher eventPublisher) {
+                                   final ApplicationEventPublisher eventPublisher,
+                                   final MeterRegistry meterRegistry) {
         this.moduleRegistry = moduleRegistry;
         this.repository = repository;
         this.eventPublisher = eventPublisher;
+        this.meterRegistry = meterRegistry;
     }
 
     /**
@@ -64,7 +77,10 @@ public class ModuleActivationService {
      */
     @Transactional
     public ModuleActivation activate(final Long tenantId, final String moduleId) {
-        return changeState(tenantId, moduleId, true);
+        final ModuleActivation result = changeState(tenantId, moduleId, true);
+        meterRegistry.counter(METRIC_ACTIVATIONS, "module", moduleId, "tenant", String.valueOf(tenantId))
+                .increment();
+        return result;
     }
 
     /**

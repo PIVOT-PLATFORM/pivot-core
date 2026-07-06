@@ -4,6 +4,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import fr.pivot.core.modules.event.ModuleActivatedEvent;
 import fr.pivot.core.modules.event.ModuleDeactivatedEvent;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,13 +50,18 @@ class ModuleActivationServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    private MeterRegistry meterRegistry;
+
     private ModuleActivationService service;
 
     private Level originalLevel;
 
     @BeforeEach
     void setUp() {
-        service = new ModuleActivationService(moduleRegistry, repository, eventPublisher);
+        // Real registry (not mocked) — EN04.3's counter assertions read actual accumulated
+        // counts/tags back out, same pattern as ModuleActivationCacheServiceTest.
+        meterRegistry = new SimpleMeterRegistry();
+        service = new ModuleActivationService(moduleRegistry, repository, eventPublisher, meterRegistry);
     }
 
     @AfterEach
@@ -203,6 +211,84 @@ class ModuleActivationServiceTest {
         when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
 
         assertThat(service.isEnabled(TENANT_ID, MODULE_ID)).isFalse();
+    }
+
+    // ----------------------------------------------------------------
+    // EN04.3 — compteur Micrometer pivot.module.activations (module + tenant)
+    // ----------------------------------------------------------------
+
+    @Test
+    void activate_shouldIncrementActivationsCounter_withModuleAndTenantTags() {
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+        when(repository.save(any(ModuleActivation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.activate(TENANT_ID, MODULE_ID);
+
+        final Counter counter = activationsCounter(TENANT_ID, MODULE_ID);
+        assertThat(counter).isNotNull();
+        assertThat(counter.count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void activate_shouldIncrementCounter_onEveryCall_evenWhenAlreadyEnabled() {
+        // "pivot_module_activations_total" counts activate() invocations, not just genuine
+        // state transitions — unlike the ModuleActivatedEvent, which is transition-only.
+        final ModuleActivation existing = new ModuleActivation(TENANT_ID, MODULE_ID);
+        existing.setEnabled(true);
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.of(existing));
+        when(repository.save(existing)).thenReturn(existing);
+
+        service.activate(TENANT_ID, MODULE_ID);
+        service.activate(TENANT_ID, MODULE_ID);
+
+        assertThat(activationsCounter(TENANT_ID, MODULE_ID).count()).isEqualTo(2.0);
+    }
+
+    @Test
+    void activate_shouldTagCounterSeparately_perTenant() {
+        final Long otherTenantId = 99L;
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.empty());
+        when(repository.findByTenantIdAndModuleId(otherTenantId, MODULE_ID)).thenReturn(Optional.empty());
+        when(repository.save(any(ModuleActivation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.activate(TENANT_ID, MODULE_ID);
+        service.activate(otherTenantId, MODULE_ID);
+
+        assertThat(activationsCounter(TENANT_ID, MODULE_ID).count()).isEqualTo(1.0);
+        assertThat(activationsCounter(otherTenantId, MODULE_ID).count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void activate_shouldNotIncrementCounter_whenModuleUnknown() {
+        when(moduleRegistry.isRegistered("ghost")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.activate(TENANT_ID, "ghost"))
+                .isInstanceOf(UnknownModuleException.class);
+
+        assertThat(meterRegistry.find("pivot.module.activations").counter()).isNull();
+    }
+
+    @Test
+    void deactivate_shouldNotIncrementActivationsCounter() {
+        final ModuleActivation existing = new ModuleActivation(TENANT_ID, MODULE_ID);
+        existing.setEnabled(true);
+        when(moduleRegistry.isRegistered(MODULE_ID)).thenReturn(true);
+        when(repository.findByTenantIdAndModuleId(TENANT_ID, MODULE_ID)).thenReturn(Optional.of(existing));
+        when(repository.save(existing)).thenReturn(existing);
+
+        service.deactivate(TENANT_ID, MODULE_ID);
+
+        assertThat(meterRegistry.find("pivot.module.activations").counter()).isNull();
+    }
+
+    private Counter activationsCounter(final Long tenantId, final String moduleId) {
+        return meterRegistry.find("pivot.module.activations")
+                .tag("module", moduleId)
+                .tag("tenant", String.valueOf(tenantId))
+                .counter();
     }
 
     // ----------------------------------------------------------------

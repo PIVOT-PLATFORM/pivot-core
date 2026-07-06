@@ -1,0 +1,52 @@
+# prometheus.yml — Prometheus scrape config for the PIVOT platform (EN04.3).
+#
+# Placement note: docker-compose.prod.yml (EN07.1, PR #149 as of this writing) defines the
+# app/db/cache stack — nginx, pivot-core, postgres, redis — but deliberately does NOT include
+# a Prometheus server container (verified against that PR's diff: no prometheus/grafana
+# service, no reference to this file — out of scope for that Enabler). This file is the
+# scrape config to hand to whichever Prometheus server ends up running it — a future
+# observability Enabler or a platform-wide monitoring stack — at the repo root, alongside
+# docker-compose.prod.yml/docker-compose.yml, rather than a deploy/ or ops/ subdirectory that
+# doesn't otherwise exist in this repo.
+#
+# Target: pivot-core's dedicated management port (:8081) — EN04.2 (Spring Actuator) hadn't
+# opened a PR yet when EN04.3 was implemented, so pivot-core/src/main/resources/application.yml
+# sets management.server.port itself (see the comment there) to the same :8081 value EN04.2's
+# own AC already commits to. Reconcile to a single management.server.port if EN04.2 lands with
+# a different one before both merge.
+#
+# Network reachability: pivot-core publishes no host port for :8081 in docker-compose.prod.yml
+# (management endpoints stay off the public network by design — EN04.2 AC). A Prometheus
+# server must join pivot-core's Docker network (pivot-net-app or a dedicated monitoring
+# network alongside it) to reach "pivot-core:8081" — it cannot scrape via localhost from the
+# host machine in that stack.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    platform: pivot
+
+scrape_configs:
+  - job_name: pivot-core
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["pivot-core:8081"]
+        labels:
+          service: pivot-core
+
+  # --- Module-core targets — NOT wired yet ------------------------------------------
+  # pivot-pilotage-core, pivot-agilite-core, pivot-collaboratif-core don't exist as repos yet
+  # ("à créer avec le repo" — pivot-platform/CLAUDE.md). Once one exists, ships EN04.2/EN04.3
+  # of its own, and is wired into docker-compose.prod.yml, add a job modeled on pivot-core
+  # above:
+  #
+  #   - job_name: pivot-pilotage-core
+  #     metrics_path: /actuator/prometheus
+  #     static_configs:
+  #       - targets: ["pivot-pilotage-core:8081"]
+  #         labels:
+  #           service: pivot-pilotage-core
+  #
+  # Same shape for pivot-agilite-core and pivot-collaboratif-core.
+  # ------------------------------------------------------------------------------------
