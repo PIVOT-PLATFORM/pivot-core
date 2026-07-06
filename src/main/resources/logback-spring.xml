@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EN04.1 — Logs structurés JSON + MDC.
+
+  Two console appenders, selected by Spring profile:
+    - "test"  : plain human-readable pattern (Spring Boot default) — kept readable for a
+                developer scanning `mvn test`/CI output, where nothing consumes the log stream
+                as JSON. Not one of the deployed "backends" the AC's "sur tous les backends"
+                targets.
+    - default (everything else — no profile, "dev" via compose.yml, or any future "prod"
+                profile) : structured JSON via logstash-logback-encoder. This is deliberately
+                the default rather than opt-in for a "prod" profile, since no existing
+                convention singles out local/dev logging as human-readable (verified: no
+                application-dev.yml / application-local.yml exists) and the AC requires JSON
+                "on all backends" without carving out a dev exception.
+
+  MDC content (requestId/tenantId/userId, populated by RequestMdcFilter) is included
+  automatically by LogstashEncoder — no explicit includeMdcKeyName allow-list, so any future
+  MDC key (e.g. boardId/sessionId once STOMP handlers land) is picked up without editing this
+  file.
+-->
+<configuration scan="false">
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <springProperty scope="context" name="applicationName" source="spring.application.name"
+                     defaultValue="pivot-core"/>
+
+    <springProfile name="test">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <springProfile name="!test">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <customFields>{"service":"${applicationName}"}</customFields>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

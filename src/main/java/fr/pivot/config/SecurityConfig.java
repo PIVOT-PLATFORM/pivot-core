@@ -37,14 +37,20 @@ public class SecurityConfig {
     private String allowedOrigins;
 
     private final TokenAuthenticationFilter tokenAuthFilter;
+    private final RequestMdcFilter requestMdcFilter;
 
     /**
      * Constructs the security configuration.
      *
-     * @param tokenAuthFilter the opaque token validation filter
+     * @param tokenAuthFilter  the opaque token validation filter
+     * @param requestMdcFilter EN04.1 — populates SLF4J MDC ({@code requestId}/{@code tenantId}/
+     *                         {@code userId}) once the token filter has resolved the request's
+     *                         authentication, for every downstream structured log line
      */
-    public SecurityConfig(final TokenAuthenticationFilter tokenAuthFilter) {
+    public SecurityConfig(final TokenAuthenticationFilter tokenAuthFilter,
+                           final RequestMdcFilter requestMdcFilter) {
         this.tokenAuthFilter = tokenAuthFilter;
+        this.requestMdcFilter = requestMdcFilter;
     }
 
     /**
@@ -90,7 +96,10 @@ public class SecurityConfig {
                     .anyRequest().authenticated()
                 )
                 // Opaque token filter runs before Spring's default UsernamePasswordAuthenticationFilter
-                .addFilterBefore(tokenAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(tokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // EN04.1 — runs immediately after: SecurityContextHolder is already populated
+                // (or not, for anonymous requests) by the time MDC is filled in.
+                .addFilterAfter(requestMdcFilter, TokenAuthenticationFilter.class);
 
             return http.build();
         } catch (final Exception e) {
@@ -120,7 +129,9 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(allowedOrigins.split(",")));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("X-New-Token", "X-Token-Expires-At"));
+        // X-Request-Id (EN04.1) — correlation id echoed on every response, exposed so the
+        // frontend can surface it in bug reports/support tickets without server log access.
+        config.setExposedHeaders(List.of("X-New-Token", "X-Token-Expires-At", RequestMdcFilter.REQUEST_ID_HEADER));
         config.setAllowCredentials(true);
         final UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
