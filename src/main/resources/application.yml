@@ -105,11 +105,11 @@ management:
     port: ${MANAGEMENT_SERVER_PORT:8081}
   endpoints:
     web:
-      # health,info,metrics uniquement (principe de moindre exposition) — pas de wildcard `*`.
-      # `prometheus` retiré : nécessite micrometer-registry-prometheus (absent du classpath
-      # aujourd'hui) — scope EN04.3, pas de celui-ci.
+      # health,info,metrics,prometheus (principe de moindre exposition) — pas de wildcard `*`.
+      # `prometheus` réintégré par EN04.3 : micrometer-registry-prometheus est désormais sur le
+      # classpath (pom.xml), PrometheusMetricsExportAutoConfiguration peut donc s'activer.
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       # Spring Boot réutilise tel quel le SecurityFilterChain assemblé du contexte principal
@@ -123,6 +123,14 @@ management:
       # par composant (DB, Redis) à quiconque atteint :8081, ce qui est acceptable puisque ce
       # port n'est, par conception, jamais atteignable hors du réseau Docker interne.
       show-details: always
+  metrics:
+    distribution:
+      percentiles-histogram:
+        # Prometheus-native histogram buckets, not Micrometer client-side percentiles (the
+        # latter don't aggregate correctly across instances/scrapes). p50/p95/p99 per
+        # endpoint are computed PromQL-side:
+        # histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, uri))
+        http.server.requests: true
   # info.git.mode reste au défaut Spring Boot ("simple", pas de surcharge ici) — expose
   # uniquement branch + commit.id (abrégé) + commit.time, qui satisfait déjà l'AC "git commit
   # sha". `full` republierait l'intégralité brute de git.properties sous /actuator/info,
