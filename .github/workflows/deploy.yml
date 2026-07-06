@@ -60,6 +60,15 @@ on:
 
 permissions: read-all
 
+# Un déploiement à la fois : une release publiée pendant qu'un déclenchement manuel
+# (workflow_dispatch, rollback/redéploiement) est en cours écrirait/lirait ".pivot-core-version"
+# en concurrence et pourrait faire cohabiter deux `docker compose up -d` sur le même service.
+# `cancel-in-progress: false` — mettre en file d'attente plutôt qu'annuler un déploiement déjà en
+# cours (l'annuler à mi-chemin laisserait le serveur dans un état intermédiaire non vérifié).
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to production
