@@ -1,3 +1,10 @@
+# [0.17.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.16.1...v0.17.0) (2026-07-06)
+
+
+### Features
+
+* **api:** admin modifie le rôle d'un utilisateur (US06.1.3) ([#141](https://github.com/PIVOT-PLATFORM/pivot-core/issues/141)) ([01df08a](https://github.com/PIVOT-PLATFORM/pivot-core/commit/01df08a69214cf5bab297c9f5b4e645517c71d09)), closes [AdminUserService#updateRole](https://github.com/AdminUserService/issues/updateRole)
+
 ## [0.16.1](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.16.0...v0.16.1) (2026-07-05)
 
 
