@@ -162,13 +162,14 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
     @Test
     void ac_security_deniesAccess_whenCallerIsRoleAdmin() {
         setAuthentication("ROLE_ADMIN");
+        final PageRequest pageRequest = PageRequest.of(0, 20);
 
-        assertThatThrownBy(() -> superAdminTenantService.listTenants(
-                null, null, null, null, PageRequest.of(0, 20)))
+        assertThatThrownBy(() -> superAdminTenantService.listTenants(null, null, null, null, pageRequest))
                 .isInstanceOf(AccessDeniedException.class);
 
-        assertThatThrownBy(() -> superAdminTenantService.createTenant(
-                requestFor("rbac-it-denied"), superAdmin, IP, USER_AGENT))
+        final CreateTenantRequest createRequest = requestFor("rbac-it-denied");
+
+        assertThatThrownBy(() -> superAdminTenantService.createTenant(createRequest, superAdmin, IP, USER_AGENT))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -420,18 +421,18 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
     void ac_slugUnique_throwsConflict_onDuplicate() {
         setAuthentication("ROLE_SUPER_ADMIN");
         superAdminTenantService.createTenant(requestFor("dup-it-tenant"), superAdmin, IP, USER_AGENT);
+        final CreateTenantRequest dupRequest = requestFor("dup-it-tenant");
 
-        assertThatThrownBy(() -> superAdminTenantService.createTenant(
-                requestFor("dup-it-tenant"), superAdmin, IP, USER_AGENT))
+        assertThatThrownBy(() -> superAdminTenantService.createTenant(dupRequest, superAdmin, IP, USER_AGENT))
                 .isInstanceOf(TenantSlugAlreadyExistsException.class);
     }
 
     @Test
     void ac_reservedSlug_throwsUnprocessable() {
         setAuthentication("ROLE_SUPER_ADMIN");
+        final CreateTenantRequest systemRequest = requestFor("system");
 
-        assertThatThrownBy(() -> superAdminTenantService.createTenant(
-                requestFor("system"), superAdmin, IP, USER_AGENT))
+        assertThatThrownBy(() -> superAdminTenantService.createTenant(systemRequest, superAdmin, IP, USER_AGENT))
                 .isInstanceOf(ReservedTenantSlugException.class);
     }
 
@@ -445,9 +446,9 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
         for (int i = 0; i < 10; i++) {
             superAdminTenantService.createTenant(requestFor("rl-it-tenant-" + i), superAdmin, IP, USER_AGENT);
         }
+        final CreateTenantRequest eleventhRequest = requestFor("rl-it-tenant-eleventh");
 
-        assertThatThrownBy(() -> superAdminTenantService.createTenant(
-                requestFor("rl-it-tenant-eleventh"), superAdmin, IP, USER_AGENT))
+        assertThatThrownBy(() -> superAdminTenantService.createTenant(eleventhRequest, superAdmin, IP, USER_AGENT))
                 .isInstanceOf(RateLimitException.class);
 
         final boolean rateLimitAuditLogged = auditEventRepository.findAll().stream()

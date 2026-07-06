@@ -143,7 +143,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 
 > **Sources de vérité :**
 > - Hiérarchie backlog + conventions : `pivot-docs/docs/backlog/README.md`
-> - Sprints, assignation US, état avancement : **`pivot-docs/docs/backlog/SPRINTS.md`**
+> - Sprints, assignation US, état avancement : **`pivot-docs/docs/backlog/sprints/`** (un fichier par sprint, index dans `sprints/README.md`)
 > - Backlog opérationnel : **fichiers markdown dans `pivot-docs/docs/backlog/`** — un fichier par US/Enabler avec frontmatter (`Stage`, `Priority`, `Phase`).
 
 ### Hiérarchie
@@ -192,12 +192,12 @@ Tout PR avec :
 
 ## Workflow — Organisation par sprint
 
-Travail organisé par sprint. Référence : **`pivot-docs/docs/backlog/SPRINTS.md`**.
+Travail organisé par sprint. Référence : **`pivot-docs/docs/backlog/sprints/`** (un fichier par sprint).
 
 **Principes :**
 - **Une branche par US / Enabler** — `feat/{us-id}-{slug}` (ex. `feat/us03-1-1-admin-active-module`)
 - **Agents en parallèle** — un agent par item du sprint, branches séparées
-- **Backlog pivot-docs sur la branche courante** — SPRINTS.md committé sur la branche de l'item (pas de branche docs séparée)
+- **Backlog pivot-docs sur la branche courante** — `sprints/sprint-{N}.md` committé sur la branche de l'item (pas de branche docs séparée)
 
 ## Workflow — Autoloop PR par US
 
@@ -209,8 +209,12 @@ Après implémentation sur `feat/{us-id}-{slug}` :
      - **Review neutre** — Expert PR Review : architecture, AC, sécurité, dette
      - **CI** — `mvn verify -q` = 0 erreur/warning · Gitleaks clean · Gate 3 hard blocks
    - **Corrections** — tous les findings résolus, commit `fix({scope}): ...`
-   - **Convergence** — Gate 4 ≥ 85 ET CI verte → sortir
-3. Gate 4 vert → `Stage: Review` dans frontmatter US + SPRINTS.md + signal mainteneur
+   - **Convergence** — Gate 4 = 100/100 (ou convergence confirmée sans finding restant) ET CI verte → sortir
+3. Gate 4 = 100/100 (ou convergence confirmée sans finding restant) :
+   - Sortir la PR du mode draft (`gh pr ready`)
+   - `Stage: Review` dans frontmatter US + `sprints/sprint-{N}.md` (backlog pivot-docs sur la branche courante, cf. règle ci-dessus — pas de branche docs séparée)
+   - **Gate 5** — générer/mettre à jour la spec fonctionnelle et technique figée `pivot-docs/docs/specs/{EPIC}/{us-id}-{slug}.md` (branche/PR `pivot-docs` dédiée — jamais de commit cross-repo, voir `pivot-docs/docs/workflow/README.md`)
+   - Signal mainteneur
 4. Blocage 20 boucles → Breaking Point 2
 
 ## Workflow — Ordre d'exécution par US (dans un sprint)
@@ -221,7 +225,7 @@ Après implémentation sur `feat/{us-id}-{slug}` :
 | **2. Tests** | JUnit 5 TU + Testcontainers TI — **dans le même commit** |
 | **3. Qualité** | Checkstyle · SpotBugs verts |
 | **4. Gate 2** | Coverage check : ≥ 85 % → continuer · 70–84 % → compléter · < 70 % → stop |
-| **5. Backlog** | Mise à jour SPRINTS.md + statut US **obligatoire avant commit** |
+| **5. Backlog** | Mise à jour `sprints/sprint-{N}.md` + statut US **obligatoire avant commit** |
 | **6. E2E** | — (délégué à pivot-ui) |
 | **7. Commit** | `git add` fichier par fichier · commits atomiques sur branche `feat/{us-id}-{slug}` |
 
@@ -315,7 +319,7 @@ dossier `gates/`). Le statut vit dans le champ **Stage** du frontmatter US (pivo
 | **1 — READINESS** | Avant implémentation | PO Agent self-challenge · ≥ 70 → Stage: Ready → procéder · < 70 → PO Agent réécrit ACs |
 | **2 — COVERAGE** | Par commit | ≥ 85 → continuer · 70–84 → compléter tests · < 70 → stop |
 | **3 — QUALITY** | Après CI verte | Hard blocks : secret Gitleaks, label `security`/`breaking-change`, modif contrat module/OIDC |
-| **4 — MERGE CONFIDENCE** | Avant merge | ≥ 85 → merge autonome · 60–84 → merge documenté · < 60 → Breaking Point 2 |
+| **4 — MERGE CONFIDENCE** | Avant merge | = 100/100 → sortie du mode draft (merge autonome) · 60–99 → merge documenté · < 60 → Breaking Point 2 |
 
 **Checks Gate 1 :** AC testables (40) · dépendances résolues (20) · impact contrat module (15) · AC sécurité ≥ 1 (15) · pas de cycle (10)
 
@@ -393,7 +397,7 @@ Chaque gate est consigné en **commentaire de PR** (plus de fichiers `gates/`) :
 | `breaking-change` | Changement de contrat — hard block Gate 4, review humaine |
 | `module-contract` | Changement contrat de module — hard block Gate 4 |
 | `needs-human-review` | Gate 4 < 60 ou hard block — décision humaine requise |
-| `auto-approved` | Gate 4 ≥ 85 — mergé automatiquement |
+| `auto-approved` | Gate 4 = 100/100 — mergé automatiquement |
 | `chore` | Maintenance, CI, dépendances |
 | `docs` | Documentation uniquement |
 
@@ -585,7 +589,7 @@ Charger `skill-pr-reviewer` avant d'écrire le commentaire.
 - Posté uniquement en **commentaire PR** — jamais de fichier committé
 - Score calculé dimension par dimension (0–25 chacune) — voir `gate_scoring` dans `skill-pr-reviewer.yaml`
 - Findings classés : 🔴 Bloquant · 🟡 Mineur · 🔵 Cohérent
-- Un finding 🔴 = itération obligatoire, même si score ≥ 85
+- Un finding 🔴 = itération obligatoire, quel que soit le score total
 
 ---
 

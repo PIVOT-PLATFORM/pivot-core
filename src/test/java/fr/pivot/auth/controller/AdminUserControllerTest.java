@@ -21,6 +21,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
@@ -116,7 +118,7 @@ class AdminUserControllerTest {
     @Test
     void ac0611_02_shouldPassFiltersThrough_toService() {
         setAuthentication(buildUser(1L, 42L));
-        when(adminUserService.listUsers(eq(42L), eq(1), eq(50), eq("ROLE_ADMIN"), eq("ACTIVE"), eq("alice")))
+        when(adminUserService.listUsers(42L, 1, 50, "ROLE_ADMIN", "ACTIVE", "alice"))
                 .thenReturn(new PageImpl<>(List.of()));
 
         controller.list(1, 50, "ROLE_ADMIN", "ACTIVE", "alice");
@@ -248,37 +250,14 @@ class AdminUserControllerTest {
     // AC : validation stricte du rôle dans le DTO — 400 sur valeur absente/inconnue
     // ----------------------------------------------------------------
 
-    @Test
-    void ac0613Err01_returns400_whenRoleFieldMissing() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"role\":\"ROLE_SUPER_ADMIN\"}", "{\"role\":\"bogus\"}"})
+    void ac0613Err_returns400_whenRoleFieldMissingOrInvalid(final String body) throws Exception {
         setAuthentication(buildUser(1L, 42L));
 
         mockMvc.perform(patch("/api/admin/users/{userId}/role", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest());
-
-        verify(adminUserService, never()).updateRole(any(), any(), any(), any());
-    }
-
-    @Test
-    void ac0613Err02_returns400_whenRoleIsSuperAdmin() throws Exception {
-        setAuthentication(buildUser(1L, 42L));
-
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", 9L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"role\":\"ROLE_SUPER_ADMIN\"}"))
-                .andExpect(status().isBadRequest());
-
-        verify(adminUserService, never()).updateRole(any(), any(), any(), any());
-    }
-
-    @Test
-    void ac0613Err03_returns400_whenRoleIsUnknownValue() throws Exception {
-        setAuthentication(buildUser(1L, 42L));
-
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", 9L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"role\":\"bogus\"}"))
+                        .content(body))
                 .andExpect(status().isBadRequest());
 
         verify(adminUserService, never()).updateRole(any(), any(), any(), any());
@@ -419,39 +398,16 @@ class AdminUserControllerTest {
     // AC : validation stricte du statut dans le DTO — 400 sur valeur absente/inconnue
     // ----------------------------------------------------------------
 
-    @Test
-    void ac0614Err01_returns400_whenStatusFieldMissing() throws Exception {
+    // BLOCKED est une valeur valide de UserStatus (US06.1.1) mais hors énumération
+    // AssignableStatus fermée à ACTIVE/INACTIVE pour cet endpoint (US06.1.4/US06.1.5).
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"status\":\"BLOCKED\"}", "{\"status\":\"bogus\"}"})
+    void ac0614Err_returns400_whenStatusFieldMissingOrInvalid(final String body) throws Exception {
         setAuthentication(buildUser(1L, 42L));
 
         mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest());
-
-        verify(adminUserService, never()).updateStatus(any(), any(), any(), any());
-    }
-
-    @Test
-    void ac0614Err02_returns400_whenStatusIsBlocked() throws Exception {
-        // BLOCKED est une valeur valide de UserStatus (US06.1.1) mais hors énumération
-        // AssignableStatus fermée à ACTIVE/INACTIVE pour cet endpoint (US06.1.4/US06.1.5).
-        setAuthentication(buildUser(1L, 42L));
-
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"BLOCKED\"}"))
-                .andExpect(status().isBadRequest());
-
-        verify(adminUserService, never()).updateStatus(any(), any(), any(), any());
-    }
-
-    @Test
-    void ac0614Err03_returns400_whenStatusIsUnknownValue() throws Exception {
-        setAuthentication(buildUser(1L, 42L));
-
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"bogus\"}"))
+                        .content(body))
                 .andExpect(status().isBadRequest());
 
         verify(adminUserService, never()).updateStatus(any(), any(), any(), any());

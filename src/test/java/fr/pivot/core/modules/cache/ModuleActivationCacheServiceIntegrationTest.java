@@ -22,9 +22,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.utility.DockerImageName;
 
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * Tests d'intégration {@link ModuleActivationCacheService} — Redis réel via Testcontainers
@@ -132,7 +134,7 @@ class ModuleActivationCacheServiceIntegrationTest extends AbstractIntegrationTes
     // ----------------------------------------------------------------
 
     @Test
-    void isEnabled_reFetchesFromBdd_afterCacheExpires() throws InterruptedException {
+    void isEnabled_reFetchesFromBdd_afterCacheExpires() {
         final ModuleActivation row = persistDirectly(true);
         assertThat(cacheService.isEnabled(tenantId, MODULE_ID)).isTrue();
 
@@ -141,9 +143,9 @@ class ModuleActivationCacheServiceIntegrationTest extends AbstractIntegrationTes
         row.setEnabled(false);
         repository.saveAndFlush(row);
 
-        Thread.sleep(TimeUnit.SECONDS.toMillis(TTL_SECONDS) + 800);
+        await().atMost(Duration.ofSeconds(TTL_SECONDS + 3)).pollInterval(Duration.ofMillis(200))
+            .untilAsserted(() -> assertThat(redis.hasKey(cacheKey())).isFalse());
 
-        assertThat(redis.hasKey(cacheKey())).isFalse();
         assertThat(cacheService.isEnabled(tenantId, MODULE_ID)).isFalse();
     }
 

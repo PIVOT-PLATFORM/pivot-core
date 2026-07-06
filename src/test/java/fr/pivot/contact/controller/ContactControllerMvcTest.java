@@ -1,6 +1,5 @@
 package fr.pivot.contact.controller;
 
-import fr.pivot.auth.exception.RateLimitException;
 import fr.pivot.auth.service.RateLimiterService;
 import fr.pivot.auth.web.GlobalExceptionHandler;
 import fr.pivot.contact.service.ContactService;
