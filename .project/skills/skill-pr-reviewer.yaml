@@ -63,8 +63,8 @@ gate_scoring:
     security_25pts: "Isolation tenant, pas de secret, endpoints admin protégés, test cross-tenant"
     quality_25pts: "Checkstyle/SpotBugs verts, pas de TODO"
     thresholds:
-      merge_autonome: "≥ 85 — merge sans intervention humaine"
-      merge_documente: "60–84 — merge avec commentaire breakdown obligatoire"
+      merge_autonome: "= 100/100 — sortie du mode draft, merge sans intervention humaine"
+      merge_documente: "60–99 — merge avec commentaire breakdown obligatoire"
       breaking_point_2: "< 60 — label needs-human-review + escalade mainteneur"
 
 ---
