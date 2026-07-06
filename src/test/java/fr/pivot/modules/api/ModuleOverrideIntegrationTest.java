@@ -255,8 +255,13 @@ class ModuleOverrideIntegrationTest extends AbstractIntegrationTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(event.getTenant().getId()).isEqualTo(tenantId);
-        assertThat(event.getMeta()).contains("\"superAdminId\":" + superAdmin.getId());
-        assertThat(event.getMeta()).contains("\"enabled\":true");
+        // Round-trip through the JSONB column reformats the text (Postgres jsonb does not
+        // preserve original whitespace/key order) — assert on the values without depending
+        // on exact formatting rather than a literal substring match (same convention as
+        // AdminUserIntegrationTest).
+        final String meta = event.getMeta().replace(" ", "");
+        assertThat(meta).contains("\"superAdminId\":" + superAdmin.getId())
+                .contains("\"enabled\":true");
     }
 
     @Test
@@ -281,7 +286,9 @@ class ModuleOverrideIntegrationTest extends AbstractIntegrationTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(event.getTenant().getId()).isEqualTo(tenantId);
-        assertThat(event.getMeta()).contains("\"superAdminId\":" + superAdmin.getId());
+        // Round-trip through the JSONB column reformats the text — see comment above.
+        final String meta = event.getMeta().replace(" ", "");
+        assertThat(meta).contains("\"superAdminId\":" + superAdmin.getId());
     }
 
     // ----------------------------------------------------------------
