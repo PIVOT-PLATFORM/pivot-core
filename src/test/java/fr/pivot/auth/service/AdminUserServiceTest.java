@@ -14,6 +14,9 @@ import fr.pivot.auth.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -26,11 +29,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -136,22 +139,22 @@ class AdminUserServiceTest {
         verify(userRepository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
 
-    @Test
-    void ac0611_06_ignoresStatusFilter_whenBlank() {
+    @ParameterizedTest
+    @MethodSource("acceptedOrIgnoredFilterCases")
+    void ac0611_acceptsOrIgnoresFilter_whenBlankOrKnownValue(final String role, final String status) {
         stubEmptyPage();
 
-        service.listUsers(TENANT_ID, 0, 20, null, "  ", null);
+        service.listUsers(TENANT_ID, 0, 20, role, status, null);
 
         verify(userRepository).findAll(any(Specification.class), any(Pageable.class));
     }
 
-    @Test
-    void ac0611_07_acceptsStatusFilter_caseInsensitive() {
-        stubEmptyPage();
-
-        service.listUsers(TENANT_ID, 0, 20, null, "active", null);
-
-        verify(userRepository).findAll(any(Specification.class), any(Pageable.class));
+    private static Stream<Arguments> acceptedOrIgnoredFilterCases() {
+        return Stream.of(
+                Arguments.of(null, "  "),
+                Arguments.of(null, "active"),
+                Arguments.of("  ", null),
+                Arguments.of("ROLE_ADMIN", null));
     }
 
     // ----------------------------------------------------------------
@@ -166,24 +169,6 @@ class AdminUserServiceTest {
                 .hasFieldOrPropertyWithValue("value", "ROLE_BOGUS");
 
         verify(userRepository, never()).findAll(any(Specification.class), any(Pageable.class));
-    }
-
-    @Test
-    void ac0611_09_ignoresRoleFilter_whenBlank() {
-        stubEmptyPage();
-
-        service.listUsers(TENANT_ID, 0, 20, "  ", null, null);
-
-        verify(userRepository).findAll(any(Specification.class), any(Pageable.class));
-    }
-
-    @Test
-    void ac0611_10_acceptsRoleFilter_whenKnownRole() {
-        stubEmptyPage();
-
-        service.listUsers(TENANT_ID, 0, 20, "ROLE_ADMIN", null, null);
-
-        verify(userRepository).findAll(any(Specification.class), any(Pageable.class));
     }
 
     // ----------------------------------------------------------------
@@ -362,8 +347,7 @@ class AdminUserServiceTest {
 
         verify(target).setActive(true);
         verify(userRepository).save(target);
-        verify(emailService).sendAccountReactivatedEmail(
-                eq("bob@pivot.test"), eq("Bob"), eq(Locale.FRENCH));
+        verify(emailService).sendAccountReactivatedEmail("bob@pivot.test", "Bob", Locale.FRENCH);
         verify(tokenService, never()).revokeAllForUser(any());
         assertThat(dto.id()).isEqualTo(99L);
     }

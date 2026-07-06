@@ -126,14 +126,14 @@ class AccountControllerTest {
         when(request.getHeader("User-Agent")).thenReturn("test-agent");
         final Map<String, Object> body = Map.of("firstName", "Bob", "lastName", "Dupont");
         final ProfileDto dto = new ProfileDto("Bob", "Dupont", "alice@pivot.test", null, "fr");
-        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null))))
+        when(profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", null)))
                 .thenReturn(dto);
 
         final ResponseEntity<ProfileDto> response = controller.updateProfile(body, request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isEqualTo(dto);
-        verify(auditService).log(eq(user), eq(AuditService.PROFILE_UPDATED), eq("127.0.0.1"), eq("test-agent"));
+        verify(auditService).log(user, AuditService.PROFILE_UPDATED, "127.0.0.1", "test-agent");
     }
 
     @Test
@@ -207,7 +207,7 @@ class AccountControllerTest {
         final Map<String, Object> body =
                 Map.of("firstName", "Bob", "lastName", "Dupont", "preferredLanguage", "en");
         final ProfileDto dto = new ProfileDto("Bob", "Dupont", "alice@pivot.test", null, "en");
-        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", "en"))))
+        when(profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", "en")))
                 .thenReturn(dto);
 
         final ResponseEntity<ProfileDto> response = controller.updateProfile(body, request);
@@ -224,12 +224,12 @@ class AccountControllerTest {
         when(request.getHeader("User-Agent")).thenReturn("test-agent");
         final Map<String, Object> body = Map.of("firstName", "Bob", "lastName", "Dupont");
         final ProfileDto dto = new ProfileDto("Bob", "Dupont", "alice@pivot.test", null, "fr");
-        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null))))
+        when(profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", null)))
                 .thenReturn(dto);
 
         controller.updateProfile(body, request);
 
-        verify(profileService).updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null)));
+        verify(profileService).updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", null));
     }
 
     @Test
@@ -244,13 +244,13 @@ class AccountControllerTest {
         final Map<String, Object> body =
                 Map.of("firstName", "Bob", "lastName", "Dupont", "preferredLanguage", 42);
         final ProfileDto dto = new ProfileDto("Bob", "Dupont", "alice@pivot.test", null, "fr");
-        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null))))
+        when(profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", null)))
                 .thenReturn(dto);
 
         final ResponseEntity<ProfileDto> response = controller.updateProfile(body, request);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        verify(profileService).updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", null)));
+        verify(profileService).updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", null));
     }
 
     @Test
@@ -259,7 +259,7 @@ class AccountControllerTest {
         setAuthentication(user);
         final Map<String, Object> body =
                 Map.of("firstName", "Bob", "lastName", "Dupont", "preferredLanguage", "de");
-        when(profileService.updateProfile(eq(user), eq(new ProfileUpdateRequest("Bob", "Dupont", "de"))))
+        when(profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", "de")))
                 .thenThrow(new InvalidPreferredLanguageException("La langue préférée doit être 'fr' ou 'en'."));
 
         assertThatThrownBy(() -> controller.updateProfile(body, request))
@@ -287,7 +287,7 @@ class AccountControllerTest {
         when(request.getHeader("User-Agent")).thenReturn("test-agent");
         final MultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
         final ProfileDto dto = new ProfileDto("Alice", "Martin", "alice@pivot.test", "/api/avatars/1/uuid.jpg", "fr");
-        when(profileService.updateAvatar(eq(user), eq(file))).thenReturn(dto);
+        when(profileService.updateAvatar(user, file)).thenReturn(dto);
 
         final ResponseEntity<ProfileDto> response = controller.uploadAvatar(file, request);
 

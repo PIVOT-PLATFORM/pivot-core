@@ -56,6 +56,8 @@ public class AccountController {
 
     private static final Logger LOG = LoggerFactory.getLogger(AccountController.class);
     private static final String HEADER_USER_AGENT = "User-Agent";
+    private static final String KEY_ERROR = "error";
+    private static final String KEY_MESSAGE = "message";
 
     private final ProfileService profileService;
     private final AuditService auditService;
@@ -180,8 +182,8 @@ public class AccountController {
     @ExceptionHandler(InvalidProfileNameException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidName(final InvalidProfileNameException ex) {
         return ResponseEntity.badRequest().body(Map.of(
-                "error", "INVALID_NAME",
-                "message", "Le prénom et le nom sont obligatoires."));
+                KEY_ERROR, "INVALID_NAME",
+                KEY_MESSAGE, "Le prénom et le nom sont obligatoires."));
     }
 
     /**
@@ -193,8 +195,8 @@ public class AccountController {
     @ExceptionHandler(EmailFieldNotAllowedException.class)
     public ResponseEntity<Map<String, Object>> handleEmailFieldNotAllowed(final EmailFieldNotAllowedException ex) {
         return ResponseEntity.badRequest().body(Map.of(
-                "error", "EMAIL_CHANGE_NOT_ALLOWED",
-                "message", "La modification de l'adresse email n'est pas prise en charge par cet endpoint."));
+                KEY_ERROR, "EMAIL_CHANGE_NOT_ALLOWED",
+                KEY_MESSAGE, "La modification de l'adresse email n'est pas prise en charge par cet endpoint."));
     }
 
     /**
@@ -208,8 +210,8 @@ public class AccountController {
     public ResponseEntity<Map<String, Object>> handleInvalidPreferredLanguage(
             final InvalidPreferredLanguageException ex) {
         return ResponseEntity.badRequest().body(Map.of(
-                "error", "INVALID_PREFERRED_LANGUAGE",
-                "message", "La langue préférée doit être 'fr' ou 'en'."));
+                KEY_ERROR, "INVALID_PREFERRED_LANGUAGE",
+                KEY_MESSAGE, "La langue préférée doit être 'fr' ou 'en'."));
     }
 
     /**
@@ -221,8 +223,8 @@ public class AccountController {
     @ExceptionHandler(AvatarTooLargeException.class)
     public ResponseEntity<Map<String, Object>> handleAvatarTooLarge(final AvatarTooLargeException ex) {
         return ResponseEntity.badRequest().body(Map.of(
-                "error", "AVATAR_TOO_LARGE",
-                "message", "L'image dépasse la taille maximale autorisée (2 Mo)."));
+                KEY_ERROR, "AVATAR_TOO_LARGE",
+                KEY_MESSAGE, "L'image dépasse la taille maximale autorisée (2 Mo)."));
     }
 
     /**
@@ -237,8 +239,8 @@ public class AccountController {
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<Map<String, Object>> handleMaxUploadSizeExceeded(final MaxUploadSizeExceededException ex) {
         return ResponseEntity.badRequest().body(Map.of(
-                "error", "AVATAR_TOO_LARGE",
-                "message", "L'image dépasse la taille maximale autorisée (2 Mo)."));
+                KEY_ERROR, "AVATAR_TOO_LARGE",
+                KEY_MESSAGE, "L'image dépasse la taille maximale autorisée (2 Mo)."));
     }
 
     /**
@@ -250,8 +252,8 @@ public class AccountController {
     @ExceptionHandler(InvalidAvatarFormatException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidAvatarFormat(final InvalidAvatarFormatException ex) {
         return ResponseEntity.badRequest().body(Map.of(
-                "error", "AVATAR_INVALID_FORMAT",
-                "message", "Format d'image non supporté (JPEG, PNG ou WEBP uniquement)."));
+                KEY_ERROR, "AVATAR_INVALID_FORMAT",
+                KEY_MESSAGE, "Format d'image non supporté (JPEG, PNG ou WEBP uniquement)."));
     }
 
     // ----------------------------------------------------------------

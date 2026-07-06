@@ -365,9 +365,9 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
     void ac0613Sec01_throwsSelfRoleChangeForbidden_whenAdminTargetsOwnId() {
         final User admin = createUser(tenantAId, "admin2@tenant-a.test", "Admin", "Two", "ROLE_ADMIN", true, false);
         setAuthentication("ROLE_ADMIN");
+        final Long adminId = admin.getId();
 
-        assertThatThrownBy(() ->
-                adminUserService.updateRole(tenantAId, admin.getId(), admin.getId(), AssignableRole.ROLE_USER))
+        assertThatThrownBy(() -> adminUserService.updateRole(tenantAId, adminId, adminId, AssignableRole.ROLE_USER))
                 .isInstanceOf(SelfRoleChangeForbiddenException.class);
 
         assertThat(userRepository.findById(admin.getId()).orElseThrow().getRole()).isEqualTo("ROLE_ADMIN");
@@ -378,9 +378,10 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User admin = createUser(tenantAId, "admin3@tenant-a.test", "Admin", "Three", "ROLE_ADMIN", true, false);
         final User targetInB = createUser(tenantBId, "target-b@tenant-b.test", "Target", "B", "ROLE_USER", true, false);
         setAuthentication("ROLE_ADMIN");
+        final Long adminId = admin.getId();
+        final Long targetInBId = targetInB.getId();
 
-        assertThatThrownBy(() ->
-                adminUserService.updateRole(tenantAId, admin.getId(), targetInB.getId(), AssignableRole.ROLE_ADMIN))
+        assertThatThrownBy(() -> adminUserService.updateRole(tenantAId, adminId, targetInBId, AssignableRole.ROLE_ADMIN))
                 .isInstanceOf(AdminUserNotFoundException.class);
 
         // Isolation tenant : la ressource d'un autre tenant reste intacte, jamais modifiée.
@@ -391,9 +392,9 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
     void ac0613Sec03_throwsAdminUserNotFound_whenTargetDoesNotExist() {
         final User admin = createUser(tenantAId, "admin4@tenant-a.test", "Admin", "Four", "ROLE_ADMIN", true, false);
         setAuthentication("ROLE_ADMIN");
+        final Long adminId = admin.getId();
 
-        assertThatThrownBy(() ->
-                adminUserService.updateRole(tenantAId, admin.getId(), 999_999_999L, AssignableRole.ROLE_ADMIN))
+        assertThatThrownBy(() -> adminUserService.updateRole(tenantAId, adminId, 999_999_999L, AssignableRole.ROLE_ADMIN))
                 .isInstanceOf(AdminUserNotFoundException.class);
     }
 
@@ -401,9 +402,9 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
     void ac0613Sec04_throwsAccessDenied_whenCallerIsRoleUser() {
         final User target = createUser(tenantAId, "victim@tenant-a.test", "Victim", "One", "ROLE_USER", true, false);
         setAuthentication("ROLE_USER");
+        final Long targetId = target.getId();
 
-        assertThatThrownBy(() ->
-                adminUserService.updateRole(tenantAId, 999L, target.getId(), AssignableRole.ROLE_ADMIN))
+        assertThatThrownBy(() -> adminUserService.updateRole(tenantAId, 999L, targetId, AssignableRole.ROLE_ADMIN))
                 .isInstanceOf(AccessDeniedException.class);
     }
 
@@ -420,9 +421,10 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User superAdmin =
                 createUser(tenantAId, "super5@tenant-a.test", "Super", "Five", "ROLE_SUPER_ADMIN", true, false);
         setAuthentication("ROLE_ADMIN");
+        final Long adminId = admin.getId();
+        final Long superAdminId = superAdmin.getId();
 
-        assertThatThrownBy(() ->
-                adminUserService.updateRole(tenantAId, admin.getId(), superAdmin.getId(), AssignableRole.ROLE_USER))
+        assertThatThrownBy(() -> adminUserService.updateRole(tenantAId, adminId, superAdminId, AssignableRole.ROLE_USER))
                 .isInstanceOf(SuperAdminRoleChangeForbiddenException.class);
 
         assertThat(userRepository.findById(superAdmin.getId()).orElseThrow().getRole())
@@ -603,9 +605,9 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
     void ac0614Sec01_throwsSelfStatusChangeForbidden_whenAdminTargetsOwnAccount() {
         final User admin = createUser(tenantAId, "admin-status2@tenant-a.test", "Admin", "Two", "ROLE_ADMIN", true, false);
         setAuthentication("ROLE_ADMIN");
+        final Long adminId = admin.getId();
 
-        assertThatThrownBy(() ->
-                adminUserService.updateStatus(tenantAId, admin.getId(), admin.getId(), AssignableStatus.INACTIVE))
+        assertThatThrownBy(() -> adminUserService.updateStatus(tenantAId, adminId, adminId, AssignableStatus.INACTIVE))
                 .isInstanceOf(SelfStatusChangeForbiddenException.class);
 
         assertThat(userRepository.findById(admin.getId()).orElseThrow().isActive()).isTrue();
@@ -616,9 +618,10 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User admin = createUser(tenantAId, "admin-status3@tenant-a.test", "Admin", "Three", "ROLE_ADMIN", true, false);
         final User targetInB = createUser(tenantBId, "target-status-b@tenant-b.test", "Target", "B", "ROLE_USER", true, false);
         setAuthentication("ROLE_ADMIN");
+        final Long adminId = admin.getId();
+        final Long targetInBId = targetInB.getId();
 
-        assertThatThrownBy(() ->
-                adminUserService.updateStatus(tenantAId, admin.getId(), targetInB.getId(), AssignableStatus.INACTIVE))
+        assertThatThrownBy(() -> adminUserService.updateStatus(tenantAId, adminId, targetInBId, AssignableStatus.INACTIVE))
                 .isInstanceOf(AdminUserNotFoundException.class);
 
         // Isolation tenant : la ressource d'un autre tenant reste intacte, jamais modifiée.
@@ -632,9 +635,9 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         // Security — un porteur ROLE_USER est rejeté avant toute lecture en base.
         final User target = createUser(tenantAId, "victim-status@tenant-a.test", "Victim", "One", "ROLE_USER", true, false);
         setAuthentication("ROLE_USER");
+        final Long targetId = target.getId();
 
-        assertThatThrownBy(() ->
-                adminUserService.updateStatus(tenantAId, 999L, target.getId(), AssignableStatus.INACTIVE))
+        assertThatThrownBy(() -> adminUserService.updateStatus(tenantAId, 999L, targetId, AssignableStatus.INACTIVE))
                 .isInstanceOf(AccessDeniedException.class);
 
         assertThat(userRepository.findById(target.getId()).orElseThrow().isActive()).isTrue();

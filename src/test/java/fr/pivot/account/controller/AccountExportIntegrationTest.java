@@ -151,9 +151,10 @@ class AccountExportIntegrationTest extends AbstractIntegrationTest {
 
         // PII exclusion: the admin-email-shaped marker planted on the owner's own row must be
         // redacted, and the other user's audit event must never appear at all.
-        assertThat(auditJson).doesNotContain("admin-leak@pivot.internal");
-        assertThat(auditJson).doesNotContain("other-user-secret-marker");
-        assertThat(auditJson).contains("account.blocked_by_admin");
+        assertThat(auditJson)
+            .doesNotContain("admin-leak@pivot.internal")
+            .doesNotContain("other-user-secret-marker")
+            .contains("account.blocked_by_admin");
 
         // Cross-user download: a different authenticated session must get 403, never the file.
         setAuthentication(otherUser);
@@ -169,7 +170,9 @@ class AccountExportIntegrationTest extends AbstractIntegrationTest {
         exportRepo.save(pending);
 
         setAuthentication(owner);
-        assertThatThrownBy(() -> controller.requestExport(fakeRequest()))
+        final HttpServletRequest req = fakeRequest();
+
+        assertThatThrownBy(() -> controller.requestExport(req))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
     }
@@ -200,8 +203,9 @@ class AccountExportIntegrationTest extends AbstractIntegrationTest {
     void requestExport_returns429_whenWithin24hOfPreviousReadyExport() {
         setAuthentication(owner);
         controller.requestExport(fakeRequest()); // completes synchronously → READY
+        final HttpServletRequest req = fakeRequest();
 
-        assertThatThrownBy(() -> controller.requestExport(fakeRequest()))
+        assertThatThrownBy(() -> controller.requestExport(req))
             .isInstanceOf(RateLimitException.class)
             .satisfies(ex -> assertThat(((RateLimitException) ex).getRetryAfterSeconds()).isGreaterThan(0));
     }
@@ -226,8 +230,9 @@ class AccountExportIntegrationTest extends AbstractIntegrationTest {
         final DataExportRequest req = exportRepo.findFirstByUserIdOrderByRequestedAtDesc(owner.getId()).orElseThrow();
         req.setExpiresAt(Instant.now().minus(1, ChronoUnit.HOURS));
         exportRepo.save(req);
+        final String token = tokenCaptor.getValue();
 
-        assertThatThrownBy(() -> controller.download(tokenCaptor.getValue()))
+        assertThatThrownBy(() -> controller.download(token))
             .isInstanceOf(ResponseStatusException.class)
             .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode()).isEqualTo(HttpStatus.GONE));
     }

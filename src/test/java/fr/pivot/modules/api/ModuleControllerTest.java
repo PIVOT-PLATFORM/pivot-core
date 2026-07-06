@@ -285,7 +285,7 @@ class ModuleControllerTest {
 
         controller.getModuleStatus("whiteboard");
 
-        verify(moduleActivationCacheService).isEnabled(eq(42L), eq("whiteboard"));
+        verify(moduleActivationCacheService).isEnabled(42L, "whiteboard");
     }
 
     // ----------------------------------------------------------------

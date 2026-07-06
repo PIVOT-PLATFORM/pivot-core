@@ -91,6 +91,6 @@ class ContactControllerTest {
         controller.submit(new ContactRequestDto("a@b.com", "msg", "fr"), request);
 
         verify(rateLimiter).contactIpBucket(TEST_IP);
-        verify(rateLimiter).checkAndRecord(eq(BUCKET), eq(5), eq(Duration.ofMinutes(10)));
+        verify(rateLimiter).checkAndRecord(BUCKET, 5, Duration.ofMinutes(10));
     }
 }

@@ -107,8 +107,10 @@ public class AdminModuleController {
         auditService.log(resolved.user(), AuditService.MODULE_ACTIVATED,
                 cookieHelper.clientIp(request), request.getHeader("User-Agent"));
 
-        LOG.info("event=ADMIN_MODULE_ACTIVATED userId={} tenantId={} moduleId={}",
-                resolved.user().getId(), resolved.tenantId(), sanitizeForLog(id));
+        if (LOG.isInfoEnabled()) {
+            LOG.info("event=ADMIN_MODULE_ACTIVATED userId={} tenantId={} moduleId={}",
+                    resolved.user().getId(), resolved.tenantId(), sanitizeForLog(id));
+        }
         return ResponseEntity.ok(Map.of("id", id, "enabled", true));
     }
 
@@ -135,8 +137,10 @@ public class AdminModuleController {
         auditService.log(resolved.user(), AuditService.MODULE_DEACTIVATED,
                 cookieHelper.clientIp(request), request.getHeader("User-Agent"));
 
-        LOG.info("event=ADMIN_MODULE_DEACTIVATED userId={} tenantId={} moduleId={}",
-                resolved.user().getId(), resolved.tenantId(), sanitizeForLog(id));
+        if (LOG.isInfoEnabled()) {
+            LOG.info("event=ADMIN_MODULE_DEACTIVATED userId={} tenantId={} moduleId={}",
+                    resolved.user().getId(), resolved.tenantId(), sanitizeForLog(id));
+        }
         return ResponseEntity.ok(Map.of("id", id, "enabled", false));
     }
 

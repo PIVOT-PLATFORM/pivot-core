@@ -60,8 +60,10 @@ public class AdminModuleActivationService {
     @PreAuthorize("hasRole('ADMIN')")
     public ModuleActivation activate(final Long tenantId, final String moduleId) {
         if (moduleActivationService.isEnabled(tenantId, moduleId)) {
-            LOG.info("event=ADMIN_MODULE_ACTIVATE_CONFLICT tenantId={} moduleId={}",
-                    tenantId, sanitizeForLog(moduleId));
+            if (LOG.isInfoEnabled()) {
+                LOG.info("event=ADMIN_MODULE_ACTIVATE_CONFLICT tenantId={} moduleId={}",
+                        tenantId, sanitizeForLog(moduleId));
+            }
             throw new ModuleAlreadyActiveException(moduleId);
         }
         try {

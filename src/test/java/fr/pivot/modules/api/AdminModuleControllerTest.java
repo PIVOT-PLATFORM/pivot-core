@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -259,12 +260,14 @@ class AdminModuleControllerTest {
         return module;
     }
 
-    // "role" only documents the caller's intent (ROLE_ADMIN) for readability — the RBAC check
-    // itself is not exercised here (AdminModuleActivationService is mocked); it is covered by
-    // AdminModuleActivationIntegrationTest against a real Spring Security proxy.
+    // "role" is stubbed on the mock for readability at call sites — the RBAC check itself is
+    // not exercised here (AdminModuleActivationService is mocked); it is covered by
+    // AdminModuleActivationIntegrationTest against a real Spring Security proxy. lenient()
+    // because most callers never read getRole() back — only documenting caller intent.
     private static User buildUser(final Long userId, final Long tenantId, final String role) {
         final User user = mock(User.class);
         when(user.getId()).thenReturn(userId);
+        lenient().when(user.getRole()).thenReturn(role);
         final Tenant tenant = mock(Tenant.class);
         when(tenant.getId()).thenReturn(tenantId);
         when(user.getTenant()).thenReturn(tenant);

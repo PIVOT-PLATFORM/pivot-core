@@ -11,9 +11,13 @@ import fr.pivot.tenant.repository.TenantRepository;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -224,8 +228,9 @@ class SuperAdminTenantServiceTest {
     @Test
     void createTenant_throwsConflict_whenSlugAlreadyExists() {
         when(tenantRepository.findBySlug(SLUG)).thenReturn(Optional.of(new Tenant()));
+        final CreateTenantRequest request = validRequest();
 
-        assertThatThrownBy(() -> service.createTenant(validRequest(), superAdmin, IP, USER_AGENT))
+        assertThatThrownBy(() -> service.createTenant(request, superAdmin, IP, USER_AGENT))
                 .isInstanceOf(TenantSlugAlreadyExistsException.class);
         verify(tenantRepository, never()).save(any());
     }
@@ -238,13 +243,14 @@ class SuperAdminTenantServiceTest {
     void createTenant_throwsRateLimit_andLogsAudit_whenLimitExceeded() {
         when(rateLimiter.checkAndRecord(any(), anyInt(), any())).thenReturn(false);
         when(rateLimiter.getRemainingSeconds(any())).thenReturn(1800L);
+        final CreateTenantRequest request = validRequest();
 
-        assertThatThrownBy(() -> service.createTenant(validRequest(), superAdmin, IP, USER_AGENT))
+        assertThatThrownBy(() -> service.createTenant(request, superAdmin, IP, USER_AGENT))
                 .isInstanceOf(RateLimitException.class)
                 .satisfies(ex -> assertThat(((RateLimitException) ex).getRetryAfterSeconds()).isEqualTo(1800L));
 
-        verify(auditService).log(eq(superAdmin), eq(null), eq(AuditService.TENANT_CREATION_RATE_LIMIT_EXCEEDED),
-                eq(IP), eq(USER_AGENT), eq(null));
+        verify(auditService).log(superAdmin, null, AuditService.TENANT_CREATION_RATE_LIMIT_EXCEEDED,
+                IP, USER_AGENT, null);
         verify(tenantRepository, never()).findBySlug(any());
         verify(tenantRepository, never()).save(any());
     }
@@ -260,20 +266,22 @@ class SuperAdminTenantServiceTest {
     // check-slug
     // ----------------------------------------------------------------
 
-    @Test
-    void checkSlugAvailability_returnsAvailable_whenFreeAndValid() {
-        final SlugAvailabilityResponse response = service.checkSlugAvailability("brand-new-tenant");
+    @ParameterizedTest
+    @MethodSource("slugAvailabilityCases")
+    void checkSlugAvailability_returnsExpectedAvailabilityAndReason(
+            final String slug, final boolean expectedAvailable, final String expectedReason) {
+        final SlugAvailabilityResponse response = service.checkSlugAvailability(slug);
 
-        assertThat(response.available()).isTrue();
-        assertThat(response.reason()).isNull();
+        assertThat(response.available()).isEqualTo(expectedAvailable);
+        assertThat(response.reason()).isEqualTo(expectedReason);
     }
 
-    @Test
-    void checkSlugAvailability_returnsReserved_whenSlugIsReservedWord() {
-        final SlugAvailabilityResponse response = service.checkSlugAvailability("api");
-
-        assertThat(response.available()).isFalse();
-        assertThat(response.reason()).isEqualTo("RESERVED");
+    private static Stream<Arguments> slugAvailabilityCases() {
+        return Stream.of(
+                Arguments.of("brand-new-tenant", true, null),
+                Arguments.of("api", false, "RESERVED"),
+                Arguments.of("AB", false, "INVALID_FORMAT"),
+                Arguments.of((String) null, false, "INVALID_FORMAT"));
     }
 
     @Test
@@ -284,22 +292,6 @@ class SuperAdminTenantServiceTest {
 
         assertThat(response.available()).isFalse();
         assertThat(response.reason()).isEqualTo("TAKEN");
-    }
-
-    @Test
-    void checkSlugAvailability_returnsInvalidFormat_whenSlugFailsRegex() {
-        final SlugAvailabilityResponse response = service.checkSlugAvailability("AB");
-
-        assertThat(response.available()).isFalse();
-        assertThat(response.reason()).isEqualTo("INVALID_FORMAT");
-    }
-
-    @Test
-    void checkSlugAvailability_returnsInvalidFormat_whenSlugIsNull() {
-        final SlugAvailabilityResponse response = service.checkSlugAvailability(null);
-
-        assertThat(response.available()).isFalse();
-        assertThat(response.reason()).isEqualTo("INVALID_FORMAT");
     }
 
     // ----------------------------------------------------------------

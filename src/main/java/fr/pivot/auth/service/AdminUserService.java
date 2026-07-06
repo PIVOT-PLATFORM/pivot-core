@@ -49,20 +49,20 @@ public class AdminUserService {
     public static final int MAX_PAGE_SIZE = 100;
 
     /**
-     * Rôles connus de la plateforme (voir CLAUDE.md « Schéma de rôles ») — seules valeurs
-     * acceptées par le filtre {@code role}. La colonne {@code role} reste une {@code VARCHAR(50)}
-     * libre en base (pas d'énumération SQL), mais le référentiel applicatif des rôles est fermé.
-     */
-    static final Set<String> KNOWN_ROLES =
-            Set.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN", "ROLE_USER", "ROLE_GUEST");
-
-    /**
      * Rôle plateforme protégé de toute modification par {@link #updateRole} — voir
      * {@link SuperAdminRoleChangeForbiddenException} : un compte {@code ROLE_SUPER_ADMIN} peut
      * résider dans le même tenant qu'un {@code ROLE_ADMIN} (le « tenant système »), mais reste
      * hors périmètre de cet endpoint tenant.
      */
     private static final String ROLE_SUPER_ADMIN = "ROLE_SUPER_ADMIN";
+
+    /**
+     * Rôles connus de la plateforme (voir CLAUDE.md « Schéma de rôles ») — seules valeurs
+     * acceptées par le filtre {@code role}. La colonne {@code role} reste une {@code VARCHAR(50)}
+     * libre en base (pas d'énumération SQL), mais le référentiel applicatif des rôles est fermé.
+     */
+    static final Set<String> KNOWN_ROLES =
+            Set.of(ROLE_SUPER_ADMIN, "ROLE_ADMIN", "ROLE_USER", "ROLE_GUEST");
 
     private final UserRepository userRepository;
     private final TokenService tokenService;
@@ -329,7 +329,7 @@ public class AdminUserService {
         }
         try {
             return UserStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
-        } catch (final IllegalArgumentException ex) {
+        } catch (final IllegalArgumentException _) {
             throw new InvalidUserFilterException("status", status);
         }
     }

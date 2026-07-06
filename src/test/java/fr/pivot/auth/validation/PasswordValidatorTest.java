@@ -30,19 +30,19 @@ class PasswordValidatorTest {
 
     @Test
     void ac0124_01_rejects11Chars_evenWithAllOtherCriteria() {
-        assertThat("Abcdefgh1!x").hasSize(11);
+        // "Abcdefgh1!x" is 11 chars — one below the 12-char minimum.
         assertThat(valid("Abcdefgh1!x")).isFalse();
     }
 
     @Test
     void ac0124_01_accepts12Chars_withAllCriteria() {
-        assertThat("Abcdefghi1!x").hasSize(12);
+        // "Abcdefghi1!x" is exactly 12 chars — the minimum.
         assertThat(valid("Abcdefghi1!x")).isTrue();
     }
 
     @Test
     void ac0124_01_accepts13Chars_withAllCriteria() {
-        assertThat("Abcdefghij1!x").hasSize(13);
+        // "Abcdefghij1!x" is 13 chars — one above the minimum.
         assertThat(valid("Abcdefghij1!x")).isTrue();
     }
 

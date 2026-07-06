@@ -161,7 +161,7 @@ public class DataExportService {
         request.setStatus(DataExportStatus.PENDING);
         try {
             exportRepo.saveAndFlush(request);
-        } catch (final DataIntegrityViolationException e) {
+        } catch (final DataIntegrityViolationException _) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Un export est déjà en cours de génération");
         }
         LOG.info("event=DATA_EXPORT_REQUESTED userId={} requestId={}", user.getId(), request.getId());

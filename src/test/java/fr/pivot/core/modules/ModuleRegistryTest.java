@@ -82,8 +82,9 @@ class ModuleRegistryTest {
         final ModuleRegistry registry = new ModuleRegistry(List.of(module("quiz", "Quiz", "0.1.0")));
 
         final List<PivotModule> modules = registry.getModules();
+        final PivotModule hack = module("hack", "Hack", "0.0.1");
 
-        assertThatThrownBy(() -> modules.add(module("hack", "Hack", "0.0.1")))
+        assertThatThrownBy(() -> modules.add(hack))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 

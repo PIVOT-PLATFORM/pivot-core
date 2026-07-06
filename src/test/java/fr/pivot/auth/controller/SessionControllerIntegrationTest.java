@@ -161,7 +161,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     // ----------------------------------------------------------------
-    // DELETE /api/account/sessions/{tokenId}
+    // Endpoint: DELETE /api/account/sessions/{tokenId}
     // ----------------------------------------------------------------
 
     @Test

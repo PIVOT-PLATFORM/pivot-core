@@ -26,6 +26,9 @@ public class EmailService {
     private static final Logger LOG = LoggerFactory.getLogger(EmailService.class);
     private static final String KEY_FIRST_NAME = "firstName";
     private static final String KEY_RESET_URL = "resetUrl";
+    private static final String KEY_LOGIN_URL = "loginUrl";
+    private static final String PATH_LOGIN = "/auth/login";
+    private static final String PATH_FORGOT_PASSWORD = "/auth/forgot-password";
 
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
@@ -99,8 +102,8 @@ public class EmailService {
         send(to, subject("email.subject.account-exists", locale),
             "email/account-exists",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
-                   "loginUrl", appUrl + "/auth/login",
-                   KEY_RESET_URL, appUrl + "/auth/forgot-password"),
+                   KEY_LOGIN_URL, appUrl + PATH_LOGIN,
+                   KEY_RESET_URL, appUrl + PATH_FORGOT_PASSWORD),
             locale);
     }
 
@@ -138,7 +141,7 @@ public class EmailService {
                    "changedAt", formattedDate,
                    "ip", ip != null ? ip
                        : messageSource.getMessage("email.password-changed.unknown-ip", null, locale),
-                   KEY_RESET_URL, appUrl + "/auth/forgot-password"),
+                   KEY_RESET_URL, appUrl + PATH_FORGOT_PASSWORD),
             locale);
     }
 
@@ -188,7 +191,7 @@ public class EmailService {
                    "changedAt", formattedDate,
                    "ip", ip != null ? ip
                        : messageSource.getMessage("email.password-changed.unknown-ip", null, locale),
-                   KEY_RESET_URL, appUrl + "/auth/forgot-password"),
+                   KEY_RESET_URL, appUrl + PATH_FORGOT_PASSWORD),
             locale);
     }
 
@@ -207,8 +210,8 @@ public class EmailService {
         send(to, subject("email.subject.email-change-duplicate", locale),
             "email/email-change-duplicate",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
-                   "loginUrl", appUrl + "/auth/login",
-                   KEY_RESET_URL, appUrl + "/auth/forgot-password"),
+                   KEY_LOGIN_URL, appUrl + PATH_LOGIN,
+                   KEY_RESET_URL, appUrl + PATH_FORGOT_PASSWORD),
             locale);
     }
 
@@ -227,7 +230,7 @@ public class EmailService {
         send(to, subject("email.subject.account-reactivated", locale),
             "email/account-reactivated",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
-                   "loginUrl", appUrl + "/auth/login"),
+                   KEY_LOGIN_URL, appUrl + PATH_LOGIN),
             locale);
     }
 
@@ -293,15 +296,6 @@ public class EmailService {
     }
 
     /**
-     * Internal notification forwarded to the owner — Reply-To set to the sender's address
-     * so the owner can reply directly to the user.
-     *
-     * @param to      owner email
-     * @param from    the sender's email from the form (also used as Reply-To)
-     * @param message the message body
-     * @param locale  the sender's preferred locale (used as notification context)
-     */
-    /**
      * RGPD Art. 17 — confirms an account-deletion request immediately after it is confirmed
      * (US02.2.4). States the effective purge date and carries the single-use cancellation link
      * (the only way to abort the deletion once tokens have already been revoked).
@@ -356,10 +350,19 @@ public class EmailService {
         send(to, subject("email.subject.account-deletion-cancelled", locale),
             "email/account-deletion-cancelled",
             Map.of(KEY_FIRST_NAME, firstName != null ? firstName : fallback(locale),
-                   "loginUrl", appUrl + "/auth/login"),
+                   KEY_LOGIN_URL, appUrl + PATH_LOGIN),
             locale);
     }
 
+    /**
+     * Internal notification forwarded to the owner — Reply-To set to the sender's address
+     * so the owner can reply directly to the user.
+     *
+     * @param to      owner email
+     * @param from    the sender's email from the form (also used as Reply-To)
+     * @param message the message body
+     * @param locale  the sender's preferred locale (used as notification context)
+     */
     @Async
     public void sendContactNotification(String to, String from, String message, Locale locale) {
         send(to, subject("email.subject.contact-notification", locale),

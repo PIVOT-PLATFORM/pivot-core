@@ -55,6 +55,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class SuperAdminTenantController {
 
     private static final Logger LOG = LoggerFactory.getLogger(SuperAdminTenantController.class);
+    private static final String KEY_ERROR = "error";
+    private static final String KEY_MESSAGE = "message";
 
     private final SuperAdminTenantService superAdminTenantService;
     private final AuditService auditService;
@@ -123,8 +125,10 @@ public class SuperAdminTenantController {
         final CreateTenantResponse response = superAdminTenantService.createTenant(
                 request, caller, cookieHelper.clientIp(httpRequest), httpRequest.getHeader("User-Agent"));
 
-        LOG.info("event=SUPERADMIN_TENANT_CREATED superAdminId={} tenantId={} slug={}",
-                caller.getId(), response.id(), sanitizeForLog(response.slug()));
+        if (LOG.isInfoEnabled()) {
+            LOG.info("event=SUPERADMIN_TENANT_CREATED superAdminId={} tenantId={} slug={}",
+                    caller.getId(), response.id(), sanitizeForLog(response.slug()));
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -194,8 +198,8 @@ public class SuperAdminTenantController {
     @ExceptionHandler(TenantSlugAlreadyExistsException.class)
     public ResponseEntity<Map<String, Object>> handleSlugAlreadyExists() {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "error", "TENANT_SLUG_ALREADY_EXISTS",
-                "message", "Ce slug est déjà utilisé par un autre tenant"));
+                KEY_ERROR, "TENANT_SLUG_ALREADY_EXISTS",
+                KEY_MESSAGE, "Ce slug est déjà utilisé par un autre tenant"));
     }
 
     /**
@@ -206,8 +210,8 @@ public class SuperAdminTenantController {
     @ExceptionHandler(ReservedTenantSlugException.class)
     public ResponseEntity<Map<String, Object>> handleReservedSlug() {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "error", "TENANT_SLUG_RESERVED",
-                "message", "Ce slug est réservé et ne peut pas être utilisé"));
+                KEY_ERROR, "TENANT_SLUG_RESERVED",
+                KEY_MESSAGE, "Ce slug est réservé et ne peut pas être utilisé"));
     }
 
     /**
@@ -219,8 +223,8 @@ public class SuperAdminTenantController {
     @ExceptionHandler(TenantNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleTenantNotFound(final TenantNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "error", "TENANT_NOT_FOUND",
-                "message", "Ce tenant n'existe pas"));
+                KEY_ERROR, "TENANT_NOT_FOUND",
+                KEY_MESSAGE, "Ce tenant n'existe pas"));
     }
 
     /**
@@ -234,8 +238,8 @@ public class SuperAdminTenantController {
     public ResponseEntity<Map<String, Object>> handleSystemTenantProtected(
             final SystemTenantProtectedException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                "error", "SYSTEM_TENANT_PROTECTED",
-                "message", "Le tenant système hébergeant les comptes super-administrateur "
+                KEY_ERROR, "SYSTEM_TENANT_PROTECTED",
+                KEY_MESSAGE, "Le tenant système hébergeant les comptes super-administrateur "
                         + "ne peut pas être désactivé"));
     }
 
@@ -249,8 +253,8 @@ public class SuperAdminTenantController {
     public ResponseEntity<Map<String, Object>> handleUnsupportedStatus(
             final UnsupportedTenantStatusException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "error", "UNSUPPORTED_TENANT_STATUS",
-                "message", "Seul le statut INACTIVE est actuellement supporté"));
+                KEY_ERROR, "UNSUPPORTED_TENANT_STATUS",
+                KEY_MESSAGE, "Seul le statut INACTIVE est actuellement supporté"));
     }
 
     // ----------------------------------------------------------------

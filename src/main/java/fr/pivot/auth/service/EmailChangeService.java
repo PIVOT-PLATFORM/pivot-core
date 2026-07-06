@@ -227,7 +227,7 @@ public class EmailChangeService {
             // unique index idx_users_tenant_email (tenant_id, email) is the actual source of
             // truth; the existsBy check above is only a fast path that narrows the race window.
             userRepo.saveAndFlush(user);
-        } catch (final DataIntegrityViolationException ex) {
+        } catch (final DataIntegrityViolationException _) {
             LOG.warn("event=EMAIL_CHANGE_TARGET_TAKEN_RACE userId={}", user.getId());
             auditService.log(user, AuditService.EMAIL_CHANGE_TARGET_TAKEN, ip, userAgent);
             throw new EmailChangeTargetTakenException();

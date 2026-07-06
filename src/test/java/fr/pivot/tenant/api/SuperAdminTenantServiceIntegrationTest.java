@@ -81,8 +81,9 @@ class SuperAdminTenantServiceIntegrationTest extends AbstractIntegrationTest {
     void updateStatus_shouldThrowAccessDenied_whenCallerIsNotSuperAdmin() {
         final Tenant tenant = createTenant();
         setAuthentication("ROLE_ADMIN");
+        final Long tenantId = tenant.getId();
 
-        assertThatThrownBy(() -> superAdminTenantService.updateStatus(tenant.getId(), "INACTIVE"))
+        assertThatThrownBy(() -> superAdminTenantService.updateStatus(tenantId, "INACTIVE"))
                 .isInstanceOf(AccessDeniedException.class);
 
         assertThat(tenantRepository.findById(tenant.getId()).orElseThrow().isActive()).isTrue();
@@ -96,8 +97,9 @@ class SuperAdminTenantServiceIntegrationTest extends AbstractIntegrationTest {
     void updateStatus_shouldThrowSystemTenantProtected_whenTargetingSystemTenant() {
         setAuthentication("ROLE_SUPER_ADMIN");
         final Tenant systemTenant = tenantRepository.findBySlug("pivot-saas").orElseThrow();
+        final Long systemTenantId = systemTenant.getId();
 
-        assertThatThrownBy(() -> superAdminTenantService.updateStatus(systemTenant.getId(), "INACTIVE"))
+        assertThatThrownBy(() -> superAdminTenantService.updateStatus(systemTenantId, "INACTIVE"))
                 .isInstanceOf(SystemTenantProtectedException.class);
 
         // Untouched — no invalidation timestamp, still active.
@@ -122,8 +124,9 @@ class SuperAdminTenantServiceIntegrationTest extends AbstractIntegrationTest {
     void updateStatus_shouldThrowUnsupportedStatus_whenStatusIsNotInactive() {
         final Tenant tenant = createTenant();
         setAuthentication("ROLE_SUPER_ADMIN");
+        final Long tenantId = tenant.getId();
 
-        assertThatThrownBy(() -> superAdminTenantService.updateStatus(tenant.getId(), "ACTIVE"))
+        assertThatThrownBy(() -> superAdminTenantService.updateStatus(tenantId, "ACTIVE"))
                 .isInstanceOf(UnsupportedTenantStatusException.class);
 
         assertThat(tenantRepository.findById(tenant.getId()).orElseThrow().isActive()).isTrue();
