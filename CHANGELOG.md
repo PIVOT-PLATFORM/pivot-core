@@ -1,3 +1,16 @@
+# [0.26.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.25.0...v0.26.0) (2026-07-06)
+
+
+### Features
+
+* **auth:** alerte connexion suspecte — appareil inconnu (US01.4.3a) ([#151](https://github.com/PIVOT-PLATFORM/pivot-core/issues/151)) ([2794425](https://github.com/PIVOT-PLATFORM/pivot-core/commit/27944259c3555102635264992e4d68a1a432f323)), closes [SessionService#login](https://github.com/SessionService/issues/login)
+* **auth:** gestion des appareils de confiance (US01.4.2) ([#152](https://github.com/PIVOT-PLATFORM/pivot-core/issues/152)) ([628d9cf](https://github.com/PIVOT-PLATFORM/pivot-core/commit/628d9cff52cf7c0709779b4d60838596deb83837))
+* **auth:** US01.5.1 - email de confirmation d'action sensible ([#154](https://github.com/PIVOT-PLATFORM/pivot-core/issues/154)) ([8fccf62](https://github.com/PIVOT-PLATFORM/pivot-core/commit/8fccf6204186dbfe3aa8eed64ceae3ee554c018b))
+* **backend:** EN04.4 — Docker healthchecks liveness/readiness ([#162](https://github.com/PIVOT-PLATFORM/pivot-core/issues/162)) ([a6d6e95](https://github.com/PIVOT-PLATFORM/pivot-core/commit/a6d6e95ed092325708c01f732bd516baeb57a6a5))
+* **infra:** add docker-compose.prod.yml (EN07.1) ([#149](https://github.com/PIVOT-PLATFORM/pivot-core/issues/149)) ([92e3e43](https://github.com/PIVOT-PLATFORM/pivot-core/commit/92e3e43c0fa0fc2e9955cc1d0fad23263ed8e123))
+* **notifications:** infrastructure notifications in-app (EN-NOTIF) ([#160](https://github.com/PIVOT-PLATFORM/pivot-core/issues/160)) ([db58eae](https://github.com/PIVOT-PLATFORM/pivot-core/commit/db58eaeffe7f863f0b561ec781a3f9eb9ee73606)), closes [154/#151](https://github.com/PIVOT-PLATFORM/pivot-core/issues/151) [ChannelInterceptor#preSend](https://github.com/ChannelInterceptor/issues/preSend)
+* **US03.3.3:** Admin tenant voit uniquement modules de son plan ([#161](https://github.com/PIVOT-PLATFORM/pivot-core/issues/161)) ([130f263](https://github.com/PIVOT-PLATFORM/pivot-core/commit/130f2637dd817ad8fd5be74e4128e991b5092f8e)), closes [#153](https://github.com/PIVOT-PLATFORM/pivot-core/issues/153) [#159](https://github.com/PIVOT-PLATFORM/pivot-core/issues/159) [#153](https://github.com/PIVOT-PLATFORM/pivot-core/issues/153)
+
 # [0.24.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.23.0...v0.24.0) (2026-07-06)
 
 
