@@ -98,6 +98,30 @@ class RequestMdcFilterTest {
     }
 
     @Test
+    void doFilter_stripsCrLf_fromIncomingRequestId() throws Exception {
+        // CWE-117 (log forging): a malicious X-Request-Id must not be able to inject fake log
+        // lines, nor split the response into extra headers.
+        when(request.getHeader(RequestMdcFilter.REQUEST_ID_HEADER))
+                .thenReturn("abc\r\nX-Injected: evil\ndef");
+
+        filter.doFilterInternal(request, response, chain);
+
+        final String sanitized = capturedResponseRequestId();
+        assertThat(sanitized).doesNotContain("\r").doesNotContain("\n");
+        assertThat(sanitized).isEqualTo("abc__X-Injected: evil_def");
+    }
+
+    @Test
+    void doFilter_truncatesExcessivelyLongIncomingRequestId() throws Exception {
+        final String tooLong = "a".repeat(500);
+        when(request.getHeader(RequestMdcFilter.REQUEST_ID_HEADER)).thenReturn(tooLong);
+
+        filter.doFilterInternal(request, response, chain);
+
+        assertThat(capturedResponseRequestId()).hasSize(RequestMdcFilter.MAX_REQUEST_ID_LENGTH);
+    }
+
+    @Test
     void doFilter_alwaysInvokesChain() throws Exception {
         when(request.getHeader(RequestMdcFilter.REQUEST_ID_HEADER)).thenReturn(null);
 

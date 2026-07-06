@@ -33,7 +33,12 @@ import java.util.UUID;
  * threaded through by an upstream reverse proxy), otherwise a fresh random UUID is generated.
  * Echoed back on the response (same header) and exposed cross-origin (see
  * {@link SecurityConfig#corsConfigurationSource()}) so the frontend can surface it in bug
- * reports/support tickets without needing server-side log access.
+ * reports/support tickets without needing server-side log access. A caller-supplied value is
+ * untrusted input: CR/LF are stripped (CWE-117 log forging — same defense already applied to
+ * other untrusted values via {@code sanitizeForLog} in {@link fr.pivot.modules.api.ModuleController}
+ * / {@link fr.pivot.core.modules.ModuleActivationService}, needed here too since MDC feeds both
+ * the JSON encoder and, on the {@code test} profile, a plain-text pattern) and the value is capped
+ * to {@value #MAX_REQUEST_ID_LENGTH} characters before it ever reaches MDC or the response header.
  *
  * <p><b>tenantId</b> / <b>userId</b>: the numeric database primary keys ({@code public.tenants.id}
  * / {@code public.users.id}) — never the email, name or raw/hashed token. This matches the
@@ -67,6 +72,9 @@ public class RequestMdcFilter extends OncePerRequestFilter {
     /** Header used both to read a caller-supplied request id and to echo it back on the response. */
     public static final String REQUEST_ID_HEADER = "X-Request-Id";
 
+    /** Upper bound applied to a caller-supplied requestId — defense against log/header abuse. */
+    static final int MAX_REQUEST_ID_LENGTH = 128;
+
     static final String MDC_REQUEST_ID = "requestId";
     static final String MDC_TENANT_ID = "tenantId";
     static final String MDC_USER_ID = "userId";
@@ -90,7 +98,21 @@ public class RequestMdcFilter extends OncePerRequestFilter {
 
     private static String resolveRequestId(final HttpServletRequest request) {
         final String incoming = request.getHeader(REQUEST_ID_HEADER);
-        return incoming != null && !incoming.isBlank() ? incoming : UUID.randomUUID().toString();
+        if (incoming == null || incoming.isBlank()) {
+            return UUID.randomUUID().toString();
+        }
+        return sanitize(incoming);
+    }
+
+    /**
+     * Neutralizes CR/LF (CWE-117 log forging) and caps the length of a caller-supplied value
+     * before it reaches MDC (and therefore log lines) or the response header. Mirrors the
+     * {@code sanitizeForLog} helper already used elsewhere in this codebase for other untrusted
+     * request-derived strings.
+     */
+    private static String sanitize(final String value) {
+        final String stripped = value.replaceAll("[\r\n]", "_");
+        return stripped.length() > MAX_REQUEST_ID_LENGTH ? stripped.substring(0, MAX_REQUEST_ID_LENGTH) : stripped;
     }
 
     private static void populateAuthenticatedContext() {
