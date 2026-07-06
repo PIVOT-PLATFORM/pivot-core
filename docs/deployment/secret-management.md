@@ -60,16 +60,13 @@ entièrement sur les fonctionnalités natives de Spring Boot 4.x.
 
 ## Intégration `docker-compose.prod.yml` (EN07.1)
 
-> **Point de réconciliation ouvert (2026-07-06) :** la version actuelle de `docker-compose.prod.yml`
-> sur `feat/en07-1-docker-compose-prod` (PR #149) câble les `target:` directement sur les clés
-> Spring finales (`SPRING_DATASOURCE_PASSWORD`, `SPRING_MAIL_PASSWORD`, `pivot.auth.otp-secret`)
-> et déclare `SPRING_CONFIG_IMPORT` en variable d'environnement séparée, plutôt que le namespace
-> `secret.*` décrit ci-dessous — PR #149 anticipe elle-même explicitement ce point ("expect to
-> reconcile... whichever PR merges second"). À réconcilier avant que les deux PR soient mergées :
-> voir le commentaire de coordination sur les PR #149/#150. Le contrat `secret.*` ci-dessous
-> reste la cible car il élimine la dépendance à la précédence exacte entre le config tree
-> importé et une clé homonyme déjà déclarée dans `application.yml` (cf. § Mécanisme, point 3) —
-> une garantie que le ciblage direct des clés finales n'offre pas.
+> **Réconciliation appliquée (2026-07-06) :** `docker-compose.prod.yml` (PR #149) câble
+> désormais ses `target:` sur le namespace `secret.*` ci-dessous (`secret.datasource-password`,
+> `secret.mail-password`, `secret.auth-otp-secret`) plutôt que sur les clés Spring finales, et
+> ne déclare plus `SPRING_CONFIG_IMPORT` séparément — l'import est déjà actif via le profil
+> `prod` (`application-prod.yml`, `SECRET_FILE_PATH` explicite). Le mot de passe Redis
+> (`secret.redis-password`) reste hors périmètre de cette réconciliation : Redis tourne encore
+> sans authentification en production (gap connu, enabler de durcissement dédié à venir).
 
 Contrat attendu par ce mécanisme — à câbler dans `docker-compose.prod.yml` (EN07.1) : chaque
 secret est déclaré au niveau racine `secrets:`, adossé à un fichier externe (jamais une valeur

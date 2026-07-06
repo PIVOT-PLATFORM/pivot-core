@@ -18,6 +18,10 @@ replay_pid*
 *.p12
 *.pfx
 
+# ===== EN07.1 — Docker secrets (docker-compose.prod.yml), real values only =====
+# .example templates stay tracked — they're placeholders, not secrets.
+/secrets/*.txt
+
 # ===== Tests / Coverage =====
 jacoco.xml
 

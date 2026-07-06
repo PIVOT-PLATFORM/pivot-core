@@ -1,0 +1,223 @@
+# docker-compose.prod.yml — PIVOT production stack.
+#
+# EN07.1 (pivot-docs/docs/backlog/EPIC-infrastructure/ENABLERS/en-docker-compose-prod.md).
+#
+# Scope note (Gate 1, confirmed against the current org — see PR description for detail):
+# the enabler's original AC also lists pivot-pilotage-core / pivot-agilite-core /
+# pivot-collaboratif-core, and an activemq + pgbouncer layer. None of that exists today:
+#   - the three module-core repos are "à créer avec le repo" (pivot-platform/CLAUDE.md) —
+#     not started, so no image to pull and no service block is defined for them here.
+#   - pivot-core has zero ActiveMQ/RabbitMQ/Kafka/pgbouncer dependency — verified against
+#     pom.xml, application*.yml and src/ (grep for activemq|pgbouncer|rabbitmq|kafka|jms
+#     returns nothing). The only messaging-adjacent dependency is
+#     spring-boot-starter-websocket, which backs Spring's in-process STOMP *simple* broker —
+#     no external broker process is involved, so activemq would be dead infrastructure today.
+# See the "not wired yet" comment blocks below for exactly where each one slots in once it
+# becomes real — the intent isn't dropped, just not fabricated ahead of the repos existing.
+# ActiveMQ and PgBouncer are in fact already tracked as their own Enablers for exactly this
+# reason (EN07.3 — ActiveMQ persistence KahaDB, EN07.4 — PgBouncer session mode) — this file
+# doesn't preempt them.
+#
+# Images: built + pushed to GHCR by each repo's own release.yml (Semantic Release) —
+# ghcr.io/pivot-platform/pivot-core and ghcr.io/pivot-platform/pivot-ui. Pin
+# PIVOT_CORE_VERSION / PIVOT_UI_VERSION (shell env, NOT a committed .env) to a released tag
+# for real deployments; the `latest` default is for first bring-up only. Actually pulling and
+# deploying this file in CI is EN07.5 (deploy.yml) — still `Stage: Backlog`, not wired yet;
+# `deploy.yml` today is a `TODO` placeholder.
+#
+# Secrets: no plaintext credential in this file or in a committed .env — see the `secrets:`
+# block at the bottom and pivot-docs deployment doc for the full explanation of how each
+# secret file maps to a Spring property. NOTE: EN07.2 (Secret management Docker secrets) is a
+# separate, concurrently in-progress Enabler covering this same ground in more depth
+# (rotation procedure, `.env.example` audit) — expect to reconcile the `secrets:` block here
+# with whatever EN07.2 lands, whichever PR merges second.
+#
+# Networks: pivot-net-app (nginx ↔ backends) and pivot-net-data (backends ↔ postgres/redis)
+# are isolated on purpose — see the `networks:` section at the bottom.
+
+services:
+
+  nginx:
+    image: ghcr.io/pivot-platform/pivot-ui:${PIVOT_UI_VERSION:-latest}
+    container_name: pivot-nginx
+    ports:
+      - "80:80"
+      # 443/TLS intentionally not published: pivot-ui's nginx.conf has no `listen 443 ssl`
+      # server block or certificate mount today. Terminating TLS here needs a pivot-ui
+      # change (separate repo/PR) — see pivot-docs deployment doc, "Follow-ups". Until then,
+      # put a TLS-terminating edge (cloud LB, Caddy, another nginx) in front of this stack.
+    networks:
+      - pivot-net-app
+    depends_on:
+      pivot-core:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  pivot-core:
+    image: ghcr.io/pivot-platform/pivot-core:${PIVOT_CORE_VERSION:-latest}
+    container_name: pivot-core
+    # No `ports:` — never reachable directly from the host. Only nginx (pivot-net-app) can
+    # reach it; that's the "no backend port exposed directly" AC.
+    networks:
+      pivot-net-app:
+        # pivot-ui's nginx.conf reverse-proxies to the literal hostname `backend`
+        # (proxy_pass http://backend:8080/api/;) — that file lives in the pivot-ui repo and
+        # is out of scope here (cross-repo change). Rather than rename this service to
+        # `backend` (losing the clearer pivot-core name used everywhere else — container
+        # name, image, docs), we keep the service named `pivot-core` and add `backend` as a
+        # network alias so DNS resolution matches pivot-ui's existing config unchanged.
+        aliases:
+          - backend
+      pivot-net-data: {}
+    environment:
+      # application-prod.yml (EN07.2) activates here and imports the secret.* config tree
+      # from SECRET_FILE_PATH (defaults to /run/secrets, set explicitly below for clarity).
+      SPRING_PROFILES_ACTIVE: prod
+      SECRET_FILE_PATH: /run/secrets
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot
+      SPRING_DATASOURCE_USERNAME: pivot
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_MAIL_HOST: ${SMTP_HOST:?SMTP_HOST is required in production — set a real SMTP relay, mailpit is dev-only}
+      SPRING_MAIL_PORT: ${SMTP_PORT:-587}
+      SPRING_MAIL_USERNAME: ${SMTP_USERNAME:?SMTP_USERNAME is required in production}
+      PIVOT_MAIL_FROM: ${PIVOT_MAIL_FROM:?PIVOT_MAIL_FROM is required in production}
+      PIVOT_APP_URL: ${PIVOT_APP_URL:?PIVOT_APP_URL is required in production}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required in production}
+      PIVOT_SUPPORT_EMAIL: ${PIVOT_SUPPORT_EMAIL:-support@pivot.app}
+      PIVOT_OWNER_MAIL: ${PIVOT_OWNER_MAIL:-}
+      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-}
+    secrets:
+      # Target filenames are NOT arbitrary — each one must match, verbatim, the "secret.*"
+      # property key its application.yml placeholder falls back to (EN07.2 —
+      # docs/deployment/secret-management.md). Spring's configtree PropertySource keys each
+      # imported value by the exact filename, never split on dots — the import itself is
+      # already active via the `prod` profile (application-prod.yml, SECRET_FILE_PATH
+      # defaults to /run/secrets, the standard Docker secrets mount point), not repeated here.
+      - source: postgres_password
+        target: secret.datasource-password
+      - source: mail_password
+        target: secret.mail-password
+      - source: otp_secret
+        target: secret.auth-otp-secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # server.servlet.context-path=/api applies to actuator too (no separate
+      # management.server.port configured) → the real path is /api/actuator/health, not
+      # /actuator/health (see README.md fix in this same PR). EN04.2 (Sprint 4, still ⬜) will
+      # move Actuator to its own management port (:8081, not routed through nginx) — when
+      # that lands, this healthcheck target changes to http://localhost:8081/actuator/health.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/api/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # --- Module-core services — NOT wired yet -----------------------------------------
+  # pivot-pilotage-core (:8081), pivot-agilite-core (:8082), pivot-collaboratif-core (:8083)
+  # don't exist as repos yet ("à créer avec le repo" — pivot-platform/CLAUDE.md). Once one
+  # is created and publishes ghcr.io/pivot-platform/<repo>:<tag>, add a block modeled on
+  # `pivot-core` above:
+  #
+  #   pivot-pilotage-core:
+  #     image: ghcr.io/pivot-platform/pivot-pilotage-core:${PIVOT_PILOTAGE_VERSION:-latest}
+  #     container_name: pivot-pilotage-core
+  #     networks: [pivot-net-app, pivot-net-data]   # no host port, same isolation as pivot-core
+  #     environment: { SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot, ... }
+  #     secrets: [...]                               # its own DB/mail/etc. secrets, same pattern
+  #     depends_on: { postgres: {condition: service_healthy}, redis: {condition: service_healthy} }
+  #     healthcheck: same wget /actuator/health pattern as pivot-core (mind its context-path)
+  #     restart: unless-stopped
+  #
+  # Same shape for pivot-agilite-core and pivot-collaboratif-core. nginx (pivot-ui repo) then
+  # gets one upstream + location block per module URL prefix.
+  # ------------------------------------------------------------------------------------
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: pivot-postgres
+    environment:
+      POSTGRES_DB: pivot
+      POSTGRES_USER: pivot
+      # Official postgres image's own Docker-secrets convention — no configtree needed here.
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks:
+      - pivot-net-data
+    # No `ports:` — reachable only from pivot-core (and future module-cores) over
+    # pivot-net-data, never from the host. Dev compose.yml publishes 5432 for local
+    # psql/DBeaver convenience; production has no such need.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pivot -d pivot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: pivot-redis
+    volumes:
+      - redis_data:/data
+    networks:
+      - pivot-net-data
+    # No `ports:` — same reasoning as postgres above.
+    # Known gap (out of scope for EN07.1, flagged for a follow-up hardening enabler): Redis
+    # runs unauthenticated — no `requirepass` / `spring.data.redis.password` configured
+    # anywhere in pivot-core today. Network isolation (pivot-net-data, no host port, no
+    # access from nginx) is the only control in place right now.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # --- activemq / pgbouncer — NOT included --------------------------------------------
+  # Verified against this codebase (pom.xml, application*.yml, src/): no ActiveMQ, RabbitMQ,
+  # Kafka or pgbouncer dependency exists today. WebSocket STOMP (spring-boot-starter-websocket)
+  # runs on Spring's in-process simple broker — it does not talk to an external broker, so
+  # activemq would be dead infrastructure if added now.
+  # Both already have their own tracked Enabler (Backlog, not started) rather than being
+  # speculatively wired here:
+  #   - EN07.3 — ActiveMQ persistence KahaDB (multi-repo): STOMP relay for cross-module-core
+  #     pub/sub, topics per domain (pilotage/agilite/collaboratif), pivot-core explicitly does
+  #     NOT subscribe (per that Enabler's own AC).
+  #   - EN07.4 — PgBouncer session mode configuration prod: connection pooling in front of
+  #     the single Postgres instance once connection count from multiple backends needs it.
+  # When either lands, add the service on pivot-net-data alongside postgres/redis above,
+  # following the same no-host-port / healthcheck / restart:unless-stopped pattern.
+  # ------------------------------------------------------------------------------------
+
+networks:
+  pivot-net-app:
+    driver: bridge
+  pivot-net-data:
+    driver: bridge
+    internal: true   # no route out — postgres/redis reachable only from containers attached here
+
+volumes:
+  postgres_data:
+  redis_data:
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  mail_password:
+    file: ./secrets/mail_password.txt
+  otp_secret:
+    file: ./secrets/otp_secret.txt

@@ -163,6 +163,73 @@ jobs:
           sarif_file: trivy-backend.sarif
           category: trivy-sca-backend
 
+  # -----------------------------------------
+  # 5. VALIDATION — docker-compose.prod.yml (EN07.1)
+  #    Ne construit ni ne démarre rien (pas de daemon Docker nécessaire pour `config`) —
+  #    valide juste que le fichier parse, que les secrets/env requis sont bien exigés
+  #    (fail-fast), et que chaque service a bien un healthcheck + pas de port hôte publié
+  #    pour les backends/données.
+  # -----------------------------------------
+  compose-validate:
+    name: Validate docker-compose.prod.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Compose config — dummy secrets/env (fail-fast on missing required vars)
+        run: |
+          set -euo pipefail
+          mkdir -p secrets
+          for f in postgres_password mail_password otp_secret; do
+            echo "dummy-ci-value" > "secrets/${f}.txt"
+          done
+          export SMTP_HOST=smtp.ci.invalid SMTP_USERNAME=ci@pivot.invalid \
+            PIVOT_MAIL_FROM=ci@pivot.invalid PIVOT_APP_URL=https://ci.invalid \
+            CORS_ALLOWED_ORIGINS=https://ci.invalid
+          docker compose -f docker-compose.prod.yml config > /tmp/compose-config.yml
+          rm -f secrets/postgres_password.txt secrets/mail_password.txt secrets/otp_secret.txt
+
+      - name: Assert healthchecks present + no host port on backend/data services
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sys
+          import yaml
+
+          with open("/tmp/compose-config.yml") as f:
+              config = yaml.safe_load(f)
+
+          services = config["services"]
+          errors = []
+
+          for name in ("nginx", "pivot-core", "postgres", "redis"):
+              svc = services.get(name)
+              if svc is None:
+                  errors.append(f"missing service: {name}")
+                  continue
+              if "healthcheck" not in svc:
+                  errors.append(f"{name}: no healthcheck defined")
+
+          for name in ("pivot-core", "postgres", "redis"):
+              svc = services.get(name, {})
+              if svc.get("ports"):
+                  errors.append(f"{name}: must not publish a host port (found {svc['ports']})")
+
+          if errors:
+              print("Compose validation failed:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+
+          print("OK — healthchecks present on nginx/pivot-core/postgres/redis, "
+                "no host port on pivot-core/postgres/redis.")
+          PY
+
   # Les jobs réservés aux PR (Mutation PITest + previews Docker/Maven) vivent dans
   # pr-preview.yml (déclenché uniquement on: pull_request) — pour ne pas apparaître en
   # "skipped" sur les runs push (main/develop).
