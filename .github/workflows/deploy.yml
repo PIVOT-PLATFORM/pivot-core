@@ -147,14 +147,23 @@ jobs:
             NEW_VERSION="${PIVOT_CORE_VERSION}"
             PREVIOUS_VERSION="$(cat "${VERSION_FILE}" 2>/dev/null || true)"
 
-            # server.servlet.context-path=/api s'applique aussi à Actuator (voir
-            # SecurityConfig#permitAll sur /actuator/health, application.yml) — le vrai chemin
-            # est /api/actuator/health, pas /actuator/health. Testé en localhost sur le serveur
-            # (pas depuis le runner GitHub) : évite tout faux négatif lié au pare-feu / réseau
-            # entre GitHub et le serveur prod, et couvre exactement ce que nginx proxifie.
+            # EN04.2/EN04.4 : Actuator vit sur le port de management :8081, jamais publié sur
+            # l'hôte (isolation réseau volontaire, docker-compose.prod.yml ne déclare aucun
+            # `ports:` pour ce port) et jamais routé par nginx — donc injoignable en
+            # `localhost` depuis le serveur lui-même, seulement depuis l'intérieur du conteneur
+            # `pivot-core` (réseau Docker interne). `docker compose exec` y exécute curl
+            # (présent dans l'image depuis EN04.4, ajouté pour son propre HEALTHCHECK) — pas de
+            # dépendance à un accès réseau depuis le runner GitHub ni depuis l'hôte.
+            #
+            # /actuator/health/readiness (groupe dédié EN04.4 : readinessState + db + redis +
+            # flyway) plutôt que /actuator/health (racine) — c'est exactement la question posée
+            # par un smoke test post-déploiement : "cette instance est-elle prête à servir du
+            # trafic ?", pas seulement "le process JVM répond-il ?" (liveness).
             smoke_test() {
               for _ in $(seq 1 10); do
-                if curl -fsS -m 5 http://localhost/api/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
+                if docker compose -f docker-compose.prod.yml exec -T pivot-core \
+                    curl -fsS -m 5 http://localhost:8081/actuator/health/readiness 2>/dev/null \
+                    | grep -q '"status":"UP"'; then
                   return 0
                 fi
                 sleep 6
