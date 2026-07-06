@@ -1,0 +1,23 @@
+# Profil de production (EN07.2) — active l'injection des secrets applicatifs via Docker
+# secrets (fichiers montés sous /run/secrets/), sans aucun secret en clair dans
+# docker-compose.prod.yml, les images, ou ce dépôt.
+#
+# Mécanisme : Spring Boot importe le contenu de chaque fichier du répertoire secrets comme
+# PropertySource ("configtree") — nom de fichier -> clé de propriété, contenu -> valeur.
+# `optional:` évite tout échec de démarrage si le répertoire est absent (dev local sous
+# profil prod sans secrets montés, CI, etc.). `${SECRET_FILE_PATH:/run/secrets}` : chemin
+# racine surchargeable (défaut = point de montage standard des Docker secrets).
+#
+# Convention de nommage des fichiers secrets : chaque fichier est nommé exactement comme la
+# clé "secret.*" référencée depuis application.yml (voir table + procédure de rotation dans
+# docs/deployment/secret-management.md). Namespace "secret." dédié et distinct des clés
+# Spring finales (ex. spring.datasource.password) : élimine toute ambiguïté de précédence
+# entre la valeur importée du config tree et le placeholder ${...} déjà présent dans
+# application.yml — les deux ne partagent jamais la même clé.
+#
+# SECRET_FILE_PATH : ne pas terminer par "/" (déjà ajouté ci-dessous) — un "/" final produirait
+# un chemin "//"-terminé, sans effet fonctionnel (toléré par configtree/NIO) mais à éviter par
+# propreté. Exemple correct : SECRET_FILE_PATH=/run/secrets (pas /run/secrets/).
+spring:
+  config:
+    import: "optional:configtree:${SECRET_FILE_PATH:/run/secrets}/"
