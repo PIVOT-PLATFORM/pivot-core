@@ -1,3 +1,10 @@
+# [0.24.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.23.0...v0.24.0) (2026-07-06)
+
+
+### Features
+
+* **US03.3.2:** SUPER_ADMIN active/désactive un module par tenant (override) ([#159](https://github.com/PIVOT-PLATFORM/pivot-core/issues/159)) ([a0cfa18](https://github.com/PIVOT-PLATFORM/pivot-core/commit/a0cfa1810ec7e71c0e690031bd624584ced32db3)), closes [ModuleActivationService#isEnabled](https://github.com/ModuleActivationService/issues/isEnabled)
+
 # [0.23.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.22.0...v0.23.0) (2026-07-06)
 
 
