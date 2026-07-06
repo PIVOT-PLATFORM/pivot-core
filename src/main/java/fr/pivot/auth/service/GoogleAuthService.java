@@ -116,6 +116,12 @@ public class GoogleAuthService {
                 byEmail.setGoogleId(googleId);
                 user = userRepo.save(byEmail);
                 auditService.log(user, AuditService.GOOGLE_LINKED, ip, userAgent);
+            } else if (userRepo.existsByTenantIdAndEmail(tenant.getId(), email)) {
+                // A row already holds this (tenant, email) but is soft-deleted (US02.2.4
+                // PENDING_DELETION or already purged) — never resurrect it under a fresh row.
+                // The idx_users_tenant_email unique index is not partial, so falling through to
+                // the INSERT below would otherwise throw a raw DataIntegrityViolationException.
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Compte désactivé");
             } else {
                 user = new User();
                 user.setTenant(tenant);
@@ -156,7 +162,10 @@ public class GoogleAuthService {
     // Private helpers
     // ----------------------------------------------------------------
 
-    private GoogleIdToken.Payload verifyGoogleToken(final String idTokenStr) {
+    // Package-private (not private) so unit tests can spy() and stub only the network-bound
+    // verification step, exercising the rest of authenticate() — including branches that only
+    // run after a successful verify() — with real business logic instead of Google's SDK.
+    GoogleIdToken.Payload verifyGoogleToken(final String idTokenStr) {
         try {
             final GoogleIdToken token = verifier.verify(idTokenStr);
             if (token == null) {

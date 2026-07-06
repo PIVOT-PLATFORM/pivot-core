@@ -72,4 +72,26 @@ public final class CryptoUtils {
         SECURE_RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
+
+    /**
+     * Resolves the HMAC key used to hash short low-entropy OTP codes (device verification,
+     * account-deletion confirmation): the configured {@code pivot.auth.otp-secret} value, or a
+     * fresh ephemeral one when unset.
+     *
+     * <p>Extracted so every OTP-issuing service (currently {@code SessionService} and
+     * {@code AccountDeletionService}) shares the exact same ephemeral-fallback behaviour instead
+     * of re-implementing it: without a configured secret, OTPs hashed with the ephemeral key stop
+     * verifying after a restart (acceptable in dev — TTLs are a few minutes). Set
+     * {@code PIVOT_AUTH_OTP_SECRET} in production for a stable key across instances/restarts.
+     * Each calling service still logs its own warning so the responsible bean is identifiable.
+     *
+     * @param configured the raw {@code pivot.auth.otp-secret} property value, possibly blank
+     * @return {@code configured} unchanged if non-blank, otherwise a fresh secure random secret
+     */
+    public static String resolveOtpSecret(final String configured) {
+        if (configured == null || configured.isBlank()) {
+            return generateSecureToken();
+        }
+        return configured;
+    }
 }

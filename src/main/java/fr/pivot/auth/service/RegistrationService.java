@@ -87,6 +87,13 @@ public class RegistrationService {
      * existing owner is notified by email instead, and the same BCrypt work is performed so the
      * response time does not leak account existence.
      *
+     * <p>Same neutral response — with no email sent to anyone — when the address is held by a
+     * soft-deleted row (US02.2.4 PENDING_DELETION account, still within its grace period, or
+     * already anonymized): {@code idx_users_tenant_email} is not a partial index, so it still
+     * covers that row, and inserting a new user with the same email would otherwise raise a raw
+     * {@link org.springframework.dao.DataIntegrityViolationException} instead of this intended
+     * response. Same guard as {@code GoogleAuthService} / {@code OidcAuthService}.
+     *
      * @param req       registration payload (email, password, first/last name)
      * @param ip        client IP for rate limiting and audit
      * @param userAgent browser user-agent for audit
@@ -110,6 +117,12 @@ public class RegistrationService {
             if (!existing.isEmailVerified()) {
                 issueVerificationReminder(existing);
             }
+            return;
+        }
+        if (userRepo.existsByTenantIdAndEmail(tenant.getId(), email)) {
+            // Email held by a soft-deleted (PENDING_DELETION / anonymized) row — never attempt
+            // the INSERT below, it would violate the non-partial unique index.
+            passwordEncoder.encode(req.password());
             return;
         }
 

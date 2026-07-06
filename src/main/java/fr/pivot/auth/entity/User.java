@@ -81,6 +81,16 @@ public class User {
     @Column(name = "scheduled_deletion_at")
     private Instant scheduledDeletionAt;
 
+    /**
+     * Set once {@code AccountDeletionScheduler} has anonymized this row (US02.2.4, RGPD Art.
+     * 17), once {@link #scheduledDeletionAt} elapses. Distinguishes "pending, still within
+     * grace period" ({@code deletedAt} set, this field {@code null}) from "purged" ({@code
+     * null} check kept explicit rather than pattern-matching {@link #email} against the
+     * {@code deleted-*@pivot.invalid} convention).
+     */
+    @Column(name = "anonymized_at")
+    private Instant anonymizedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -108,6 +118,7 @@ public class User {
     public Instant getInactivityWarningSentAt() { return inactivityWarningSentAt; }
     public Instant getDeletedAt() { return deletedAt; }
     public Instant getScheduledDeletionAt() { return scheduledDeletionAt; }
+    public Instant getAnonymizedAt() { return anonymizedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 
@@ -127,5 +138,6 @@ public class User {
     public void setLastLoginAt(Instant lastLoginAt) { this.lastLoginAt = lastLoginAt; }
     public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
     public void setScheduledDeletionAt(Instant scheduledDeletionAt) { this.scheduledDeletionAt = scheduledDeletionAt; }
+    public void setAnonymizedAt(Instant anonymizedAt) { this.anonymizedAt = anonymizedAt; }
     public void setInactivityWarningSentAt(Instant inactivityWarningSentAt) { this.inactivityWarningSentAt = inactivityWarningSentAt; }
 }
