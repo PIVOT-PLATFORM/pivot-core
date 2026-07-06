@@ -120,6 +120,16 @@
 			</exclusions>
 		</dependency>
 
+		<!-- EN04.1 — JSON console encoder for logback-spring.xml (all profiles but "test").
+		     logback-classic/-core versions stay managed by spring-boot-dependencies (1.5.34);
+		     Jackson (tools.jackson) likewise stays managed by the Spring Boot 4.1 jackson-bom. -->
+		<dependency>
+			<groupId>net.logstash.logback</groupId>
+			<artifactId>logstash-logback-encoder</artifactId>
+			<version>9.0</version>
+			<scope>runtime</scope>
+		</dependency>
+
 		<!-- Test -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -148,6 +158,16 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+				<executions>
+					<!-- EN04.1 — generates target/classes/META-INF/build-info.properties, consumed
+					     by StartupLogListener (via the BuildProperties bean) for the service
+					     version in the startup log line. -->
+					<execution>
+						<goals>
+							<goal>build-info</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 
 			<!-- Cible Java 24 (class 68) : JaCoCo 0.8.13 + SpotBugs ASM 9.7 ne supportent pas class 69 -->
