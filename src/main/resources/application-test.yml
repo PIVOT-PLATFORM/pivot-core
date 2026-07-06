@@ -47,13 +47,16 @@ server:
     context-path: /api
 
 management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:8081}
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,metrics
   endpoint:
     health:
-      show-details: when_authorized
+      show-details: always
+  # info.git.mode: défaut Spring Boot ("simple") — voir application.yml.
 
 logging:
   level:
