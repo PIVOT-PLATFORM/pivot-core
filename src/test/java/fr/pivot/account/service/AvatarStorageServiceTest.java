@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -50,7 +51,7 @@ class AvatarStorageServiceTest {
     // ----------------------------------------------------------------
 
     @Test
-    void ac0211_avatar_01_storesJpeg_andReturnsUrlUnderTenant() throws IOException {
+    void ac0211_avatar_01_storesJpeg_andReturnsUrlUnderTenant() {
         final MultipartFile file = new MockMultipartFile("file", "photo.jpg", "image/jpeg", JPEG_BYTES);
 
         final String url = service.store(7L, file);
@@ -147,8 +148,7 @@ class AvatarStorageServiceTest {
 
     @Test
     void deleteIfManaged_isNoOp_forNullUrl() {
-        service.deleteIfManaged(null);
-        // No exception — nothing to assert beyond "did not throw".
+        assertThatCode(() -> service.deleteIfManaged(null)).doesNotThrowAnyException();
     }
 
     @Test

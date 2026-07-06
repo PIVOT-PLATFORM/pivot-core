@@ -157,7 +157,7 @@ class EmailChangeServiceTest {
 
         verify(emailChangeRepo, never()).save(any());
         verify(emailService, never()).sendEmailChangeConfirmationEmail(any(), any(), any(), any());
-        verify(emailService).sendEmailChangeDuplicateEmail(eq(NEW_EMAIL), eq("Bob"), eq(Locale.ENGLISH));
+        verify(emailService).sendEmailChangeDuplicateEmail(NEW_EMAIL, "Bob", Locale.ENGLISH);
         verify(auditService).log(user, AuditService.EMAIL_CHANGE_DUPLICATE_ATTEMPT, "ip", "ua");
         // A duplicate still cancels whatever was pending before — "only one active request".
         verify(emailChangeRepo).cancelPendingForUser(eq(USER_ID), any(Instant.class));

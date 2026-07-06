@@ -209,7 +209,7 @@ class DataExportServiceTest {
 
         assertThat(result).isSameAs(created);
         verify(auditService).log(user, AuditService.DATA_EXPORT_REQUESTED, "1.2.3.4", "JUnit");
-        verify(self).generateArchive(eq(created.getId()), eq(Locale.FRENCH));
+        verify(self).generateArchive(created.getId(), Locale.FRENCH);
     }
 
     // ----------------------------------------------------------------

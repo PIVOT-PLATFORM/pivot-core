@@ -36,7 +36,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -171,8 +170,9 @@ class AccountDeletionServiceTest {
     @Test
     void requestDeletion_throws409_whenDeletionAlreadyPending() {
         when(user.getDeletedAt()).thenReturn(Instant.now());
+        final AccountDeletionRequestDto dto = new AccountDeletionRequestDto("x", null);
 
-        assertThatThrownBy(() -> service.requestDeletion(user, new AccountDeletionRequestDto("x", null), "ip", "ua"))
+        assertThatThrownBy(() -> service.requestDeletion(user, dto, "ip", "ua"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.CONFLICT);
@@ -182,8 +182,9 @@ class AccountDeletionServiceTest {
     @Test
     void requestDeletion_local_throws403_whenPasswordMissing() {
         when(user.getPasswordHash()).thenReturn("hashed");
+        final AccountDeletionRequestDto dto = new AccountDeletionRequestDto(null, null);
 
-        assertThatThrownBy(() -> service.requestDeletion(user, new AccountDeletionRequestDto(null, null), "ip", "ua"))
+        assertThatThrownBy(() -> service.requestDeletion(user, dto, "ip", "ua"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.FORBIDDEN);
@@ -195,9 +196,9 @@ class AccountDeletionServiceTest {
     void requestDeletion_local_throws403_whenPasswordWrong() {
         when(user.getPasswordHash()).thenReturn("hashed");
         when(passwordEncoder.matches("wrong", "hashed")).thenReturn(false);
+        final AccountDeletionRequestDto dto = new AccountDeletionRequestDto("wrong", null);
 
-        assertThatThrownBy(() -> service.requestDeletion(
-                user, new AccountDeletionRequestDto("wrong", null), "ip", "ua"))
+        assertThatThrownBy(() -> service.requestDeletion(user, dto, "ip", "ua"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.FORBIDDEN);
@@ -241,8 +242,9 @@ class AccountDeletionServiceTest {
     @Test
     void requestDeletion_otp_throws403_whenOtpMissing() {
         when(user.getPasswordHash()).thenReturn(null);
+        final AccountDeletionRequestDto dto = new AccountDeletionRequestDto(null, null);
 
-        assertThatThrownBy(() -> service.requestDeletion(user, new AccountDeletionRequestDto(null, null), "ip", "ua"))
+        assertThatThrownBy(() -> service.requestDeletion(user, dto, "ip", "ua"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.FORBIDDEN);
@@ -253,9 +255,9 @@ class AccountDeletionServiceTest {
         when(user.getPasswordHash()).thenReturn(null);
         when(deletionOtpRepo.findFirstByUserIdAndConfirmedAtIsNullOrderByCreatedAtDesc(USER_ID))
             .thenReturn(Optional.empty());
+        final AccountDeletionRequestDto dto = new AccountDeletionRequestDto(null, "123456");
 
-        assertThatThrownBy(() -> service.requestDeletion(
-                user, new AccountDeletionRequestDto(null, "123456"), "ip", "ua"))
+        assertThatThrownBy(() -> service.requestDeletion(user, dto, "ip", "ua"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.FORBIDDEN);
@@ -270,9 +272,9 @@ class AccountDeletionServiceTest {
         expired.setExpiresAt(Instant.now().minusSeconds(1));
         when(deletionOtpRepo.findFirstByUserIdAndConfirmedAtIsNullOrderByCreatedAtDesc(USER_ID))
             .thenReturn(Optional.of(expired));
+        final AccountDeletionRequestDto dto = new AccountDeletionRequestDto(null, "123456");
 
-        assertThatThrownBy(() -> service.requestDeletion(
-                user, new AccountDeletionRequestDto(null, "123456"), "ip", "ua"))
+        assertThatThrownBy(() -> service.requestDeletion(user, dto, "ip", "ua"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.FORBIDDEN);
@@ -287,9 +289,9 @@ class AccountDeletionServiceTest {
         pending.setExpiresAt(Instant.now().plusSeconds(600));
         when(deletionOtpRepo.findFirstByUserIdAndConfirmedAtIsNullOrderByCreatedAtDesc(USER_ID))
             .thenReturn(Optional.of(pending));
+        final AccountDeletionRequestDto dto = new AccountDeletionRequestDto(null, "000000");
 
-        assertThatThrownBy(() -> service.requestDeletion(
-                user, new AccountDeletionRequestDto(null, "000000"), "ip", "ua"))
+        assertThatThrownBy(() -> service.requestDeletion(user, dto, "ip", "ua"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.FORBIDDEN);
@@ -309,9 +311,9 @@ class AccountDeletionServiceTest {
         locked.setAttempts(5);
         when(deletionOtpRepo.findFirstByUserIdAndConfirmedAtIsNullOrderByCreatedAtDesc(USER_ID))
             .thenReturn(Optional.of(locked));
+        final AccountDeletionRequestDto dto = new AccountDeletionRequestDto(null, "123456");
 
-        assertThatThrownBy(() -> service.requestDeletion(
-                user, new AccountDeletionRequestDto(null, "123456"), "ip", "ua"))
+        assertThatThrownBy(() -> service.requestDeletion(user, dto, "ip", "ua"))
             .isInstanceOf(ResponseStatusException.class)
             .extracting(e -> ((ResponseStatusException) e).getStatusCode())
             .isEqualTo(HttpStatus.FORBIDDEN);

@@ -186,7 +186,7 @@ class AccountPasswordServiceTest {
         when(passwordEncoder.matches(any(), any())).thenReturn(true);
         when(passwordEncoder.encode(any())).thenReturn(NEW_HASH);
         final Instant expiresAt = Instant.now().plusSeconds(86_400);
-        when(tokenService.issue(eq(user), eq(null), eq(null), eq(USER_AGENT), eq(IP), eq(AuthMethod.PASSWORD), eq(false)))
+        when(tokenService.issue(user, null, null, USER_AGENT, IP, AuthMethod.PASSWORD, false))
             .thenReturn(new TokenService.TokenIssueResult(RAW_NEW_TOKEN, expiresAt, 86_400));
 
         final LoginResult result = service.changePassword(USER_ID, request(), IP, USER_AGENT);

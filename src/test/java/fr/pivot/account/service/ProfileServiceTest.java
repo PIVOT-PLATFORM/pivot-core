@@ -18,7 +18,6 @@ import org.springframework.web.multipart.MultipartFile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -107,8 +106,9 @@ class ProfileServiceTest {
 
     @Test
     void ac0211_xss_updateProfile_rejectsName_whenBlankAfterStripping() {
-        assertThatThrownBy(() -> profileService.updateProfile(
-                user, new ProfileUpdateRequest("<script></script>", "Dupont", null)))
+        final ProfileUpdateRequest req = new ProfileUpdateRequest("<script></script>", "Dupont", null);
+
+        assertThatThrownBy(() -> profileService.updateProfile(user, req))
                 .isInstanceOf(InvalidProfileNameException.class);
 
         verify(userRepository, never()).save(any());
@@ -126,7 +126,9 @@ class ProfileServiceTest {
 
     @Test
     void ac0211_err_updateProfile_rejectsMissingFirstName() {
-        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest(null, "Dupont", null)))
+        final ProfileUpdateRequest req = new ProfileUpdateRequest(null, "Dupont", null);
+
+        assertThatThrownBy(() -> profileService.updateProfile(user, req))
                 .isInstanceOf(InvalidProfileNameException.class);
 
         verify(userRepository, never()).save(any());
@@ -134,7 +136,9 @@ class ProfileServiceTest {
 
     @Test
     void ac0211_err_updateProfile_rejectsBlankLastName() {
-        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "   ", null)))
+        final ProfileUpdateRequest req = new ProfileUpdateRequest("Bob", "   ", null);
+
+        assertThatThrownBy(() -> profileService.updateProfile(user, req))
                 .isInstanceOf(InvalidProfileNameException.class);
 
         verify(userRepository, never()).save(any());
@@ -143,8 +147,9 @@ class ProfileServiceTest {
     @Test
     void ac0211_err_updateProfile_rejectsNameOver100Characters() {
         final String tooLong = "A".repeat(101);
+        final ProfileUpdateRequest req = new ProfileUpdateRequest(tooLong, "Dupont", null);
 
-        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest(tooLong, "Dupont", null)))
+        assertThatThrownBy(() -> profileService.updateProfile(user, req))
                 .isInstanceOf(InvalidProfileNameException.class);
 
         verify(userRepository, never()).save(any());
@@ -208,8 +213,9 @@ class ProfileServiceTest {
     @Test
     void ac0212_err_updateProfile_rejectsUnsupportedLanguage() {
         user.setLocale("fr");
+        final ProfileUpdateRequest req = new ProfileUpdateRequest("Bob", "Dupont", "de");
 
-        assertThatThrownBy(() -> profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", "de")))
+        assertThatThrownBy(() -> profileService.updateProfile(user, req))
                 .isInstanceOf(InvalidPreferredLanguageException.class);
 
         assertThat(user.getLocale()).isEqualTo("fr");
@@ -218,8 +224,9 @@ class ProfileServiceTest {
 
     @Test
     void ac0212_err_updateProfile_rejectsBlankLanguage() {
-        assertThatThrownBy(
-                () -> profileService.updateProfile(user, new ProfileUpdateRequest("Bob", "Dupont", "   ")))
+        final ProfileUpdateRequest req = new ProfileUpdateRequest("Bob", "Dupont", "   ");
+
+        assertThatThrownBy(() -> profileService.updateProfile(user, req))
                 .isInstanceOf(InvalidPreferredLanguageException.class);
 
         verify(userRepository, never()).save(any());
@@ -235,7 +242,7 @@ class ProfileServiceTest {
         when(tenant.getId()).thenReturn(42L);
         user.setTenant(tenant);
         final MultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
-        when(avatarStorageService.store(eq(42L), eq(file))).thenReturn("/api/avatars/42/uuid.jpg");
+        when(avatarStorageService.store(42L, file)).thenReturn("/api/avatars/42/uuid.jpg");
         when(userRepository.save(user)).thenReturn(user);
 
         final ProfileDto dto = profileService.updateAvatar(user, file);
@@ -252,7 +259,7 @@ class ProfileServiceTest {
         user.setTenant(tenant);
         user.setAvatarUrl("/api/avatars/42/old.jpg");
         final MultipartFile file = new MockMultipartFile("file", "avatar.png", "image/png", new byte[]{1, 2, 3});
-        when(avatarStorageService.store(eq(42L), eq(file))).thenReturn("/api/avatars/42/new.png");
+        when(avatarStorageService.store(42L, file)).thenReturn("/api/avatars/42/new.png");
         when(userRepository.save(user)).thenReturn(user);
 
         profileService.updateAvatar(user, file);

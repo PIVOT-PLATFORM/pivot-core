@@ -103,7 +103,7 @@ class ModuleActivationCacheServiceTest {
 
         assertThat(result).isTrue();
         verify(activationService).isEnabled(TENANT_ID, MODULE_ID);
-        verify(valueOps).set(eq(KEY), eq("true"), eq(TTL_SECONDS), eq(TimeUnit.SECONDS));
+        verify(valueOps).set(KEY, "true", TTL_SECONDS, TimeUnit.SECONDS);
         assertThat(missCount()).isEqualTo(1.0);
         assertThat(hitCount()).isEqualTo(0.0);
     }
@@ -114,7 +114,7 @@ class ModuleActivationCacheServiceTest {
         when(activationService.isEnabled(TENANT_ID, MODULE_ID)).thenReturn(false);
 
         assertThat(service.isEnabled(TENANT_ID, MODULE_ID)).isFalse();
-        verify(valueOps).set(eq(KEY), eq("false"), eq(TTL_SECONDS), eq(TimeUnit.SECONDS));
+        verify(valueOps).set(KEY, "false", TTL_SECONDS, TimeUnit.SECONDS);
     }
 
     // ----------------------------------------------------------------
@@ -153,14 +153,14 @@ class ModuleActivationCacheServiceTest {
     void onModuleActivated_writesThroughCache_withTrue() {
         service.onModuleActivated(new ModuleActivatedEvent(TENANT_ID, MODULE_ID, Instant.now()));
 
-        verify(valueOps).set(eq(KEY), eq("true"), eq(TTL_SECONDS), eq(TimeUnit.SECONDS));
+        verify(valueOps).set(KEY, "true", TTL_SECONDS, TimeUnit.SECONDS);
     }
 
     @Test
     void onModuleDeactivated_writesThroughCache_withFalse() {
         service.onModuleDeactivated(new ModuleDeactivatedEvent(TENANT_ID, MODULE_ID, Instant.now()));
 
-        verify(valueOps).set(eq(KEY), eq("false"), eq(TTL_SECONDS), eq(TimeUnit.SECONDS));
+        verify(valueOps).set(KEY, "false", TTL_SECONDS, TimeUnit.SECONDS);
     }
 
     @Test
