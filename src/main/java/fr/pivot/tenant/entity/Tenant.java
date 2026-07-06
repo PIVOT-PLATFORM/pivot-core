@@ -45,6 +45,28 @@ public class Tenant {
     @Column(name = "tenant_invalidation_timestamp")
     private Instant tenantInvalidationTimestamp;
 
+    /**
+     * Plan de facturation (bundle de modules) souscrit par ce tenant — US03.3.1 « SUPER_ADMIN
+     * définit modules disponibles par plan ». {@code null} tant qu'aucun plan n'est assigné.
+     *
+     * <p><strong>À ne pas confondre avec {@link #plan}</strong> : {@link #plan} est un concept
+     * hérité de périmètre de déploiement / mode d'authentification principal
+     * ({@code SAAS}/{@code ENTERPRISE}/{@code TRIAL}, voir le commentaire sur ce champ) — un
+     * champ {@code planId} nu aurait pu laisser croire qu'il référence cette même colonne, ce
+     * qui n'est pas le cas. {@code billingPlanId} référence {@code public.plans.id} (entité
+     * {@code fr.pivot.plan.entity.Plan}), un concept distinct de bundle de modules/tarification.
+     *
+     * <p>Stocké en FK brute (pas de {@code @ManyToOne}), même convention que
+     * {@code ModuleActivation.moduleId}/{@code tenantId} — évite les graphes d'objets et le
+     * N+1 pour un champ rarement déréférencé côté entité.
+     *
+     * <p><strong>@implNote — application non couverte ici :</strong> cette US ne fait
+     * qu'assigner ce champ ; empêcher un admin tenant d'activer un module hors du bundle de ce
+     * plan reste hors périmètre (voir {@code fr.pivot.plan.entity.Plan}).
+     */
+    @Column(name = "billing_plan_id")
+    private Long billingPlanId;
+
     @PreUpdate
     void onUpdate() { this.updatedAt = Instant.now(); }
 
@@ -59,6 +81,9 @@ public class Tenant {
 
     /** @return the timestamp of the tenant's last deactivation, or {@code null} if never deactivated */
     public Instant getTenantInvalidationTimestamp() { return tenantInvalidationTimestamp; }
+
+    /** @return the id of the billing/module-bundle plan this tenant subscribes to, or {@code null} if unassigned */
+    public Long getBillingPlanId() { return billingPlanId; }
 
     public void setSlug(String slug) { this.slug = slug; }
     public void setName(String name) { this.name = name; }
@@ -75,4 +100,11 @@ public class Tenant {
     public void setTenantInvalidationTimestamp(Instant tenantInvalidationTimestamp) {
         this.tenantInvalidationTimestamp = tenantInvalidationTimestamp;
     }
+
+    /**
+     * Assigne (ou retire, avec {@code null}) le plan de facturation de ce tenant.
+     *
+     * @param billingPlanId identifiant du {@code Plan} souscrit, ou {@code null} pour retirer l'assignation
+     */
+    public void setBillingPlanId(Long billingPlanId) { this.billingPlanId = billingPlanId; }
 }

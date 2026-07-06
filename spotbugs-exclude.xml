@@ -56,6 +56,12 @@
                  CookieHelper, TenantRepository, UserRepository, RateLimiterService,
                  AuditService). -->
             <Package name="fr.pivot.tenant.api"/>
+            <!-- Plans commerciaux/tarifaires (SuperAdminPlanController, US03.3.1) : Plan est une
+                 entité JPA (getters/setters mutables requis par Hibernate, y compris le Set de
+                 module ids porté par @ElementCollection) ; PlanService stocke des beans singleton
+                 constructeur-injectés (PlanRepository, ModuleRegistry). -->
+            <Package name="fr.pivot.plan.entity"/>
+            <Package name="fr.pivot.plan.api"/>
         </Or>
     </Match>
 

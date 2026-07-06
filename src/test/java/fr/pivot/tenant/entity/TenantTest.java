@@ -47,4 +47,15 @@ class TenantTest {
 
         assertThat(t.getTenantInvalidationTimestamp()).isEqualTo(now);
     }
+
+    @Test
+    void billingPlanId_defaultsToNull_andRoundTrips() {
+        final Tenant t = new Tenant();
+
+        assertThat(t.getBillingPlanId()).isNull();
+
+        t.setBillingPlanId(42L);
+
+        assertThat(t.getBillingPlanId()).isEqualTo(42L);
+    }
 }

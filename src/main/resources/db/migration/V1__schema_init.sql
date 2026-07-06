@@ -31,6 +31,17 @@ CREATE TABLE IF NOT EXISTS tenants (
     -- (révocation en O(1) plutôt que O(n) utilisateurs). NULL = jamais désactivé, aucune
     -- régression sur les tokens existants.
     tenant_invalidation_timestamp TIMESTAMPTZ,
+    -- US03.3.1 — module-bundling/pricing-tier plan this tenant is subscribed to. Deliberately
+    -- NOT named "plan_id": the column above named "plan" is the legacy deployment-scope/
+    -- auth-mode enum (SAAS/ENTERPRISE/TRIAL, see its comment) — a bare "plan_id" here would read
+    -- as if it FKs that same column, which it does not. "billing_plan_id" makes the pricing/
+    -- module-bundle semantics unambiguous. Nullable: not every tenant has a billing plan
+    -- assigned yet (this US only introduces plan definition, not tenant enrollment UX).
+    -- No inline FK here: the "plans" table this references is only created further below (after
+    -- "module_activations", to keep module-system-adjacent tables together) — see the
+    -- fk_tenants_billing_plan ALTER TABLE right after the "plan_modules" table block for the FK
+    -- constraint itself, added once "plans" exists.
+    billing_plan_id BIGINT,
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
@@ -41,6 +52,7 @@ CREATE TABLE IF NOT EXISTS tenants (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tenants_slug ON tenants (slug);
+CREATE INDEX IF NOT EXISTS idx_tenants_billing_plan_id ON tenants (billing_plan_id);
 
 -- ================================================================
 -- TABLE: tenant_oidc_configs
@@ -361,6 +373,50 @@ CREATE TABLE IF NOT EXISTS module_activations (
     -- CASCADE justifié : l'état d'activation n'a aucun sens sans son tenant.
     CONSTRAINT fk_ma_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
 );
+
+-- ================================================================
+-- TABLE: plans
+-- ================================================================
+-- US03.3.1 — commercial/pricing plan definitions (SUPER_ADMIN-managed): which PIVOT modules
+-- are bundled in a given plan. Distinct from tenants.plan (legacy deployment-scope / primary
+-- auth-mode enum, see comment on that column above) — DO NOT confuse the two. A tenant's
+-- module-bundle plan is tracked via tenants.billing_plan_id (added further above, once this
+-- table exists — see that column's comment for why the FK constraint is added via ALTER TABLE
+-- rather than inline).
+CREATE TABLE IF NOT EXISTS plans (
+    id          BIGSERIAL    NOT NULL,
+    name        VARCHAR(100) NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_plans PRIMARY KEY (id),
+    CONSTRAINT uq_plans_name UNIQUE (name)
+);
+
+-- ================================================================
+-- TABLE: plan_modules
+-- ================================================================
+-- M-N association: modules bundled in a plan. module_id is a plain identifier (not FK'd to a
+-- DB table) — modules are declared in the in-code ModuleRegistry, not persisted as rows, same
+-- convention as module_activations.module_id.
+CREATE TABLE IF NOT EXISTS plan_modules (
+    id          BIGSERIAL    NOT NULL,
+    plan_id     BIGINT       NOT NULL,
+    module_id   VARCHAR(100) NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_plan_modules PRIMARY KEY (id),
+    CONSTRAINT uq_pm_plan_module UNIQUE (plan_id, module_id),
+    CONSTRAINT fk_pm_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
+);
+
+-- Forward-reference FK: tenants.billing_plan_id is declared with the tenants table at the top
+-- of this file (before "plans" exists), so the FK constraint itself is added here, immediately
+-- after "plans" is created. RESTRICT (not CASCADE/SET NULL) — a plan currently referenced by a
+-- tenant cannot be silently deleted (no orphaned-tenant-plan U/X ambiguity); the maintainer must
+-- reassign the tenant's plan first.
+ALTER TABLE tenants
+    ADD CONSTRAINT fk_tenants_billing_plan FOREIGN KEY (billing_plan_id) REFERENCES plans (id);
 
 -- ================================================================
 -- TABLE: email_change_requests

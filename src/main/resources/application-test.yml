@@ -3,6 +3,21 @@ spring:
     name: pivot-backend
 
   # datasource URL/username/password are injected by @ServiceConnection (Testcontainers).
+  datasource:
+    hikari:
+      # Chaque combinaison unique de @Import(...TestModuleConfig...) parmi les classes
+      # *IntegrationTest crée un ApplicationContext (et donc un pool HikariCP) distinct, tous
+      # contre le même conteneur Testcontainers Postgres — avec le défaut HikariCP
+      # (maximum-pool-size = 10) et un nombre croissant de configurations Spring distinctes dans
+      # la suite, le total de connexions simultanées peut dépasser max_connections côté Postgres
+      # (observé en CI : "FATAL: sorry, too many clients already", à partir d'un certain nombre
+      # de classes *IntegrationTest cumulées). Un pool réduit ici suffit largement : Surefire
+      # exécute les tests séquentiellement par défaut (pas de parallélisme configuré), 1 seule
+      # opération BDD active à la fois par contexte dans l'immense majorité des cas — 3 laisse
+      # une marge pour une transaction REQUIRES_NEW imbriquée (voir TaskExecutor synchrone dans
+      # AbstractIntegrationTest) sans se rapprocher de la limite serveur.
+      maximum-pool-size: 3
+      minimum-idle: 1
 
   jpa:
     hibernate:
