@@ -137,7 +137,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 
 > **Sources de vérité :**
 > - Hiérarchie backlog + conventions : `pivot-docs/docs/backlog/README.md`
-> - Sprints, assignation US, état avancement : **`pivot-docs/docs/backlog/SPRINTS.md`**
+> - Sprints, assignation US, état avancement : **`pivot-docs/docs/backlog/sprints/`** (un fichier par sprint, index dans `sprints/README.md`)
 > - Backlog opérationnel : **fichiers markdown dans `pivot-docs/docs/backlog/`** — un fichier par US/Enabler avec frontmatter (`Stage`, `Priority`, `Phase`).
 
 ### Hiérarchie
@@ -186,12 +186,12 @@ Tout PR avec :
 
 ## Workflow — Organisation par sprint
 
-Travail organisé par sprint. Référence : **`pivot-docs/docs/backlog/SPRINTS.md`**.
+Travail organisé par sprint. Référence : **`pivot-docs/docs/backlog/sprints/`** (un fichier par sprint).
 
 **Principes :**
 - **Une branche par US / Enabler** — `feat/{us-id}-{slug}` (ex. `feat/us03-1-1-admin-active-module`)
 - **Agents en parallèle** — un agent par item du sprint, branches séparées
-- **Backlog pivot-docs sur la branche courante** — SPRINTS.md committé sur la branche de l'item (pas de branche docs séparée)
+- **Backlog pivot-docs sur la branche courante** — `sprints/sprint-{N}.md` committé sur la branche de l'item (pas de branche docs séparée)
 
 ## Workflow — Autoloop PR par US
 
@@ -206,7 +206,7 @@ Après implémentation sur `feat/{us-id}-{slug}` :
    - **Convergence** — Gate 4 = 100/100 (ou convergence confirmée sans finding restant) ET CI verte → sortir
 3. Gate 4 = 100/100 (ou convergence confirmée sans finding restant) :
    - Sortir la PR du mode draft (`gh pr ready`)
-   - `Stage: Review` dans frontmatter US + SPRINTS.md (backlog pivot-docs sur la branche courante, cf. règle ci-dessus — pas de branche docs séparée)
+   - `Stage: Review` dans frontmatter US + `sprints/sprint-{N}.md` (backlog pivot-docs sur la branche courante, cf. règle ci-dessus — pas de branche docs séparée)
    - **Gate 5** — générer/mettre à jour la spec fonctionnelle et technique figée `pivot-docs/docs/specs/{EPIC}/{us-id}-{slug}.md` (branche/PR `pivot-docs` dédiée — jamais de commit cross-repo, voir `pivot-docs/docs/workflow/README.md`)
    - Signal mainteneur
 4. Blocage 20 boucles → Breaking Point 2
@@ -219,7 +219,7 @@ Après implémentation sur `feat/{us-id}-{slug}` :
 | **2. Tests** | JUnit 5 TU + Testcontainers TI — **dans le même commit** |
 | **3. Qualité** | Checkstyle · SpotBugs verts |
 | **4. Gate 2** | Coverage check : ≥ 85 % → continuer · 70–84 % → compléter · < 70 % → stop |
-| **5. Backlog** | Mise à jour SPRINTS.md + statut US **obligatoire avant commit** |
+| **5. Backlog** | Mise à jour `sprints/sprint-{N}.md` + statut US **obligatoire avant commit** |
 | **6. E2E** | — (délégué à pivot-ui) |
 | **7. Commit** | `git add` fichier par fichier · commits atomiques sur branche `feat/{us-id}-{slug}` |
 
