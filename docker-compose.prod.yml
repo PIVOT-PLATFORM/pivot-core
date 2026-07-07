@@ -42,18 +42,31 @@ services:
     container_name: pivot-nginx
     ports:
       - "80:80"
-      # 443/TLS intentionally not published: pivot-ui's nginx.conf has no `listen 443 ssl`
-      # server block or certificate mount today. Terminating TLS here needs a pivot-ui
-      # change (separate repo/PR) — see pivot-docs deployment doc, "Follow-ups". Until then,
-      # put a TLS-terminating edge (cloud LB, Caddy, another nginx) in front of this stack.
+      # EN17.7 — TLS now handled by nginx (listen 443 ssl block added to pivot-ui's nginx.conf).
+      # Certificates must be mounted at runtime (see volumes below):
+      #   pivot.crt → /etc/ssl/certs/pivot.crt   (fullchain PEM)
+      #   pivot.key → /etc/ssl/private/pivot.key  (private key PEM)
+      # To put a TLS-terminating edge (cloud LB, CDN) in front instead, remove this port
+      # binding and the certificate volume mounts, and keep only 80:80.
+      - "443:443"
     networks:
       - pivot-net-app
+    volumes:
+      # TLS certificates (EN17.7) — mount at runtime, never commit to the repo.
+      # Generate with Let's Encrypt (certbot), your CA, or a self-signed cert for staging:
+      #   - /etc/letsencrypt/live/your.domain/fullchain.pem:/etc/ssl/certs/pivot.crt:ro
+      #   - /etc/letsencrypt/live/your.domain/privkey.pem:/etc/ssl/private/pivot.key:ro
+      # If using an external TLS terminator instead, remove this block and the 443 port above.
+      - ${TLS_CERT_PATH:?TLS_CERT_PATH required (fullchain PEM)}:/etc/ssl/certs/pivot.crt:ro
+      - ${TLS_KEY_PATH:?TLS_KEY_PATH required (private key PEM)}:/etc/ssl/private/pivot.key:ro
     depends_on:
       pivot-core:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/ || exit 1"]
+      # /health is on :80 (plain HTTP) — exempt from the 80→443 redirect in nginx.conf.
+      # Using :80 avoids TLS and certificate dependency in the healthcheck.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -66,14 +79,8 @@ services:
     # reach it; that's the "no backend port exposed directly" AC.
     networks:
       pivot-net-app:
-        # pivot-ui's nginx.conf reverse-proxies to the literal hostname `backend`
-        # (proxy_pass http://backend:8080/api/;) — that file lives in the pivot-ui repo and
-        # is out of scope here (cross-repo change). Rather than rename this service to
-        # `backend` (losing the clearer pivot-core name used everywhere else — container
-        # name, image, docs), we keep the service named `pivot-core` and add `backend` as a
-        # network alias so DNS resolution matches pivot-ui's existing config unchanged.
-        aliases:
-          - backend
+        # EN17.7 removed the `backend` alias: pivot-ui's nginx.conf now references
+        # `pivot-core:8080` directly (upstream pivot_core_rest). The alias is no longer needed.
       pivot-net-data: {}
     environment:
       # application-prod.yml (EN07.2) activates here and imports the secret.* config tree
@@ -134,24 +141,48 @@ services:
       start_period: 30s
 
   # --- Module-core services — NOT wired yet -----------------------------------------
-  # pivot-pilotage-core (:8081), pivot-agilite-core (:8082), pivot-collaboratif-core (:8083)
-  # don't exist as repos yet ("à créer avec le repo" — pivot-platform/CLAUDE.md). Once one
-  # is created and publishes ghcr.io/pivot-platform/<repo>:<tag>, add a block modeled on
-  # `pivot-core` above:
+  # pivot-pilotage-core, pivot-agilite-core, pivot-collaboratif-core don't exist as repos yet
+  # ("à créer avec le repo" — pivot-platform/CLAUDE.md). EN17.7 added nginx routing for their
+  # URL prefixes (/api/pilotage/, /api/agilite/, /api/collaboratif/, /ws/{module}/) using
+  # Docker's resolver (127.0.0.11) with per-request hostname resolution — nginx starts fine
+  # without these services and returns 503 for their prefixes until they exist.
+  #
+  # Port convention (matches nginx.conf upstreams in pivot-ui, agreed in EN17.7):
+  #   pivot-pilotage-core    → 8081  (Spring management port: 9081)
+  #   pivot-agilite-core     → 8082  (Spring management port: 9082)
+  #   pivot-collaboratif-core → 8083 (Spring management port: 9083)
+  #
+  # Once a repo exists and publishes ghcr.io/pivot-platform/<repo>:<tag>, add a service block:
   #
   #   pivot-pilotage-core:
   #     image: ghcr.io/pivot-platform/pivot-pilotage-core:${PIVOT_PILOTAGE_VERSION:-latest}
   #     container_name: pivot-pilotage-core
-  #     networks: [pivot-net-app, pivot-net-data]   # no host port, same isolation as pivot-core
-  #     environment: { SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot, ... }
-  #     secrets: [...]                               # its own DB/mail/etc. secrets, same pattern
-  #     depends_on: { postgres: {condition: service_healthy}, redis: {condition: service_healthy} }
-  #     healthcheck: same curl :8081/actuator/health pattern as pivot-core above (EN04.4) —
-  #     no context-path on the management port, interval 10s/timeout 5s/start_period 30s/retries 3
+  #     # server.port=8081, management.server.port=9081 (set in that repo's application.yml)
+  #     networks:
+  #       pivot-net-app: {}   # reachable by nginx (/api/pilotage/, /ws/pilotage/)
+  #       pivot-net-data: {}  # reachable by postgres/redis — no host port exposed
+  #     environment:
+  #       SPRING_PROFILES_ACTIVE: prod
+  #       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot
+  #       SPRING_DATASOURCE_USERNAME: pivot
+  #       SPRING_DATA_REDIS_HOST: redis
+  #     secrets:
+  #       - source: postgres_password
+  #         target: secret.datasource-password
+  #     depends_on:
+  #       postgres: { condition: service_healthy }
+  #       redis:    { condition: service_healthy }
+  #     healthcheck:
+  #       test: ["CMD-SHELL", "curl -f http://localhost:9081/actuator/health || exit 1"]
+  #       interval: 10s
+  #       timeout: 5s
+  #       retries: 3
+  #       start_period: 30s
   #     restart: unless-stopped
   #
-  # Same shape for pivot-agilite-core and pivot-collaboratif-core. nginx (pivot-ui repo) then
-  # gets one upstream + location block per module URL prefix.
+  # Same shape for pivot-agilite-core (:8082, management :9082) and
+  # pivot-collaboratif-core (:8083, management :9083). No nginx change needed — EN17.7 already
+  # has the location blocks; nginx will start routing as soon as the service is in the network.
   # ------------------------------------------------------------------------------------
 
   postgres:

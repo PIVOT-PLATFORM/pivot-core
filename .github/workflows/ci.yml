@@ -194,7 +194,8 @@ jobs:
           done
           export SMTP_HOST=smtp.ci.invalid SMTP_USERNAME=ci@pivot.invalid \
             PIVOT_MAIL_FROM=ci@pivot.invalid PIVOT_APP_URL=https://ci.invalid \
-            CORS_ALLOWED_ORIGINS=https://ci.invalid
+            CORS_ALLOWED_ORIGINS=https://ci.invalid \
+            TLS_CERT_PATH=/ci/dummy.crt TLS_KEY_PATH=/ci/dummy.key
           docker compose -f docker-compose.prod.yml config > /tmp/compose-config.yml
           rm -f secrets/postgres_password.txt secrets/mail_password.txt secrets/otp_secret.txt
 
