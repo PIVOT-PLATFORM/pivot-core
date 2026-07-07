@@ -11,8 +11,9 @@
 	<groupId>fr.pivot</groupId>
 	<artifactId>pivot-core</artifactId>
 	<version>0.26.0</version>
+	<packaging>pom</packaging>
 	<name>pivot-core</name>
-	<description>PIVOT collaborative suite — backend</description>
+	<description>PIVOT collaborative suite — parent POM and multi-module aggregator</description>
 	<url>https://github.com/PIVOT-PLATFORM/pivot-core</url>
 	<licenses>
 		<license>
@@ -20,6 +21,17 @@
 			<url>https://www.gnu.org/licenses/agpl-3.0.txt</url>
 		</license>
 	</licenses>
+
+	<!--
+	  EN17.1 — Multi-module structure.
+	  pivot-core-starter : published library artifact consumed by all pivot-xxx-core repos.
+	  pivot-core-app     : runnable Spring Boot application shell (Docker / deploy).
+	  Modules are listed in build order: starter must be installed before app depends on it.
+	-->
+	<modules>
+		<module>pivot-core-starter</module>
+		<module>pivot-core-app</module>
+	</modules>
 
 	<properties>
 		<java.version>25</java.version>
@@ -29,7 +41,6 @@
 		<!-- Build reproductible : timestamp d'entrées d'archive figé → même source = même
 		     digest de JAR. Sous-tend la vérification de digest sur reprise (release.yml). -->
 		<project.build.outputTimestamp>2026-07-06T19:27:49Z</project.build.outputTimestamp>
-
 	</properties>
 
 	<dependencyManagement>
@@ -44,239 +55,130 @@
 		</dependencies>
 	</dependencyManagement>
 
-	<dependencies>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-actuator</artifactId>
-		</dependency>
-		<!--
-		  EN04.3 — Prometheus export for Micrometer. Version comes from spring-boot-starter-parent's
-		  imported micrometer-bom; without this artifact on the classpath, Spring Boot's
-		  PrometheusMetricsExportAutoConfiguration never activates and /actuator/prometheus
-		  (already listed in management.endpoints.web.exposure.include) 404s despite being
-		  "exposed".
-		-->
-		<dependency>
-			<groupId>io.micrometer</groupId>
-			<artifactId>micrometer-registry-prometheus</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-data-jpa</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-data-redis</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-security</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.security</groupId>
-			<artifactId>spring-security-oauth2-jose</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-validation</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-web</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-websocket</artifactId>
-		</dependency>
-		<!--
-		  Spring Boot 4 moved FlywayAutoConfiguration out of spring-boot-autoconfigure
-		  into the dedicated spring-boot-flyway module. flyway-core alone provides the
-		  library but NOT the autoconfig that runs migrations on startup — without this
-		  module Flyway never executes (no migration, no log). Required for db/migration.
-		-->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-flyway</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.flywaydb</groupId>
-			<artifactId>flyway-core</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.flywaydb</groupId>
-			<artifactId>flyway-database-postgresql</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.postgresql</groupId>
-			<artifactId>postgresql</artifactId>
-			<scope>runtime</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-thymeleaf</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-mail</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>com.google.api-client</groupId>
-			<artifactId>google-api-client</artifactId>
-			<version>2.7.2</version>
-			<exclusions>
-				<exclusion>
-					<groupId>commons-logging</groupId>
-					<artifactId>commons-logging</artifactId>
-				</exclusion>
-			</exclusions>
-		</dependency>
-
-		<!-- EN04.1 — JSON console encoder for logback-spring.xml (all profiles but "test").
-		     logback-classic/-core versions stay managed by spring-boot-dependencies (1.5.34);
-		     Jackson (tools.jackson) likewise stays managed by the Spring Boot 4.1 jackson-bom. -->
-		<dependency>
-			<groupId>net.logstash.logback</groupId>
-			<artifactId>logstash-logback-encoder</artifactId>
-			<version>9.0</version>
-			<scope>runtime</scope>
-		</dependency>
-
-		<!-- Test -->
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-test</artifactId>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.security</groupId>
-			<artifactId>spring-security-test</artifactId>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.testcontainers</groupId>
-			<artifactId>junit-jupiter</artifactId>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.testcontainers</groupId>
-			<artifactId>postgresql</artifactId>
-			<scope>test</scope>
-		</dependency>
-	</dependencies>
-
 	<build>
+		<pluginManagement>
+			<plugins>
+				<!-- Cible Java 24 (class 68) : JaCoCo 0.8.13 + SpotBugs ASM 9.7 ne supportent pas class 69 -->
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<configuration>
+						<release>24</release>
+					</configuration>
+				</plugin>
+
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-checkstyle-plugin</artifactId>
+					<version>3.6.0</version>
+					<configuration>
+						<configLocation>${maven.multiModuleProjectDirectory}/checkstyle.xml</configLocation>
+						<failOnViolation>true</failOnViolation>
+						<violationSeverity>error</violationSeverity>
+						<consoleOutput>true</consoleOutput>
+					</configuration>
+					<dependencies>
+						<dependency>
+							<groupId>com.puppycrawl.tools</groupId>
+							<artifactId>checkstyle</artifactId>
+							<version>10.21.4</version>
+						</dependency>
+					</dependencies>
+				</plugin>
+
+				<plugin>
+					<groupId>com.github.spotbugs</groupId>
+					<artifactId>spotbugs-maven-plugin</artifactId>
+					<version>4.9.3.0</version>
+					<configuration>
+						<effort>Max</effort>
+						<threshold>Medium</threshold>
+						<failOnError>true</failOnError>
+						<excludeFilterFile>${maven.multiModuleProjectDirectory}/spotbugs-exclude.xml</excludeFilterFile>
+					</configuration>
+					<!-- ASM 9.8 : supporte class 69 (Java 25) pour analyse JDK runtime -->
+					<dependencies>
+						<dependency>
+							<groupId>org.ow2.asm</groupId>
+							<artifactId>asm</artifactId>
+							<version>9.8</version>
+						</dependency>
+						<dependency>
+							<groupId>org.ow2.asm</groupId>
+							<artifactId>asm-analysis</artifactId>
+							<version>9.8</version>
+						</dependency>
+						<dependency>
+							<groupId>org.ow2.asm</groupId>
+							<artifactId>asm-commons</artifactId>
+							<version>9.8</version>
+						</dependency>
+						<dependency>
+							<groupId>org.ow2.asm</groupId>
+							<artifactId>asm-tree</artifactId>
+							<version>9.8</version>
+						</dependency>
+						<dependency>
+							<groupId>org.ow2.asm</groupId>
+							<artifactId>asm-util</artifactId>
+							<version>9.8</version>
+						</dependency>
+					</dependencies>
+				</plugin>
+
+				<plugin>
+					<groupId>io.github.git-commit-id</groupId>
+					<artifactId>git-commit-id-maven-plugin</artifactId>
+					<version>10.0.0</version>
+					<executions>
+						<execution>
+							<goals>
+								<goal>revision</goal>
+							</goals>
+						</execution>
+					</executions>
+					<configuration>
+						<generateGitPropertiesFile>true</generateGitPropertiesFile>
+						<commitIdGenerationMode>full</commitIdGenerationMode>
+						<failOnNoGitDirectory>false</failOnNoGitDirectory>
+						<failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
+					</configuration>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+
+		<!--
+		  Active executions inherited by all child modules.
+		  Configuration is pulled from <pluginManagement> above — no duplication.
+		  checkstyle + spotbugs must be in <plugins> (not only pluginManagement) to actually
+		  run during `mvn verify`; pluginManagement alone only provides default configuration.
+		-->
 		<plugins>
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-				<executions>
-					<!-- EN04.1 — generates target/classes/META-INF/build-info.properties, consumed
-					     by StartupLogListener (via the BuildProperties bean) for the service
-					     version in the startup log line.
-					     EN04.2 — the same generated file is also read automatically by Spring Boot
-					     Actuator's BuildPropertiesInfoContributor to populate /actuator/info
-					     (build.version, build.artifact, build.time…) — no extra dependency or
-					     bean needed for that consumer either. -->
-					<execution>
-						<goals>
-							<goal>build-info</goal>
-						</goals>
-					</execution>
-				</executions>
-			</plugin>
-
-			<!-- EN04.2 — génère target/classes/git.properties (commit SHA, branche, date de
-			     commit), lu automatiquement par Spring Boot Actuator pour peupler
-			     /actuator/info (GitInfoContributor). commitIdGenerationMode=full : la clé
-			     `git.commit.id` porte le SHA complet (40 caractères), pas sa forme abrégée. -->
-			<plugin>
-				<groupId>io.github.git-commit-id</groupId>
-				<artifactId>git-commit-id-maven-plugin</artifactId>
-				<version>10.0.0</version>
-				<executions>
-					<execution>
-						<goals>
-							<goal>revision</goal>
-						</goals>
-					</execution>
-				</executions>
-				<configuration>
-					<generateGitPropertiesFile>true</generateGitPropertiesFile>
-					<commitIdGenerationMode>full</commitIdGenerationMode>
-					<!-- /actuator/info doit rester disponible même si le build tourne hors
-					     dépôt Git ou sans historique complet (ex. archive source) — ne jamais
-					     faire échouer le build pour des métadonnées Git absentes. -->
-					<failOnNoGitDirectory>false</failOnNoGitDirectory>
-					<failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
-				</configuration>
-			</plugin>
-
-			<!-- Cible Java 24 (class 68) : JaCoCo 0.8.13 + SpotBugs ASM 9.7 ne supportent pas class 69 -->
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<configuration>
-					<release>24</release>
-				</configuration>
-			</plugin>
-
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-checkstyle-plugin</artifactId>
-				<version>3.6.0</version>
-				<configuration>
-					<configLocation>checkstyle.xml</configLocation>
-					<failOnViolation>true</failOnViolation>
-					<violationSeverity>error</violationSeverity>
-					<consoleOutput>true</consoleOutput>
-				</configuration>
-				<dependencies>
-					<dependency>
-						<groupId>com.puppycrawl.tools</groupId>
-						<artifactId>checkstyle</artifactId>
-						<version>10.21.4</version>
-					</dependency>
-				</dependencies>
+				<executions>
+					<execution>
+						<id>checkstyle-check</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
-
 			<plugin>
 				<groupId>com.github.spotbugs</groupId>
 				<artifactId>spotbugs-maven-plugin</artifactId>
-				<version>4.9.3.0</version>
-				<configuration>
-					<effort>Max</effort>
-					<threshold>Medium</threshold>
-					<failOnError>true</failOnError>
-					<excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
-				</configuration>
-				<!-- ASM 9.8 : supporte class 69 (Java 25) pour analyse JDK runtime -->
-				<dependencies>
-					<dependency>
-						<groupId>org.ow2.asm</groupId>
-						<artifactId>asm</artifactId>
-						<version>9.8</version>
-					</dependency>
-					<dependency>
-						<groupId>org.ow2.asm</groupId>
-						<artifactId>asm-analysis</artifactId>
-						<version>9.8</version>
-					</dependency>
-					<dependency>
-						<groupId>org.ow2.asm</groupId>
-						<artifactId>asm-commons</artifactId>
-						<version>9.8</version>
-					</dependency>
-					<dependency>
-						<groupId>org.ow2.asm</groupId>
-						<artifactId>asm-tree</artifactId>
-						<version>9.8</version>
-					</dependency>
-					<dependency>
-						<groupId>org.ow2.asm</groupId>
-						<artifactId>asm-util</artifactId>
-						<version>9.8</version>
-					</dependency>
-				</dependencies>
+				<executions>
+					<execution>
+						<id>spotbugs-check</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>

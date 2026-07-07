@@ -142,7 +142,9 @@ jobs:
       - name: Compute build checksums
         id: checksums
         run: |
-          find target -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' \
+          # EN17.1 — multi-module: collect JARs from both pivot-core-starter and pivot-core-app
+          find pivot-core-starter/target pivot-core-app/target -maxdepth 1 \
+            -name '*.jar' ! -name '*-sources.jar' ! -name '*.original' \
             -exec sha256sum {} \; > build-checksums.txt
           echo "Checksums :"; cat build-checksums.txt
           echo "subjects=$(base64 -w0 < build-checksums.txt)" >> "$GITHUB_OUTPUT"
@@ -171,6 +173,7 @@ jobs:
           echo "IMAGE_VERSION=${IMAGE}:${VERSION}" >> "$GITHUB_ENV"
           echo "IMAGE_LATEST=${IMAGE}:latest" >> "$GITHUB_ENV"
           echo "image_name=${IMAGE}" >> "$GITHUB_OUTPUT"
+          # EN17.1 — multi-module: Docker context is root; Dockerfile copies from pivot-core-app/target/
           docker buildx build --platform linux/amd64 --load \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:${VERSION}" \
@@ -213,37 +216,53 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set +e
-          JAR=$(find target -maxdepth 1 -name 'pivot-core-*.jar' ! -name '*-sources.jar' | head -1)
-          echo "Déploiement de ${JAR} (version ${VERSION})…"
-          OUT=$(mvn --no-transfer-progress -B deploy:deploy-file \
-            -DrepositoryId=github \
-            -Durl="https://maven.pkg.github.com/${GITHUB_REPOSITORY}" \
-            -Dfile="${JAR}" -DpomFile=pom.xml -Dpackaging=jar 2>&1)
-          code=$?
-          echo "$OUT"
-          if [ "$code" -eq 0 ]; then
-            echo "Déployé."
-            exit 0
-          fi
-          if ! echo "$OUT" | grep -qiE "already exist|409|Conflict"; then
-            echo "::error::Échec de déploiement (autre que 409)."; exit "$code"
-          fi
-          echo "Version ${VERSION} déjà publiée → vérification du digest avant de continuer…"
-          URL="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/fr/pivot/pivot-core/${VERSION}/pivot-core-${VERSION}.jar"
-          if ! curl -fsSL -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" -o published.jar "$URL"; then
-            echo "::error::409 reçu mais impossible de télécharger le JAR publié (${URL})."; exit 1
-          fi
-          LOCAL_SHA=$(sha256sum "$JAR" | awk '{print $1}')
-          PUB_SHA=$(sha256sum published.jar | awk '{print $1}')
-          echo "local=${LOCAL_SHA}"
-          echo "publié=${PUB_SHA}"
-          if [ "$LOCAL_SHA" = "$PUB_SHA" ]; then
-            echo "::notice::JAR publié identique au JAR attesté → rerun idempotent, on continue."
-          else
-            echo "::error::Le JAR publié (${VERSION}) DIFFÈRE du JAR attesté. Provenance incohérente → échec."
-            exit 1
-          fi
+          # EN17.1 — multi-module: deploy both pivot-core-starter (library) and pivot-core-app (app JAR).
+          # Idempotent: 409/Conflict is treated as success after digest verification.
+          deploy_jar() {
+            local JAR="$1"
+            local POM="$2"
+            local ARTIFACT_ID="$3"
+            set +e
+            echo "Déploiement de ${JAR} (version ${VERSION})…"
+            OUT=$(mvn --no-transfer-progress -B deploy:deploy-file \
+              -DrepositoryId=github \
+              -Durl="https://maven.pkg.github.com/${GITHUB_REPOSITORY}" \
+              -Dfile="${JAR}" -DpomFile="${POM}" -Dpackaging=jar 2>&1)
+            code=$?
+            echo "$OUT"
+            if [ "$code" -eq 0 ]; then
+              echo "Déployé : ${ARTIFACT_ID}."
+              return 0
+            fi
+            if ! echo "$OUT" | grep -qiE "already exist|409|Conflict"; then
+              echo "::error::Échec de déploiement ${ARTIFACT_ID} (autre que 409)."; return "$code"
+            fi
+            echo "Version ${VERSION} de ${ARTIFACT_ID} déjà publiée → vérification du digest…"
+            URL="https://maven.pkg.github.com/${GITHUB_REPOSITORY}/fr/pivot/${ARTIFACT_ID}/${VERSION}/${ARTIFACT_ID}-${VERSION}.jar"
+            if ! curl -fsSL -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" -o "published-${ARTIFACT_ID}.jar" "$URL"; then
+              echo "::error::409 reçu mais impossible de télécharger le JAR publié (${URL})."; return 1
+            fi
+            LOCAL_SHA=$(sha256sum "$JAR" | awk '{print $1}')
+            PUB_SHA=$(sha256sum "published-${ARTIFACT_ID}.jar" | awk '{print $1}')
+            echo "local=${LOCAL_SHA}"
+            echo "publié=${PUB_SHA}"
+            if [ "$LOCAL_SHA" = "$PUB_SHA" ]; then
+              echo "::notice::JAR publié identique au JAR attesté → rerun idempotent, on continue."
+            else
+              echo "::error::Le JAR publié (${ARTIFACT_ID}:${VERSION}) DIFFÈRE du JAR attesté. Provenance incohérente → échec."
+              return 1
+            fi
+          }
+
+          # 1. Deploy pivot-core-starter (library consumed by pivot-xxx-core repos)
+          STARTER_JAR=$(find pivot-core-starter/target -maxdepth 1 \
+            -name 'pivot-core-starter-*.jar' ! -name '*-sources.jar' | head -1)
+          deploy_jar "${STARTER_JAR}" "pivot-core-starter/pom.xml" "pivot-core-starter" || exit $?
+
+          # 2. Deploy pivot-core-app (runnable shell — optional artifact, used for audit/SLSA)
+          APP_JAR=$(find pivot-core-app/target -maxdepth 1 \
+            -name 'pivot-core-app-*.jar' ! -name '*-sources.jar' ! -name '*.original' | head -1)
+          deploy_jar "${APP_JAR}" "pivot-core-app/pom.xml" "pivot-core-app" || exit $?
 
       - name: Semantic Release (create tag + release)
         env:

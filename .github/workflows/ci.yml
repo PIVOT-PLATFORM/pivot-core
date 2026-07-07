@@ -79,15 +79,19 @@ jobs:
         run: mvn --no-transfer-progress verify -Pcoverage -Dmaven.compiler.release=24
 
       # Compiled classes + coverage shared with the sonar job (no recompile downstream).
+      # Multi-module build: classes land in pivot-core-app/ and pivot-core-starter/ subdirs.
       - name: Upload backend build (classes + coverage)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: backend-build
           path: |
-            target/classes/
-            target/test-classes/
-            target/site/jacoco/jacoco.xml
+            pivot-core-starter/target/classes/
+            pivot-core-starter/target/test-classes/
+            pivot-core-starter/target/site/jacoco/jacoco.xml
+            pivot-core-app/target/classes/
+            pivot-core-app/target/test-classes/
+            pivot-core-app/target/site/jacoco/jacoco.xml
           retention-days: 1
 
   # -----------------------------------------
@@ -114,7 +118,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: backend-build
-          path: target/
+          path: .
 
       - name: SonarCloud Scan
         env:
