@@ -48,7 +48,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mutation-report
-          path: target/pit-reports/
+          path: pivot-core-starter/target/pit-reports/
 
   # -----------------------------------------
   # DOCKER PREVIEW — build + push GHCR comme la Release (zéro surprise au merge).
@@ -171,11 +171,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mvn --no-transfer-progress -B package -DskipTests -Dmaven.compiler.release=24
-          JAR=$(find target -maxdepth 1 -name 'pivot-core-*.jar' ! -name '*-sources.jar' | head -1)
+          # EN17.1 — multi-module: deploy pivot-core-starter (the published library JAR).
+          JAR=$(find pivot-core-starter/target -maxdepth 1 -name 'pivot-core-starter-*.jar' ! -name '*-sources.jar' ! -name '*.original' | head -1)
           mvn --no-transfer-progress -B deploy:deploy-file \
             -DrepositoryId=github \
             -Durl="https://maven.pkg.github.com/${GITHUB_REPOSITORY}" \
-            -Dfile="${JAR}" -DpomFile=pom.xml -Dpackaging=jar
+            -Dfile="${JAR}" -DpomFile=pivot-core-starter/pom.xml -Dpackaging=jar
 
       # Supprime la version PR juste après (always : nettoie même si une étape a échoué).
       # Suppression STRICTE par nom == PR_VERSION → ne touche jamais une version de release.
@@ -184,7 +185,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ORG: ${{ github.repository_owner }}
-          PKG: fr.pivot.pivot-core   # package Maven = groupId.artifactId
+          PKG: fr.pivot.pivot-core-starter   # package Maven = groupId.artifactId (starter library)
         run: |
           set -euo pipefail
           echo "Suppression de la version Maven ${PR_VERSION} dans ${PKG}…"
