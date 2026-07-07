@@ -36,7 +36,8 @@
         </dependency>
         <!--
           Spring Boot 4 moved FlywayAutoConfiguration out of spring-boot-autoconfigure
-          into the dedicated spring-boot-flyway module — required for FlywayConfigurationCustomizer.
+          into the dedicated spring-boot-flyway module — required for @ConditionalOnClass(Flyway.class)
+          in PivotCoreAutoConfiguration and for Flyway bean resolution in the starter context.
         -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -111,6 +112,38 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>mutation</id>
+            <build>
+                <plugins>
+                    <!--
+                      Override parent pitest config (which targets fr.pivot.auth.* — lives in
+                      pivot-core-app, not here). This module exposes fr.pivot.core.db and
+                      fr.pivot.core.autoconfigure — target those packages instead.
+                    -->
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <configuration>
+                            <targetClasses>
+                                <param>fr.pivot.core.db.*</param>
+                                <param>fr.pivot.core.autoconfigure.*</param>
+                            </targetClasses>
+                            <targetTests>
+                                <param>fr.pivot.core.db.*Test</param>
+                                <param>fr.pivot.core.autoconfigure.*Test</param>
+                            </targetTests>
+                            <excludedTestClasses>
+                                <param>fr.pivot.core.db.*IntegrationTest</param>
+                            </excludedTestClasses>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
     <!--
       distributionManagement inherited from parent POM (fr.pivot:pivot-core).

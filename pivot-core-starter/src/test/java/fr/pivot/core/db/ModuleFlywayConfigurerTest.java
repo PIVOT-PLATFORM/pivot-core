@@ -59,4 +59,12 @@ class ModuleFlywayConfigurerTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new ModuleFlywayConfigurer("   ", "classpath:db/pilotage"));
     }
+
+    @Test
+    @DisplayName("null DataSource in createFlyway throws IllegalArgumentException")
+    void createFlywayWithNullDataSourceThrows() {
+        final ModuleFlywayConfigurer configurer =
+                new ModuleFlywayConfigurer("pilotage", "classpath:db/pilotage");
+        assertThrows(IllegalArgumentException.class, () -> configurer.createFlyway(null));
+    }
 }

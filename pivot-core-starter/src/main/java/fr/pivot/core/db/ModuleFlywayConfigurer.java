@@ -60,6 +60,9 @@ public record ModuleFlywayConfigurer(String schema, String migrationsPath) {
      * @return a configured (but not yet migrated) {@link Flyway} instance
      */
     public Flyway createFlyway(final DataSource dataSource) {
+        if (dataSource == null) {
+            throw new IllegalArgumentException("ModuleFlywayConfigurer: dataSource must not be null");
+        }
         return Flyway.configure()
                 .dataSource(dataSource)
                 .schemas(schema)
