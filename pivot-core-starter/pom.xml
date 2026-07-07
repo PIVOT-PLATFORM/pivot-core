@@ -30,6 +30,13 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
+        <!-- fr.pivot.core.modules (ModuleActivationService, ModuleActivationCacheService) uses
+             MeterRegistry/Counter for operational metrics — API only, no registry implementation
+             (Prometheus wiring stays an app concern in pivot-core-app). -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
