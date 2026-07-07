@@ -1,11 +1,17 @@
 package fr.pivot.core.db;
 
-import org.flywaydb.core.api.configuration.FluentConfiguration;
-import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer;
+import org.flywaydb.core.Flyway;
+
+import javax.sql.DataSource;
 
 /**
- * Configurer allowing a pivot-xxx-core module repo to register its own Flyway migrations
- * in a dedicated PostgreSQL schema, without touching pivot-core's {@code public} schema.
+ * Factory that creates a dedicated {@link Flyway} instance for a single module schema,
+ * completely independent of Spring Boot's auto-configured Flyway.
+ *
+ * <p>Each {@code pivot-xxx-core} module repo declares one {@code @Bean Flyway} that delegates
+ * to this factory. Because every module gets its own {@code Flyway} instance, schemas and
+ * migration locations never interfere with each other — the last-writer-wins problem that
+ * a shared {@code FlywayConfigurationCustomizer} would introduce is avoided by design.
  *
  * <h2>Usage in a module repo</h2>
  * <pre>{@code
@@ -14,42 +20,29 @@ import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomiz
  * public class PilotageFlywayConfig {
  *
  *     @Bean
- *     public ModuleFlywayConfigurer pilotageFlywayConfigurer() {
- *         return new ModuleFlywayConfigurer("pilotage", "classpath:db/pilotage");
+ *     @DependsOn("entityManagerFactory")
+ *     public Flyway pilotageFlywayMigrator(DataSource dataSource) {
+ *         return new ModuleFlywayConfigurer("pilotage", "classpath:db/pilotage")
+ *                 .createFlyway(dataSource);
  *     }
  * }
  * }</pre>
  *
  * <h2>Schema convention (EN17.4)</h2>
  * <ul>
- *   <li>Each module manages its own PostgreSQL schema via Flyway.</li>
+ *   <li>Each module manages its own PostgreSQL schema via a dedicated Flyway instance.</li>
  *   <li>Cross-schema foreign keys are allowed <strong>only</strong> toward
  *       {@code public.teams(id)} and {@code public.tenants(id)}.</li>
  *   <li>Module schemas must <strong>never</strong> write to the {@code public} schema.</li>
  * </ul>
  *
- * <h2>Migration naming</h2>
- * Migrations must follow the pattern {@code V{n}__{description}.sql} inside
- * {@code migrationsPath}. The schema is created automatically by Flyway if
- * {@code createSchemas} is enabled (default: {@code true}).
- *
  * @param schema         PostgreSQL schema name for this module (e.g. {@code "pilotage"}).
- *                       Must be a valid SQL identifier.
  * @param migrationsPath Flyway location of migration scripts for this module
- *                       (e.g. {@code "classpath:db/pilotage"} or
- *                       {@code "filesystem:/opt/migrations/pilotage"}).
+ *                       (e.g. {@code "classpath:db/pilotage"}).
  */
-public record ModuleFlywayConfigurer(String schema, String migrationsPath)
-        implements FlywayConfigurationCustomizer {
+public record ModuleFlywayConfigurer(String schema, String migrationsPath) {
 
-    /**
-     * Constructs a module Flyway configurer, validating that {@code schema} and
-     * {@code migrationsPath} are non-blank.
-     *
-     * @param schema         target PostgreSQL schema — must be a non-blank SQL identifier
-     * @param migrationsPath Flyway location — must be non-blank
-     * @throws IllegalArgumentException if either argument is blank
-     */
+    /** Validates that schema and migrationsPath are non-blank. */
     public ModuleFlywayConfigurer {
         if (schema == null || schema.isBlank()) {
             throw new IllegalArgumentException("ModuleFlywayConfigurer: schema must not be blank");
@@ -61,24 +54,18 @@ public record ModuleFlywayConfigurer(String schema, String migrationsPath)
     }
 
     /**
-     * Applies the module schema and migrations path to the Flyway configuration.
+     * Builds a dedicated {@link Flyway} instance configured for this module schema.
      *
-     * <p>Sets:
-     * <ul>
-     *   <li>{@code schemas} — the target schema (Flyway creates it if absent)</li>
-     *   <li>{@code defaultSchema} — same, so that unqualified table names resolve to it</li>
-     *   <li>{@code locations} — the migration scripts path for this module</li>
-     *   <li>{@code createSchemas} — {@code true} (idempotent: {@code CREATE SCHEMA IF NOT EXISTS})</li>
-     * </ul>
-     *
-     * @param configuration the Flyway configuration to customise
+     * @param dataSource the shared application {@link DataSource}
+     * @return a configured (but not yet migrated) {@link Flyway} instance
      */
-    @Override
-    public void customize(final FluentConfiguration configuration) {
-        configuration
+    public Flyway createFlyway(final DataSource dataSource) {
+        return Flyway.configure()
+                .dataSource(dataSource)
                 .schemas(schema)
                 .defaultSchema(schema)
                 .locations(migrationsPath)
-                .createSchemas(true);
+                .createSchemas(true)
+                .load();
     }
 }

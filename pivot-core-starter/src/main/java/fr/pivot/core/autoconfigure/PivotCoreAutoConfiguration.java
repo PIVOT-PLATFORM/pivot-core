@@ -1,6 +1,7 @@
 package fr.pivot.core.autoconfigure;
 
 import fr.pivot.core.db.ModuleFlywayConfigurer;
+import org.flywaydb.core.Flyway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -35,30 +36,31 @@ public class PivotCoreAutoConfiguration {
     private static final Logger LOG = LoggerFactory.getLogger(PivotCoreAutoConfiguration.class);
 
     /**
-     * Inner configuration that registers module-level Flyway configurers.
+     * Inner configuration that logs module-level Flyway configurers at startup.
      *
-     * <p>Each {@code pivot-xxx-core} module repo declares a {@link ModuleFlywayConfigurer} bean
-     * (see its Javadoc for usage). This configuration logs each registered configurer at startup
-     * so operators can verify that all module schemas are discovered.
+     * <p>Each {@code pivot-xxx-core} module repo declares a {@code @Bean Flyway} method that
+     * delegates to {@link ModuleFlywayConfigurer#createFlyway(javax.sql.DataSource)} (see
+     * {@link ModuleFlywayConfigurer} Javadoc for usage). This configuration logs each registered
+     * {@link ModuleFlywayConfigurer} bean at startup so operators can verify that all module
+     * schemas are discovered.
      *
-     * <p>Conditional on {@code FlywayConfigurationCustomizer} being on the classpath —
-     * i.e. {@code spring-boot-flyway} is present. This keeps the starter functional even when
-     * a consuming project opts out of Flyway (test slice, embedded DB, etc.).
+     * <p>Conditional on {@link Flyway} being on the classpath — i.e. {@code flyway-core} is
+     * present. This keeps the starter functional even when a consuming project opts out of Flyway
+     * (test slice, embedded DB, etc.).
      */
     @Configuration
-    @ConditionalOnClass(name = "org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer")
+    @ConditionalOnClass(Flyway.class)
     static class ModuleFlywayConfiguration {
 
         /**
          * Logs all {@link ModuleFlywayConfigurer} beans registered in the Spring context.
          *
-         * <p>Actual Flyway customisation happens through Spring Boot's auto-configuration:
-         * every {@code FlywayConfigurationCustomizer} bean is picked up automatically.
-         * This bean purely provides observability (startup log) so operators can verify
-         * that all expected module schemas are registered.
+         * <p>Each module repo creates its own {@code @Bean Flyway} that calls
+         * {@link ModuleFlywayConfigurer#createFlyway}. This bean provides observability
+         * (startup log) so operators can verify that all expected module schemas are registered.
          *
          * @param configurers all {@link ModuleFlywayConfigurer} beans in the context
-         * @return a no-op sentinel bean confirming registration
+         * @return a sentinel bean confirming registration was logged
          */
         @Bean
         public ModuleFlywayRegistrationLogger moduleFlywayRegistrationLogger(
