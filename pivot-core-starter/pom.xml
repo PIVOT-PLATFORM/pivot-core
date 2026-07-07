@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fr.pivot</groupId>
+        <artifactId>pivot-core</artifactId>
+        <version>0.26.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>pivot-core-starter</artifactId>
+    <packaging>jar</packaging>
+    <name>pivot-core-starter</name>
+    <description>
+        PIVOT Core Starter — Spring Boot auto-configuration library consumed by all pivot-xxx-core
+        module repos. Exports fr.pivot.core.auth, fr.pivot.core.tenant, fr.pivot.core.team,
+        fr.pivot.core.modules and fr.pivot.core.db packages.
+    </description>
+
+    <dependencies>
+        <!--
+          Core Spring Boot starters needed by the exported packages.
+          Versions managed by the parent POM (fr.pivot:pivot-core inherits
+          spring-boot-starter-parent 4.1.0 BOM).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <!--
+          Spring Boot 4 moved FlywayAutoConfiguration out of spring-boot-autoconfigure
+          into the dedicated spring-boot-flyway module — required for FlywayConfigurationCustomizer.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-jose</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+              pivot-core-starter is a library JAR — NOT a Spring Boot fat-jar.
+              Disable the repackage execution so that `mvn package` produces a standard
+              thin JAR deployable as a Maven dependency (consuming repos add it as a
+              normal dependency, not a runnable fat-jar).
+              The build-info and git-commit-id executions inherited from the parent are
+              harmless for a library artifact.
+            -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                        <phase>none</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!--
+      distributionManagement inherited from parent POM (fr.pivot:pivot-core).
+      `mvn deploy` publishes fr.pivot:pivot-core-starter to GitHub Packages at the
+      same repository as the main pivot-core artifact:
+      https://maven.pkg.github.com/PIVOT-PLATFORM/pivot-core
+    -->
+</project>
