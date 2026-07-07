@@ -173,7 +173,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 Avant tout code, le **PO Agent** challenge les ACs de l'US :
 
 1. Vérifier DoR — story complète, ACs Given/When/Then, AC erreur + sécurité
-2. Calculer Gate 1 : **≥ 70** → procéder · **< 70** → PO Agent réécrit ACs → recalculer
+2. Calculer Gate 1 : **= 100** → procéder · **< 100** → PO Agent réécrit ACs → recalculer
 3. AC ambigus à l'implémentation → PO Agent clarifie, jamais d'interprétation unilatérale
 
 Pas de blocage humain — Claude autonome de A à Z sur la validation des ACs.
@@ -198,7 +198,7 @@ Travail organisé par sprint. Référence : **`pivot-docs/docs/backlog/sprints/`
 - **Une branche par US / Enabler** — `feat/{us-id}-{slug}` (ex. `feat/us03-1-1-admin-active-module`)
 - **Agents en parallèle** — un agent par item du sprint, branches séparées
 - **Backlog pivot-docs sur la branche courante** — `sprints/sprint-{N}.md` committé sur la branche de l'item (pas de branche docs séparée)
-- **Issue GitHub liée** — avant de démarrer un item, vérifier qu'une issue existe dans **ce repo** pour cet US/Enabler (recherche par id/titre). Absente → la créer (titre `{id} — {titre US}`, corps = lien vers le fichier backlog pivot-docs + AC). Référencer l'issue dans la PR (`Closes #N`) — fermeture automatique à la fusion, jamais de fermeture manuelle en double.
+- **Issue GitHub liée** — avant de démarrer un item, vérifier qu'une issue existe dans **ce repo** pour cet US/Enabler (recherche par id/titre). Absente → la créer (titre `{id} — {titre US}`, corps = lien vers le fichier backlog pivot-docs + AC). **Déjà assignée** (humain ou agent en cours) → item déjà pris, ne pas démarrer, passer au suivant. Sinon → se l'auto-assigner immédiatement (`gh issue edit {N} --add-assignee @me`) avant le premier commit — verrouille l'item, empêche qu'un autre agent ou une autre personne ne le reprenne en parallèle. Référencer l'issue dans la PR (`Closes #N`) — fermeture automatique à la fusion, jamais de fermeture manuelle en double.
 
 ## Workflow — Merge séquentiel autonome (plusieurs PR)
 
@@ -368,7 +368,7 @@ dossier `gates/`). Le statut vit dans le champ **Stage** du frontmatter US (pivo
 
 | Gate | Moment | Seuils |
 |------|--------|--------|
-| **1 — READINESS** | Avant implémentation | PO Agent self-challenge · ≥ 70 → Stage: Ready → procéder · < 70 → PO Agent réécrit ACs |
+| **1 — READINESS** | Avant implémentation | PO Agent self-challenge · = 100 → Stage: Ready → procéder · < 100 → PO Agent réécrit ACs |
 | **2 — COVERAGE** | Par commit | ≥ 85 → continuer · 70–84 → compléter tests · < 70 → stop |
 | **3 — QUALITY** | Après CI verte | Hard blocks : secret Gitleaks, label `security`/`breaking-change`, modif contrat module/OIDC |
 | **4 — MERGE CONFIDENCE** | Avant merge | = 100/100 → sortie du mode draft (merge autonome) · 60–99 → merge documenté · < 60 → Breaking Point 2 |
@@ -415,9 +415,9 @@ PO Agent rédige Epic + US avec AC
     ├── QA Agent : testabilité de chaque AC
     └── → Gate 1 READINESS
            │
-           ├── Score ≥ 70 → Stage: Ready → procéder (PO Agent autonome)
+           ├── Score = 100 → Stage: Ready → procéder (PO Agent autonome)
            │     └── Le mainteneur valide → Dev Agent implémente
-           └── Score < 70 → clarification PO Agent avant tout
+           └── Score < 100 → clarification PO Agent avant tout
 ```
 
 ### Format des AC
@@ -434,7 +434,7 @@ AC ambigu à l'implémentation → **stopper et demander au PO Agent** — jamai
 ### Gates (commentaires de PR)
 
 Chaque gate est consigné en **commentaire de PR** (plus de fichiers `gates/`) :
-- Gate 1 Readiness (avant implémentation) — PO Agent valide ACs · ≥ 70 → Stage: Ready
+- Gate 1 Readiness (avant implémentation) — PO Agent valide ACs · = 100 → Stage: Ready
 - Gate 2 Coverage (après chaque commit)
 - Gate 3 Quality (après CI verte)
 - Gate 4 Merge confidence (décision finale)
