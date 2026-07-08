@@ -1,5 +1,6 @@
 package fr.pivot.core.modules.autoconfigure;
 
+import fr.pivot.core.modules.ModuleActivationService;
 import fr.pivot.core.modules.ModuleRegistry;
 import fr.pivot.core.modules.PivotModule;
 import fr.pivot.core.tenant.TenantContext;
@@ -52,6 +53,68 @@ class PivotModulesAutoConfigurationTest {
             assertThat(context.getBean(ModuleRegistry.class))
                     .isSameAs(context.getBean(CustomRegistryConfig.class).customRegistry());
         });
+    }
+
+    /**
+     * Traçabilité : résolution du bug {@code moduleCount=0} — un module métier PIVOT tourne
+     * comme service Spring Boot séparé et ne peut jamais s'enregistrer comme bean {@link
+     * PivotModule} dans le contexte de pivot-core ; seul le catalogue statique {@code
+     * pivot.modules.catalog} peut le faire apparaître dans le registre.
+     */
+    @Test
+    void shouldRegisterModuleFromStaticCatalog_withoutAnyDiscoveredBean() {
+        runner.withUserConfiguration(ModuleActivationServiceStubConfig.class)
+                .withPropertyValues(
+                        "pivot.modules.catalog[0].id=whiteboard",
+                        "pivot.modules.catalog[0].name=Tableau blanc collaboratif",
+                        "pivot.modules.catalog[0].version=0.1.0")
+                .run(context -> {
+                    final ModuleRegistry registry = context.getBean(ModuleRegistry.class);
+
+                    assertThat(registry.count()).isEqualTo(1);
+                    assertThat(registry.isRegistered("whiteboard")).isTrue();
+                    assertThat(registry.findById("whiteboard"))
+                            .hasValueSatisfying(module -> {
+                                assertThat(module.getName()).isEqualTo("Tableau blanc collaboratif");
+                                assertThat(module.getVersion()).isEqualTo("0.1.0");
+                            });
+                });
+    }
+
+    /**
+     * Given un module découvert par bean ET un module catalogué (ids distincts),
+     * when le registre se construit,
+     * then les deux sources sont fusionnées sans collision.
+     */
+    @Test
+    void shouldMergeDiscoveredBeansAndStaticCatalog() {
+        runner.withUserConfiguration(ExternalModuleConfig.class, ModuleActivationServiceStubConfig.class)
+                .withPropertyValues(
+                        "pivot.modules.catalog[0].id=whiteboard",
+                        "pivot.modules.catalog[0].name=Tableau blanc collaboratif",
+                        "pivot.modules.catalog[0].version=0.1.0")
+                .run(context -> {
+                    final ModuleRegistry registry = context.getBean(ModuleRegistry.class);
+
+                    assertThat(registry.count()).isEqualTo(2);
+                    assertThat(registry.isRegistered("external-module")).isTrue();
+                    assertThat(registry.isRegistered("whiteboard")).isTrue();
+                });
+    }
+
+    /**
+     * Fournit un {@link ModuleActivationService} minimal (mock Mockito) pour les scénarios
+     * catalogue statique — cette classe n'est jamais réellement invoquée dans ces tests
+     * (aucun appel à {@code isEnabled}), seule sa présence comme bean est nécessaire pour que
+     * l'injection {@code @Lazy} du bean {@code moduleRegistry} se résolve.
+     */
+    @Configuration(proxyBeanMethods = false)
+    static class ModuleActivationServiceStubConfig {
+
+        @Bean
+        ModuleActivationService moduleActivationService() {
+            return org.mockito.Mockito.mock(ModuleActivationService.class);
+        }
     }
 
     /**
