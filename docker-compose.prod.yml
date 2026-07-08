@@ -4,19 +4,22 @@
 #
 # Scope note (Gate 1, confirmed against the current org — see PR description for detail):
 # the enabler's original AC also lists pivot-pilotage-core / pivot-agilite-core /
-# pivot-collaboratif-core, and an activemq + pgbouncer layer. None of that exists today:
-#   - the three module-core repos are "à créer avec le repo" (pivot-platform/CLAUDE.md) —
-#     not started, so no image to pull and no service block is defined for them here.
-#   - pivot-core has zero ActiveMQ/RabbitMQ/Kafka/pgbouncer dependency — verified against
-#     pom.xml, application*.yml and src/ (grep for activemq|pgbouncer|rabbitmq|kafka|jms
-#     returns nothing). The only messaging-adjacent dependency is
-#     spring-boot-starter-websocket, which backs Spring's in-process STOMP *simple* broker —
-#     no external broker process is involved, so activemq would be dead infrastructure today.
-# See the "not wired yet" comment blocks below for exactly where each one slots in once it
-# becomes real — the intent isn't dropped, just not fabricated ahead of the repos existing.
-# ActiveMQ and PgBouncer are in fact already tracked as their own Enablers for exactly this
-# reason (EN07.3 — ActiveMQ persistence KahaDB, EN07.4 — PgBouncer session mode) — this file
-# doesn't preempt them.
+# pivot-collaboratif-core, and an activemq + pgbouncer layer. Still only partially true as of
+# EN07.3:
+#   - the three module-core repos are real bootstrap repos today (no longer "à créer") but
+#     have not published a Docker image yet — no service block is defined for them here.
+#     Each wires its own `enableStompBrokerRelay()` in its own repo/PR — see the commented
+#     module-core template below for the env vars it expects once it IS wired here.
+#   - pivot-core itself still has zero ActiveMQ/JMS/STOMP-relay dependency — verified again for
+#     this PR (grep for activemq|jms|stomp.*relay across pom.xml, application*.yml, src/
+#     returns nothing beyond the pre-existing in-process notification SimpleBroker, which
+#     never talks to an external broker). EN07.3 adds the ActiveMQ *broker* itself below
+#     (KahaDB persistence, per-domain DLQ, internal-only) purely as shared infrastructure for
+#     the module-cores to relay into — pivot-core does not connect to it.
+#   - pgbouncer remains un-added (EN07.4, still Backlog) — see its own "not included" note
+#     further down.
+# ActiveMQ and PgBouncer are tracked as their own Enablers for exactly this incremental-rollout
+# reason (EN07.3 — ActiveMQ persistence KahaDB, EN07.4 — PgBouncer session mode).
 #
 # Images: built + pushed to GHCR by each repo's own release.yml (Semantic Release) —
 # ghcr.io/pivot-platform/pivot-core and ghcr.io/pivot-platform/pivot-ui. Pin
