@@ -42,6 +42,32 @@ services:
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
     restart: unless-stopped
 
+  # EN07.3 — shared cross-module-core event bus (STOMP relay target for each module-core's
+  # own enableStompBrokerRelay()). pivot-core itself never connects to this broker — see
+  # docker/activemq/activemq.xml header comment.
+  activemq:
+    image: apache/activemq-classic:6.2.0
+    container_name: pivot-activemq
+    environment:
+      ACTIVEMQ_DATA: /var/lib/activemq/data
+    volumes:
+      - ./docker/activemq/activemq.xml:/opt/apache-activemq/conf/activemq.xml:ro
+      - activemq_data:/var/lib/activemq/data
+    ports:
+      # Web console — published here for local developer convenience only (inspecting
+      # queues/DLQs while iterating), same precedent as the Actuator port 8081 above.
+      # docker-compose.prod.yml does NOT publish this port (console must stay internal-only).
+      - "8161:8161"
+    healthcheck:
+      # No `-f`: the console requires HTTP Basic auth and returns 401 on `/` by default —
+      # that response IS "healthy" (the server is up), `-f` would wrongly treat 401 as down.
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8161/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -97,10 +123,16 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      # EN07.3 — matches this module-core's own enableStompBrokerRelay() defaults; explicit
+      # here for consistency with this file's style (defaults already match if omitted).
+      PIVOT_ACTIVEMQ_RELAY_HOST: activemq
+      PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      activemq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8081/api/pilotage/actuator/health"]
@@ -121,10 +153,16 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      # EN07.3 — matches this module-core's own enableStompBrokerRelay() defaults; explicit
+      # here for consistency with this file's style (defaults already match if omitted).
+      PIVOT_ACTIVEMQ_RELAY_HOST: activemq
+      PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      activemq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8082/api/agilite/actuator/health"]
@@ -145,10 +183,16 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      # EN07.3 — matches this module-core's own enableStompBrokerRelay() defaults; explicit
+      # here for consistency with this file's style (defaults already match if omitted).
+      PIVOT_ACTIVEMQ_RELAY_HOST: activemq
+      PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      activemq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8083/api/collaboratif/actuator/health"]
@@ -176,3 +220,4 @@ services:
 
 volumes:
   postgres_data:
+  activemq_data:
