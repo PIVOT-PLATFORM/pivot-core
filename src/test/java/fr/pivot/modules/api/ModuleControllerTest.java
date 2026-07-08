@@ -77,7 +77,9 @@ class ModuleControllerTest {
     void shouldReturn200WithModules_whenAuthenticatedUserWithTenant() {
         setAuthentication(buildUser(1L, 42L, "ROLE_USER"));
 
-        final ModuleDto dto = new ModuleDto("whiteboard", "Tableau blanc", "1.0.0", true, ModuleStatus.ONLINE);
+        final ModuleDto dto = new ModuleDto(
+                "whiteboard", "Tableau blanc", "Tableau blanc collaboratif temps réel", "1.0.0", true,
+                ModuleStatus.ONLINE);
         when(moduleRegistryService.getModulesForTenant(any())).thenReturn(List.of(dto));
 
         final ResponseEntity<List<ModuleDto>> response = controller.getModules();

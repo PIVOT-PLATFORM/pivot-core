@@ -7,15 +7,17 @@ package fr.pivot.modules.registry;
  * aucune donnée interne de l'entité JPA — contrat API stable indépendant du modèle
  * de persistance.
  *
- * @param id      identifiant technique unique du module (ex. {@code "whiteboard"})
- * @param name    nom affiché en UI
- * @param version version du module
- * @param enabled {@code true} si le module est activé pour le tenant courant
- * @param status  statut opérationnel du module ({@link ModuleStatus})
+ * @param id          identifiant technique unique du module (ex. {@code "whiteboard"})
+ * @param name        nom affiché en UI
+ * @param description description courte du module, affichée en UI
+ * @param version     version du module
+ * @param enabled     {@code true} si le module est activé pour le tenant courant
+ * @param status      statut opérationnel du module ({@link ModuleStatus})
  */
 public record ModuleDto(
         String id,
         String name,
+        String description,
         String version,
         boolean enabled,
         ModuleStatus status) {
