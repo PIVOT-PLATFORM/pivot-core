@@ -9,15 +9,22 @@
 
 Le frontend Angular est dans **pivot-ui**. La documentation générale vit dans **pivot-docs**.
 
-**Ce que pivot-core-starter exporte :**
+**Ce que pivot-core-starter exporte réellement** (état vérifié fichier par fichier, 2026-07-08,
+`pivot-core#171` — ce tableau ne documente que ce qui existe, pas l'architecture cible) :
 
 | Package | Contenu |
 |---------|---------|
-| `fr.pivot.core.auth` | Spring Security config, opaque token filter, OIDC resource server |
-| `fr.pivot.core.tenant` | `TenantContext`, `TenantContextHolder`, annotation `@TenantAware` |
-| `fr.pivot.core.team` | Entités `Team`, `TeamMember` — partagées cross-modules |
+| `fr.pivot.core.tenant` | `TenantContext` uniquement. `TenantContextHolder`/`@TenantAware` différés — aucun consommateur réel identifié (tout le code passe `TenantContext` en paramètre explicite) |
+| `fr.pivot.core.team` | Entités `Team`, `TeamMember` + repositories — partagées cross-modules. Pas d'API REST/logique métier tant qu'aucune US ne les spécifie |
 | `fr.pivot.core.modules` | Interface `PivotModule`, registre, cache Redis, annotation `@RequiresModule` |
 | `fr.pivot.core.db` | Flyway baseline schéma `public`, config DataSource multi-schéma |
+
+`fr.pivot.core.auth` **non extrait** — escaladé sur `pivot-core#171` : la validation d'opaque
+token (`TokenService`/`TokenAuthenticationFilter`) dépend directement de l'entité JPA concrète
+`fr.pivot.auth.entity.User`, ce qui empêche un déplacement mécanique sûr ; un découplage propre
+exige une abstraction de principal minimal partagée — décision d'architecture sur un composant de
+sécurité critique, hors périmètre d'une décision unilatérale d'agent. Voir la Javadoc de
+`PivotCoreAutoConfiguration` (starter) pour le raisonnement complet.
 
 **Architecture BDD :** schéma `public` géré par pivot-core (Flyway). Les repos modules créent leur propre schéma Flyway et referencent `public.teams(id)` / `public.tenants(id)` par FK.
 

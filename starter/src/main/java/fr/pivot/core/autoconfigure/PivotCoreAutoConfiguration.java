@@ -19,16 +19,42 @@ import org.springframework.context.annotation.Configuration;
  * dependency; this class configures the shared Spring context automatically.
  *
  * <h2>Exported packages</h2>
+ *
+ * <p>État vérifié fichier par fichier (2026-07-08, {@code pivot-core#171}) — cette liste ne
+ * documente que ce qui existe réellement dans ce module, pas l'architecture cible :
  * <ul>
- *   <li>{@code fr.pivot.core.auth} — Spring Security config, opaque token filter, OIDC RS</li>
- *   <li>{@code fr.pivot.core.tenant} — {@code TenantContext}, {@code TenantContextHolder},
- *       {@code @TenantAware}</li>
- *   <li>{@code fr.pivot.core.team} — {@code Team}, {@code TeamMember} (public schema entities)</li>
- *   <li>{@code fr.pivot.core.modules} — {@code PivotModule} interface, registry,
- *       {@code @RequiresModule}</li>
+ *   <li>{@code fr.pivot.core.tenant} — {@code TenantContext} uniquement. {@code
+ *       TenantContextHolder}/{@code @TenantAware} sont différés : aucun consommateur réel
+ *       identifié à ce jour (tout le code existant passe {@code TenantContext} explicitement en
+ *       paramètre, ex. {@link fr.pivot.core.modules.PivotModule#isEnabled(fr.pivot.core.tenant.TenantContext)})
+ *       — les introduire
+ *       maintenant serait de l'infrastructure spéculative. À réévaluer dès qu'un repo module a un
+ *       besoin réel d'une résolution implicite (AOP/ThreadLocal) plutôt qu'un paramètre explicite.</li>
+ *   <li>{@code fr.pivot.core.team} — {@code Team}, {@code TeamMember} (entités schéma public) —
+ *       fait (EN17.1 volet team). Uniquement entités + repositories, aucune API REST ni logique
+ *       métier tant qu'aucune US ne les spécifie.</li>
+ *   <li>{@code fr.pivot.core.modules} — {@code PivotModule} interface, registre,
+ *       {@code @RequiresModule} — fait.</li>
  *   <li>{@code fr.pivot.core.db} — Flyway baseline public schema, multi-schema DataSource config,
- *       {@link ModuleFlywayConfigurer}</li>
+ *       {@link ModuleFlywayConfigurer} — fait.</li>
  * </ul>
+ *
+ * <p><strong>{@code fr.pivot.core.auth} — non extrait, décision d'architecture requise avant
+ * implémentation</strong> (escaladé sur {@code pivot-core#171}, voir le commentaire de gate
+ * associé). Le code applicatif ({@code fr.pivot.auth.*}, {@code pivot-core-app}) mélange logique
+ * potentiellement générique (validation d'opaque token) et logique strictement propre à cette
+ * application (endpoints login/register/2FA) — mais surtout, la validation de token
+ * ({@code TokenService}/{@code TokenAuthenticationFilter}) dépend directement de l'entité JPA
+ * concrète {@code fr.pivot.auth.entity.User}, ce qui empêche un déplacement mécanique : un
+ * découplage propre nécessiterait d'introduire une abstraction de principal minimal partagée
+ * (identité + rôle + tenant, sans les champs de profil propres à cette app), ce qui est un choix
+ * de conception sur un composant de sécurité critique — hors périmètre d'une décision unilatérale
+ * d'agent. Par ailleurs, aucun repo {@code pivot-xxx-core} n'a aujourd'hui de logique métier
+ * implémentée (tous en bootstrap infrastructure uniquement), donc aucun besoin consommateur réel
+ * et immédiat ne force cette extraction maintenant. La mention historique « OIDC resource server »
+ * ne correspond plus au code actuel : {@code SecurityConfig} a explicitement remplacé
+ * {@code oauth2ResourceServer().jwt()} par les tokens opaques (aucun décodeur JWT/JWKS générique
+ * n'existe à extraire).
  */
 @AutoConfiguration
 public class PivotCoreAutoConfiguration {
