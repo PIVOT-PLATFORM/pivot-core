@@ -1,8 +1,7 @@
 package fr.pivot.notification.config;
 
-import fr.pivot.auth.entity.AccessToken;
-import fr.pivot.auth.entity.User;
-import fr.pivot.auth.service.TokenService;
+import fr.pivot.core.auth.AuthenticatedPrincipal;
+import fr.pivot.core.auth.AuthenticatedPrincipalResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,7 +19,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
@@ -29,12 +27,16 @@ import static org.mockito.Mockito.when;
  * <p>Vérifie l'authentification de la frame STOMP {@code CONNECT} par token opaque, seul point
  * d'authentification réel du canal WebSocket (la poignée de main HTTP est {@code permitAll()} —
  * voir {@link NotificationWebSocketConfig}).
+ *
+ * <p>Dépend de {@link AuthenticatedPrincipalResolver} (ADR-022) depuis EN17.1 volet {@code
+ * fr.pivot.core.auth} — mock direct de l'interface plutôt que de {@code TokenService}/{@code
+ * User} concrets, comportement de l'intercepteur inchangé.
  */
 @ExtendWith(MockitoExtension.class)
 class StompAuthChannelInterceptorTest {
 
     @Mock
-    private TokenService tokenService;
+    private AuthenticatedPrincipalResolver principalResolver;
 
     @Mock
     private MessageChannel channel;
@@ -43,16 +45,13 @@ class StompAuthChannelInterceptorTest {
 
     @BeforeEach
     void setUp() {
-        interceptor = new StompAuthChannelInterceptor(tokenService);
+        interceptor = new StompAuthChannelInterceptor(principalResolver);
     }
 
     @Test
     void preSend_setsPrincipal_whenConnectFrameHasValidBearerToken() {
-        final User user = mock(User.class);
-        when(user.getId()).thenReturn(7L);
-        final AccessToken token = mock(AccessToken.class);
-        when(token.getUser()).thenReturn(user);
-        when(tokenService.validate("valid-raw-token")).thenReturn(Optional.of(token));
+        final AuthenticatedPrincipal principal = new AuthenticatedPrincipal(7L, 1L, "ROLE_USER");
+        when(principalResolver.resolve("valid-raw-token")).thenReturn(Optional.of(principal));
 
         final Message<byte[]> message = connectMessage("Bearer valid-raw-token");
 
@@ -66,7 +65,7 @@ class StompAuthChannelInterceptorTest {
 
     @Test
     void preSend_rejectsConnect_whenTokenInvalid() {
-        when(tokenService.validate("bad-token")).thenReturn(Optional.empty());
+        when(principalResolver.resolve("bad-token")).thenReturn(Optional.empty());
 
         final Message<byte[]> message = connectMessage("Bearer bad-token");
 
