@@ -8,6 +8,8 @@ import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.util.CryptoUtils;
 import fr.pivot.auth.util.HtmlStripper;
+import fr.pivot.core.auth.AuthenticatedPrincipal;
+import fr.pivot.core.auth.AuthenticatedPrincipalResolver;
 import fr.pivot.tenant.entity.Tenant;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -42,9 +44,15 @@ import java.util.Optional;
  * </ul>
  *
  * <p>Raw token format: 256 bits from SecureRandom, hex-encoded (64 hex chars). Stored in DB as SHA-256.
+ *
+ * <p>Implements {@link AuthenticatedPrincipalResolver} (ADR-022, {@code pivot-core#171} EN17.1
+ * volet {@code fr.pivot.core.auth}) — {@link #resolve(String)} projects the result of {@link
+ * #validate(String)} down to the shared minimal {@link AuthenticatedPrincipal}, for consumers
+ * that only need identity (userId/tenantId/role), not the full {@link User} profile. This is
+ * purely additive: {@link #validate(String)} and every other method here are unchanged.
  */
 @Service
-public class TokenService {
+public class TokenService implements AuthenticatedPrincipalResolver {
 
     private static final Logger LOG = LoggerFactory.getLogger(TokenService.class);
 
@@ -253,6 +261,44 @@ public class TokenService {
 
         LOG.debug("event=TOKEN_VALID userId={}", token.getUser() != null ? token.getUser().getId() : "?");
         return Optional.of(token);
+    }
+
+    /**
+     * Resolves a raw bearer token to the shared minimal {@link AuthenticatedPrincipal} (ADR-022).
+     *
+     * <p>Delegates entirely to {@link #validate(String)} — same DB lookup, same expiry/
+     * revocation/tenant-deactivation/user-deactivation checks, same {@code last_used_at}
+     * throttled touch. Only the mapping of the result differs: the full {@link AccessToken}/
+     * {@link User} is projected down to {@code (userId, tenantId, role)} instead of being
+     * returned as-is.
+     *
+     * @param rawToken the raw opaque token extracted from the {@code Authorization: Bearer}
+     *                 header
+     * @return the resolved {@link AuthenticatedPrincipal}, or empty under the same conditions as
+     *     {@link #validate(String)}
+     */
+    @Override
+    @Transactional
+    public Optional<AuthenticatedPrincipal> resolve(final String rawToken) {
+        return validate(rawToken).map(TokenService::toPrincipal);
+    }
+
+    /**
+     * Projects a validated {@link AccessToken} down to the shared minimal {@link
+     * AuthenticatedPrincipal} — never exposes {@link User} beyond {@code id}/{@code role} and
+     * {@link Tenant} beyond {@code id}.
+     *
+     * @param token a validated token with its {@link User} (and, when present, {@link Tenant})
+     *              eagerly loaded (see {@link AccessTokenRepository#findByTokenHashAndStatusWithUser})
+     * @return the corresponding {@link AuthenticatedPrincipal}
+     */
+    private static AuthenticatedPrincipal toPrincipal(final AccessToken token) {
+        final User user = token.getUser();
+        final Tenant tenant = user != null ? user.getTenant() : null;
+        return new AuthenticatedPrincipal(
+            user != null ? user.getId() : null,
+            tenant != null ? tenant.getId() : null,
+            user != null ? user.getRole() : null);
     }
 
     /**

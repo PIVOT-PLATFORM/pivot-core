@@ -8,6 +8,7 @@ import fr.pivot.auth.entity.User;
 import fr.pivot.auth.repository.AccessTokenRepository;
 import fr.pivot.auth.repository.FeatureFlagRepository;
 import fr.pivot.auth.util.CryptoUtils;
+import fr.pivot.core.auth.AuthenticatedPrincipal;
 import fr.pivot.tenant.entity.Tenant;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -38,7 +39,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link TokenService}.
- * Verifies token issuance, validation, revocation and rotation logic.
+ * Verifies token issuance, validation, revocation, rotation and (ADR-022)
+ * {@code AuthenticatedPrincipalResolver} projection logic.
  *
  * <p>Note: {@link FeatureFlagRepository#getInt} is a default interface method.
  * Mockito does not intercept default method calls — we stub {@code findByFlagKey}
@@ -354,6 +356,65 @@ class TokenServiceTest {
         final var field = AccessToken.class.getDeclaredField("createdAt");
         field.setAccessible(true);
         field.set(token, createdAt);
+    }
+
+    // ----------------------------------------------------------------
+    // resolve() — ADR-022, AuthenticatedPrincipalResolver (EN17.1 volet auth)
+    // ----------------------------------------------------------------
+
+    @Test
+    void resolve_returnsPrincipal_whenTokenValid() {
+        final String raw = "resolve-valid-token";
+        final AccessToken stored = validToken(raw, 3600);
+        stored.setUser(user);
+        final Tenant tenant = Mockito.mock(Tenant.class);
+        when(tenant.getId()).thenReturn(9L);
+        when(user.getTenant()).thenReturn(tenant);
+        when(user.getRole()).thenReturn("ROLE_ADMIN");
+        when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(stored));
+
+        final Optional<AuthenticatedPrincipal> result = tokenService.resolve(raw);
+
+        assertThat(result).contains(new AuthenticatedPrincipal(42L, 9L, "ROLE_ADMIN"));
+    }
+
+    @Test
+    void resolve_returnsEmpty_whenTokenInvalid() {
+        when(tokenRepo.findByTokenHashAndStatusWithUser(any(), eq(TokenStatus.ACTIVE))).thenReturn(Optional.empty());
+
+        assertThat(tokenService.resolve("unknown-token")).isEmpty();
+    }
+
+    @Test
+    void resolve_returnsEmpty_whenUserAccountDeactivated() {
+        // Mirrors validate_returnsEmpty_whenUserAccountDeactivated — resolve() must reject under
+        // the exact same conditions as validate(), since it delegates to it entirely.
+        final String raw = "resolve-deactivated-account";
+        final AccessToken stored = validToken(raw, 3600);
+        stored.setUser(user);
+        when(user.isActive()).thenReturn(false);
+        when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(stored));
+
+        assertThat(tokenService.resolve(raw)).isEmpty();
+    }
+
+    @Test
+    void resolve_toleratesNullTenant() {
+        // Defensive: a user with no resolvable tenant must not NPE the projection —
+        // AuthenticatedPrincipal.tenantId() is simply null in that case.
+        final String raw = "resolve-no-tenant";
+        final AccessToken stored = validToken(raw, 3600);
+        stored.setUser(user);
+        when(user.getTenant()).thenReturn(null);
+        when(user.getRole()).thenReturn("ROLE_USER");
+        when(tokenRepo.findByTokenHashAndStatusWithUser(CryptoUtils.sha256(raw), TokenStatus.ACTIVE))
+            .thenReturn(Optional.of(stored));
+
+        final Optional<AuthenticatedPrincipal> result = tokenService.resolve(raw);
+
+        assertThat(result).contains(new AuthenticatedPrincipal(42L, null, "ROLE_USER"));
     }
 
     // ----------------------------------------------------------------

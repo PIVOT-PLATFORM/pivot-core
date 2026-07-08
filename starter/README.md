@@ -14,13 +14,25 @@ actually ships in this module today, not the target architecture:
 | `fr.pivot.core.team` | `Team`, `TeamMember` entities + repositories (public schema, cross-module). No REST API/service — none specified by any US yet |
 | `fr.pivot.core.modules` | `PivotModule` interface, `ModuleRegistry`, `@RequiresModule` |
 | `fr.pivot.core.db` | Flyway public schema baseline, `ModuleFlywayConfigurer` (multi-schema) |
+| `fr.pivot.core.auth` | `AuthenticatedPrincipal` (record `userId`/`tenantId`/`role`) + `AuthenticatedPrincipalResolver` (raw token → minimal principal contract) — see below |
 
-**`fr.pivot.core.auth` — not yet extracted.** Escalated on `pivot-core#171`: the opaque-token
-validation path (`TokenService`/`TokenAuthenticationFilter`) is hard-coupled to the concrete
-`fr.pivot.auth.entity.User` JPA entity, so a mechanical move is not safe — a clean extraction
-requires a new shared minimal-principal abstraction, which is an architecture decision on a
-security-critical component, not a unilateral agent call. See the `PivotCoreAutoConfiguration`
-Javadoc for the full reasoning.
+**`fr.pivot.core.auth` — minimal principal extracted (ADR-022), token validation itself not yet
+duplicated.** `pivot-core#171` required two decisions before any code moved on this
+security-critical component: the shape of a shared minimal principal, and "duplicated validation
+(shared library) vs. centralized (network call)". [ADR-022](../../pivot-docs/docs/adr/ADR-022-principal-authentification-minimal-partage.md)
+settles both: `AuthenticatedPrincipal(userId, tenantId, role)` — deliberately excludes every
+profile field specific to `pivot-core-app` (email, password hash, 2FA/trusted-device state,
+locale, avatar…) — and **duplicated validation via shared library code**, never a network call to
+`pivot-core` (would contradict the fault-isolation goal already documented by every satellite
+`CLAUDE.md`). `fr.pivot.auth.service.TokenService` (`pivot-core-app`) implements
+`AuthenticatedPrincipalResolver`; `fr.pivot.notification.config.StompAuthChannelInterceptor` is
+the first real consumer depending on the interface instead of the concrete `User` entity.
+
+The validation logic itself (SHA-256 hash comparison, expiry, tenant-invalidation/user-deactivation
+checks) is **not yet** duplicated into this starter — no `pivot-xxx-core` repo has a real consumer
+for it today (all bootstrap-infrastructure only). Tracked as a dedicated follow-up once a module
+repo needs to validate tokens locally against `public.access_tokens`. See the
+`PivotCoreAutoConfiguration` Javadoc and ADR-022 for the full reasoning.
 
 ## Consuming the library in a module repo
 

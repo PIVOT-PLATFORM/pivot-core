@@ -37,22 +37,31 @@ import org.springframework.context.annotation.Configuration;
  *       {@code @RequiresModule} — fait.</li>
  *   <li>{@code fr.pivot.core.db} — Flyway baseline public schema, multi-schema DataSource config,
  *       {@link ModuleFlywayConfigurer} — fait.</li>
+ *   <li>{@code fr.pivot.core.auth} — {@link fr.pivot.core.auth.AuthenticatedPrincipal} (record
+ *       {@code userId}/{@code tenantId}/{@code role}) et {@link
+ *       fr.pivot.core.auth.AuthenticatedPrincipalResolver} (contrat de résolution token brut →
+ *       principal minimal) — fait (ADR-022, EN17.1 volet auth). Implémenté par {@code
+ *       fr.pivot.auth.service.TokenService} dans {@code pivot-core-app}. La logique de validation
+ *       elle-même (hash, expiration, révocation, désactivation tenant/utilisateur) reste dans
+ *       {@code pivot-core-app} — non dupliquée dans le starter par cette extraction, voir
+ *       ci-dessous.</li>
  * </ul>
  *
- * <p><strong>{@code fr.pivot.core.auth} — non extrait, décision d'architecture requise avant
- * implémentation</strong> (escaladé sur {@code pivot-core#171}, voir le commentaire de gate
- * associé). Le code applicatif ({@code fr.pivot.auth.*}, {@code pivot-core-app}) mélange logique
- * potentiellement générique (validation d'opaque token) et logique strictement propre à cette
- * application (endpoints login/register/2FA) — mais surtout, la validation de token
- * ({@code TokenService}/{@code TokenAuthenticationFilter}) dépend directement de l'entité JPA
- * concrète {@code fr.pivot.auth.entity.User}, ce qui empêche un déplacement mécanique : un
- * découplage propre nécessiterait d'introduire une abstraction de principal minimal partagée
- * (identité + rôle + tenant, sans les champs de profil propres à cette app), ce qui est un choix
- * de conception sur un composant de sécurité critique — hors périmètre d'une décision unilatérale
- * d'agent. Par ailleurs, aucun repo {@code pivot-xxx-core} n'a aujourd'hui de logique métier
- * implémentée (tous en bootstrap infrastructure uniquement), donc aucun besoin consommateur réel
- * et immédiat ne force cette extraction maintenant. La mention historique « OIDC resource server »
- * ne correspond plus au code actuel : {@code SecurityConfig} a explicitement remplacé
+ * <p><strong>{@code fr.pivot.core.auth} — principal minimal extrait (ADR-022), validation
+ * elle-même non extraite.</strong> L'escalade {@code pivot-core#171} demandait deux décisions
+ * avant tout déplacement de code sur ce composant de sécurité critique : la forme d'un principal
+ * minimal partagé, et « validation dupliquée (bibliothèque partagée) vs. centralisée (appel
+ * réseau) ». ADR-022 tranche les deux : principal minimal = {@code AuthenticatedPrincipal}
+ * ci-dessus ; choix architectural = validation dupliquée via bibliothèque partagée le jour où un
+ * repo module en aura besoin, jamais de centralisation réseau vers {@code pivot-core} (contredirait
+ * l'isolation de panne déjà documentée par les {@code CLAUDE.md} satellites). Cette extraction
+ * livre le type et le contrat d'abstraction ; elle ne duplique pas encore la logique de validation
+ * elle-même (hash SHA-256, expiration, {@code tenant_invalidation_timestamp}, {@code
+ * user.isActive()}) dans le starter — aucun repo {@code pivot-xxx-core} n'a aujourd'hui de logique
+ * métier implémentée (tous en bootstrap infrastructure uniquement), donc aucun besoin consommateur
+ * réel et immédiat ne force cette extraction plus poussée maintenant (infrastructure spéculative
+ * sinon, voir ADR-022 « Ce qui n'est pas fait maintenant »). La mention historique « OIDC resource
+ * server » ne correspond plus au code actuel : {@code SecurityConfig} a explicitement remplacé
  * {@code oauth2ResourceServer().jwt()} par les tokens opaques (aucun décodeur JWT/JWKS générique
  * n'existe à extraire).
  */

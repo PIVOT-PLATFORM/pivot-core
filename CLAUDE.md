@@ -18,13 +18,23 @@ Le frontend Angular est dans **pivot-ui**. La documentation générale vit dans 
 | `fr.pivot.core.team` | Entités `Team`, `TeamMember` + repositories — partagées cross-modules. Pas d'API REST/logique métier tant qu'aucune US ne les spécifie |
 | `fr.pivot.core.modules` | Interface `PivotModule`, registre, cache Redis, annotation `@RequiresModule` |
 | `fr.pivot.core.db` | Flyway baseline schéma `public`, config DataSource multi-schéma |
+| `fr.pivot.core.auth` | `AuthenticatedPrincipal` (record `userId`/`tenantId`/`role`) + interface `AuthenticatedPrincipalResolver` — principal minimal partagé (ADR-022), implémenté par `TokenService` |
 
-`fr.pivot.core.auth` **non extrait** — escaladé sur `pivot-core#171` : la validation d'opaque
-token (`TokenService`/`TokenAuthenticationFilter`) dépend directement de l'entité JPA concrète
-`fr.pivot.auth.entity.User`, ce qui empêche un déplacement mécanique sûr ; un découplage propre
-exige une abstraction de principal minimal partagée — décision d'architecture sur un composant de
-sécurité critique, hors périmètre d'une décision unilatérale d'agent. Voir la Javadoc de
-`PivotCoreAutoConfiguration` (starter) pour le raisonnement complet.
+**`fr.pivot.core.auth` — principal minimal extrait (ADR-022) ; validation elle-même non extraite.**
+L'escalade `pivot-core#171` demandait deux décisions avant tout déplacement de code sur ce
+composant de sécurité critique : la forme d'un principal minimal partagé, et validation dupliquée
+(bibliothèque partagée) vs. centralisée (appel réseau vers `pivot-core`). ADR-022 tranche les
+deux : `AuthenticatedPrincipal(userId, tenantId, role)` — exclut délibérément tout champ de profil
+propre à `pivot-core-app` (email, hash mot de passe, 2FA, appareils de confiance, locale, avatar…)
+— et validation dupliquée via bibliothèque partagée, jamais de centralisation réseau (contredirait
+l'isolation de panne déjà documentée par les `CLAUDE.md` satellites). `TokenService` implémente
+`AuthenticatedPrincipalResolver` ; `TokenAuthenticationFilter` reste inchangé (continue de peupler
+`Authentication#getDetails()` avec l'entité `User` complète, dont dépendent une dizaine de
+contrôleurs existants). La logique de validation elle-même (hash, expiration, révocation,
+désactivation tenant/utilisateur) reste dans `pivot-core-app` — non dupliquée dans le starter par
+cette extraction, aucun repo `pivot-xxx-core` n'ayant de logique métier implémentée à ce jour
+(bootstrap infrastructure uniquement). Voir la Javadoc de `PivotCoreAutoConfiguration` (starter)
+et l'ADR-022 (`pivot-docs/docs/adr/`) pour le raisonnement complet.
 
 **Architecture BDD :** schéma `public` géré par pivot-core (Flyway). Les repos modules créent leur propre schéma Flyway et referencent `public.teams(id)` / `public.tenants(id)` par FK.
 
