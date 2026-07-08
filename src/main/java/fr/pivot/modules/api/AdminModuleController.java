@@ -50,7 +50,7 @@ import java.util.Map;
  * par le comportement par défaut de Spring Security (pas de gestionnaire custom nécessaire ici).
  */
 @RestController
-@RequestMapping("/api/admin/modules")
+@RequestMapping("/admin/modules")
 public class AdminModuleController {
 
     private static final Logger LOG = LoggerFactory.getLogger(AdminModuleController.class);

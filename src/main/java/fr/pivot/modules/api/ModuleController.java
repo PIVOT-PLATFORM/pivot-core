@@ -38,7 +38,7 @@ import java.util.List;
  * ({@code getDetails()}) contiennent l'entité {@link User} résolue depuis la BDD.
  */
 @RestController
-@RequestMapping("/api/modules")
+@RequestMapping("/modules")
 public class ModuleController {
 
     private static final Logger LOG = LoggerFactory.getLogger(ModuleController.class);

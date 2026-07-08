@@ -249,7 +249,7 @@ class AccountExportIntegrationTest extends AbstractIntegrationTest {
     }
 
     private HttpServletRequest fakeRequest() {
-        final MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/account/export");
+        final MockHttpServletRequest request = new MockHttpServletRequest("POST", "/account/export");
         request.setRemoteAddr("203.0.113.99");
         request.addHeader("User-Agent", "JUnit-IT");
         return request;

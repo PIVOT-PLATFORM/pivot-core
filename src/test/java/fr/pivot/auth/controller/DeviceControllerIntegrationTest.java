@@ -122,7 +122,7 @@ class DeviceControllerIntegrationTest extends AbstractIntegrationTest {
 
         final String currentRaw = issueToken(userAlice, "fp-current", "Chrome sur Windows", "203.0.113.1");
 
-        mockMvc.perform(get("/api/auth/devices")
+        mockMvc.perform(get("/auth/devices")
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(2))
@@ -147,7 +147,7 @@ class DeviceControllerIntegrationTest extends AbstractIntegrationTest {
         trustDevice(userAlice, "fp-b", "Device B", "203.0.113.11");
         final String currentRaw = issueToken(userAlice, "fp-b", "Device B", "203.0.113.11");
 
-        mockMvc.perform(get("/api/auth/devices")
+        mockMvc.perform(get("/auth/devices")
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isOk())
             // Device B was trusted after Device A, so it has the more recent lastSeenAt.
@@ -160,7 +160,7 @@ class DeviceControllerIntegrationTest extends AbstractIntegrationTest {
         trustDevice(userAlice, "fp-xss", "<img src=x onerror=alert(1)>Chrome", "203.0.113.1");
         final String raw = issueToken(userAlice, "fp-xss", "<img src=x onerror=alert(1)>Chrome", "203.0.113.1");
 
-        mockMvc.perform(get("/api/auth/devices")
+        mockMvc.perform(get("/auth/devices")
                 .header("Authorization", "Bearer " + raw))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].device").value("Chrome"))
@@ -173,7 +173,7 @@ class DeviceControllerIntegrationTest extends AbstractIntegrationTest {
         // No AuthenticationEntryPoint is configured (see SecurityConfig) — Spring Security's
         // default for an unauthenticated request denied by isAuthenticated() is 403, not 401,
         // consistent with every other authenticated endpoint (e.g. SessionController).
-        mockMvc.perform(get("/api/auth/devices"))
+        mockMvc.perform(get("/auth/devices"))
             .andExpect(status().isForbidden());
     }
 
@@ -187,7 +187,7 @@ class DeviceControllerIntegrationTest extends AbstractIntegrationTest {
         trustDevice(userAlice, "fp-current", "Chrome", "203.0.113.1");
         final String currentRaw = issueToken(userAlice, "fp-current", "Chrome", "203.0.113.1");
 
-        mockMvc.perform(delete("/api/auth/devices/{deviceId}", otherId)
+        mockMvc.perform(delete("/auth/devices/{deviceId}", otherId)
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isNoContent());
 
@@ -200,7 +200,7 @@ class DeviceControllerIntegrationTest extends AbstractIntegrationTest {
         final String currentRaw = issueToken(userAlice, "fp-current", "Chrome", "203.0.113.1");
         final Long adminDeviceId = trustDevice(userAdmin, "fp-admin", "Firefox", "198.51.100.1");
 
-        mockMvc.perform(delete("/api/auth/devices/{deviceId}", adminDeviceId)
+        mockMvc.perform(delete("/auth/devices/{deviceId}", adminDeviceId)
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isNotFound());
 
@@ -212,7 +212,7 @@ class DeviceControllerIntegrationTest extends AbstractIntegrationTest {
         final Long currentId = trustDevice(userAlice, "fp-current", "Chrome", "203.0.113.1");
         final String currentRaw = issueToken(userAlice, "fp-current", "Chrome", "203.0.113.1");
 
-        mockMvc.perform(delete("/api/auth/devices/{deviceId}", currentId)
+        mockMvc.perform(delete("/auth/devices/{deviceId}", currentId)
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isForbidden());
 
@@ -224,14 +224,14 @@ class DeviceControllerIntegrationTest extends AbstractIntegrationTest {
         trustDevice(userAlice, "fp-current", "Chrome", "203.0.113.1");
         final String currentRaw = issueToken(userAlice, "fp-current", "Chrome", "203.0.113.1");
 
-        mockMvc.perform(delete("/api/auth/devices/{deviceId}", 999_999_999L)
+        mockMvc.perform(delete("/auth/devices/{deviceId}", 999_999_999L)
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isNotFound());
     }
 
     @Test
     void deleteOne_returns403_whenNoBearerToken() throws Exception {
-        mockMvc.perform(delete("/api/auth/devices/{deviceId}", 1L))
+        mockMvc.perform(delete("/auth/devices/{deviceId}", 1L))
             .andExpect(status().isForbidden());
     }
 }

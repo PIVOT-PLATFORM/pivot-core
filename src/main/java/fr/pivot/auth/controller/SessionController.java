@@ -40,7 +40,7 @@ import java.util.List;
  * needs the exact same "who is calling" / "which session" resolution).
  */
 @RestController
-@RequestMapping("/api/account/sessions")
+@RequestMapping("/account/sessions")
 public class SessionController {
 
     private static final Logger LOG = LoggerFactory.getLogger(SessionController.class);

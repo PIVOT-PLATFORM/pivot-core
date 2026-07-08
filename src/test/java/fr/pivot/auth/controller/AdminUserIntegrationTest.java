@@ -441,7 +441,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User target = createUser(tenantAId, "http-target1@tenant-a.test", "Target", "A", "ROLE_USER", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", target.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/role", target.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_ADMIN\"}"))
@@ -458,7 +458,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User targetB = createUser(tenantBId, "http-target-b@tenant-b.test", "Target", "B", "ROLE_USER", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", targetB.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/role", targetB.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_ADMIN\"}"))
@@ -473,7 +473,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User adminA = createUser(tenantAId, "http-self-admin@tenant-a.test", "Self", "Admin", "ROLE_ADMIN", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", adminA.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/role", adminA.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_USER\"}"))
@@ -489,7 +489,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User target = createUser(tenantAId, "http-audit-target@tenant-a.test", "Target", "Au", "ROLE_USER", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", target.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/role", target.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_ADMIN\"}"))
@@ -536,10 +536,10 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final String targetOldToken = issueToken(targetAdmin);
 
         // Sanity check: the target's token is valid for an admin-only endpoint before the change.
-        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetOldToken))
+        mockMvc.perform(get("/admin/users").header("Authorization", "Bearer " + targetOldToken))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", targetAdmin.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/role", targetAdmin.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_USER\"}"))
@@ -547,7 +547,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
 
         // Rejected immediately — see JavaDoc above for why 403 (not 401) is the correct/expected
         // status in this codebase.
-        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetOldToken))
+        mockMvc.perform(get("/admin/users").header("Authorization", "Bearer " + targetOldToken))
                 .andExpect(status().isForbidden());
 
         // Proves the 403 above is caused by an actual revoked row (not a role/authorization
@@ -571,7 +571,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
                 createUser(tenantAId, "http-super6@tenant-a.test", "Super", "Six", "ROLE_SUPER_ADMIN", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", superAdmin.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/role", superAdmin.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_USER\"}"))
@@ -677,7 +677,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User target = createUser(tenantAId, "http-status-target1@tenant-a.test", "Target", "A", "ROLE_USER", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", target.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"INACTIVE\"}"))
@@ -694,7 +694,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User targetB = createUser(tenantBId, "http-status-target-b@tenant-b.test", "Target", "B", "ROLE_USER", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", targetB.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", targetB.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"INACTIVE\"}"))
@@ -709,7 +709,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User adminA = createUser(tenantAId, "http-status-self-admin@tenant-a.test", "Self", "Admin", "ROLE_ADMIN", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", adminA.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", adminA.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"INACTIVE\"}"))
@@ -725,7 +725,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User target = createUser(tenantAId, "http-status-audit-target@tenant-a.test", "Target", "Au", "ROLE_USER", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", target.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"INACTIVE\"}"))
@@ -750,16 +750,16 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final String adminToken = issueToken(adminA);
         final String targetOldToken = issueToken(targetAdmin);
 
-        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetOldToken))
+        mockMvc.perform(get("/admin/users").header("Authorization", "Bearer " + targetOldToken))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", targetAdmin.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", targetAdmin.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"INACTIVE\"}"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetOldToken))
+        mockMvc.perform(get("/admin/users").header("Authorization", "Bearer " + targetOldToken))
                 .andExpect(status().isForbidden());
 
         final List<AccessToken> tokens = accessTokenRepository.findByUserIdOrderByCreatedAtDesc(targetAdmin.getId());
@@ -785,7 +785,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User target = createUser(tenantAId, "http-status-norevoke-target@tenant-a.test", "Target", "N", "ROLE_ADMIN", true, false);
         final String targetToken = issueToken(target);
 
-        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetToken))
+        mockMvc.perform(get("/admin/users").header("Authorization", "Bearer " + targetToken))
                 .andExpect(status().isOk());
 
         // Désactivation directe en base — ne passe pas par AdminUserService.updateStatus, donc
@@ -795,7 +795,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         assertThat(accessTokenRepository.findByUserIdOrderByCreatedAtDesc(target.getId()))
                 .allSatisfy(t -> assertThat(t.getStatus()).isEqualTo(TokenStatus.ACTIVE));
 
-        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetToken))
+        mockMvc.perform(get("/admin/users").header("Authorization", "Bearer " + targetToken))
                 .andExpect(status().isForbidden());
     }
 
@@ -805,7 +805,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User target = createUser(tenantAId, "http-reactivate-target1@tenant-a.test", "Target", "A", "ROLE_USER", false, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", target.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"ACTIVE\"}"))
@@ -821,7 +821,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User targetB = createUser(tenantBId, "http-reactivate-target-b@tenant-b.test", "Target", "B", "ROLE_USER", false, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", targetB.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", targetB.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"ACTIVE\"}"))
@@ -835,7 +835,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User target = createUser(tenantAId, "http-reactivate-target3@tenant-a.test", "Target", "A", "ROLE_USER", true, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", target.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"ACTIVE\"}"))
@@ -851,7 +851,7 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final User target = createUser(tenantAId, "http-reactivate-audit-target@tenant-a.test", "Target", "Au", "ROLE_USER", false, false);
         final String adminToken = issueToken(adminA);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", target.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"ACTIVE\"}"))
@@ -884,16 +884,16 @@ class AdminUserIntegrationTest extends AbstractIntegrationTest {
         final String adminToken = issueToken(adminA);
         final String targetToken = issueToken(target);
 
-        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetToken))
+        mockMvc.perform(get("/admin/users").header("Authorization", "Bearer " + targetToken))
                 .andExpect(status().isForbidden());
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", target.getId())
+        mockMvc.perform(patch("/admin/users/{userId}/status", target.getId())
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"ACTIVE\"}"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/admin/users").header("Authorization", "Bearer " + targetToken))
+        mockMvc.perform(get("/admin/users").header("Authorization", "Bearer " + targetToken))
                 .andExpect(status().isOk());
     }
 
