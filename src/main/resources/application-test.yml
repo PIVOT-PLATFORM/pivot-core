@@ -118,6 +118,12 @@ pivot:
     # TTL reset mdp, TTL OTP appareil, durée confiance appareil : table feature_flags
   cleanup:
     tokens-cron: "-"  # disabled in test
+  modules:
+    # Catalogue vide en test : chaque *IntegrationTest déclare ses propres PivotModule de test
+    # via @TestConfiguration/@Bean (auto-découverte, non affectée par ce catalogue statique) —
+    # une entrée ici polluerait leurs assertions de compte/liste exact (ex.
+    # containsExactlyInAnyOrder) avec un module réel non attendu par le test.
+    catalog: []
   storage:
     avatars:
       # Never write into the repo working directory during tests — system temp dir instead.

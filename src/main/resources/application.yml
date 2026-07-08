@@ -227,6 +227,17 @@ pivot:
     rate-limit-hours: ${PIVOT_EXPORT_RATE_LIMIT_HOURS:24}
     download-ttl-hours: ${PIVOT_EXPORT_DOWNLOAD_TTL_HOURS:24}
     cleanup-cron: "0 30 2 * * *"  # Nightly 02:30 — overridable via env PIVOT_EXPORT_CLEANUP_CRON
+  modules:
+    # Catalogue statique des modules PIVOT réellement déployés (fix moduleCount=0) : chaque
+    # module métier (pivot-xxx-core) tourne comme service Spring Boot séparé et ne peut donc
+    # jamais s'auto-enregistrer comme bean dans le contexte Spring de pivot-core — voir la
+    # Javadoc de ModuleCatalogProperties. Une entrée par module réellement déployé dans cet
+    # environnement ; l'activation par tenant reste résolue via module_activations/overrides,
+    # inchangée.
+    catalog:
+      - id: whiteboard
+        name: "Tableau blanc collaboratif"
+        version: "0.1.0"
   tenant:
     # Slug of the tenant hosting ROLE_SUPER_ADMIN accounts (US06.2.2). This tenant can never
     # be deactivated via PATCH /api/superadmin/tenants/{id}/status — configurable rather than
