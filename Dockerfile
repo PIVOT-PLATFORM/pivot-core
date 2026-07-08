@@ -4,13 +4,13 @@ WORKDIR /workspace
 # EN17.1 — multi-module: copy all POMs and module directories before sources
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-COPY pivot-core-starter/pom.xml pivot-core-starter/
-COPY pivot-core-app/pom.xml pivot-core-app/
+COPY starter/pom.xml starter/
+COPY app/pom.xml app/
 RUN chmod +x mvnw
 RUN --mount=type=cache,target=/root/.m2 ./mvnw dependency:go-offline -B -q
 COPY src/ src/
-COPY pivot-core-starter/src/ pivot-core-starter/src/
-# pivot-core-app has no src/ of its own — sources are at root src/ (configured via <sourceDirectory>)
+COPY starter/src/ starter/src/
+# app/ (artifactId pivot-core-app) has no src/ of its own — sources are at root src/ (configured via <sourceDirectory>)
 # EN04.2 — git-commit-id-maven-plugin (pom.xml) needs an actual .git directory at build time
 # to populate git.properties (real commit SHA in /actuator/info) — without it the plugin
 # silently no-ops (failOnNoGitDirectory=false) and the shipped image's /actuator/info would
@@ -18,9 +18,10 @@ COPY pivot-core-starter/src/ pivot-core-starter/src/
 # the final runtime image below.
 COPY .git/ .git/
 RUN --mount=type=cache,target=/root/.m2 ./mvnw package -DskipTests -B -q
-# EN17.1 — the runnable app JAR lives in pivot-core-app/target/ after multi-module build
-RUN cp pivot-core-app/target/pivot-core-app-*.jar app.jar 2>/dev/null || \
-    cp pivot-core-app/target/*.jar app.jar
+# EN17.1 — the runnable app JAR lives in app/target/ after multi-module build (jar file name
+# itself keeps the pivot-core-app artifactId, only the directory was shortened)
+RUN cp app/target/pivot-core-app-*.jar app.jar 2>/dev/null || \
+    cp app/target/*.jar app.jar
 
 # Runtime Alpine : surface OS minimale, CVE réduits. Builder jeté à la fin.
 FROM eclipse-temurin:25-jre-alpine
