@@ -187,6 +187,11 @@ class ModuleStatusEndpointIntegrationTest extends AbstractIntegrationTest {
                 }
 
                 @Override
+                public String getDescription() {
+                    return "Module de test";
+                }
+
+                @Override
                 public boolean isEnabled(final TenantContext ctx) {
                     return true;
                 }

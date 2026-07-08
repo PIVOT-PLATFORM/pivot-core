@@ -148,6 +148,6 @@ public class AdminModuleListService {
 
         final boolean enabled = moduleActivationService.isEnabled(tenantId, moduleId);
         final String source = inPlan ? "plan" : "override";
-        return new AdminModuleDto(moduleId, module.getName(), enabled, "", source);
+        return new AdminModuleDto(moduleId, module.getName(), enabled, module.getDescription(), source);
     }
 }

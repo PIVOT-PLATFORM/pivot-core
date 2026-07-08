@@ -149,9 +149,6 @@ public class AdminModuleController {
      * {@link AdminModuleListService} pour la résolution complète, y compris le champ
      * {@code source} de chaque {@link AdminModuleDto}.
      *
-     * <p><strong>Limitation documentée :</strong> {@code description} est toujours vide —
-     * voir {@link AdminModuleDto}.
-     *
      * @return {@code 200} avec la liste des {@link AdminModuleDto} visibles, ou {@code 401} si
      *     le contexte d'authentification est invalide
      */

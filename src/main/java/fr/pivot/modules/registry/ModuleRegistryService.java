@@ -56,7 +56,8 @@ public class ModuleRegistryService {
                 .map(module -> {
                     final boolean enabled = module.isEnabled(ctx);
                     final ModuleStatus status = enabled ? ModuleStatus.ONLINE : ModuleStatus.OFFLINE;
-                    return new ModuleDto(module.getId(), module.getName(), module.getVersion(), enabled, status);
+                    return new ModuleDto(module.getId(), module.getName(), module.getDescription(),
+                            module.getVersion(), enabled, status);
                 })
                 .toList();
     }

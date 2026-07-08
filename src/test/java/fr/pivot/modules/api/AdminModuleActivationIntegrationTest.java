@@ -272,6 +272,11 @@ class AdminModuleActivationIntegrationTest extends AbstractIntegrationTest {
                 }
 
                 @Override
+                public String getDescription() {
+                    return "Module de test";
+                }
+
+                @Override
                 public boolean isEnabled(final TenantContext ctx) {
                     return true;
                 }
@@ -299,6 +304,11 @@ class AdminModuleActivationIntegrationTest extends AbstractIntegrationTest {
                 }
 
                 @Override
+                public String getDescription() {
+                    return "Module de test";
+                }
+
+                @Override
                 public boolean isEnabled(final TenantContext ctx) {
                     return false;
                 }
@@ -321,6 +331,11 @@ class AdminModuleActivationIntegrationTest extends AbstractIntegrationTest {
                 @Override
                 public String getVersion() {
                     return "1.0.0";
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Module de test";
                 }
 
                 @Override

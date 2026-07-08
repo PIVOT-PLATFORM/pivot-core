@@ -25,7 +25,7 @@ public final class ConfiguredPivotModuleFactory {
                                                   final ModuleActivationService moduleActivationService) {
         return catalogProperties.catalog().stream()
                 .<PivotModule>map(entry -> new ConfiguredPivotModule(
-                        entry.id(), entry.name(), entry.version(), moduleActivationService))
+                        entry.id(), entry.name(), entry.version(), entry.description(), moduleActivationService))
                 .toList();
     }
 }

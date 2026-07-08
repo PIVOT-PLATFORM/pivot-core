@@ -8,11 +8,9 @@ package fr.pivot.modules.api;
  * utilisateur final avec {@code version}/{@code status}) : ce DTO est orienté administration
  * (activation/désactivation) et inclut une {@code description}.
  *
- * <p><strong>Limitation documentée :</strong> {@link fr.pivot.core.modules.PivotModule}
- * n'expose pas de méthode {@code getDescription()} — l'ajouter serait un changement du
- * contrat de module (hard block Gate 4, coordination obligatoire avec tous les repos
- * {@code pivot-xxx-core}). En attendant un mécanisme de métadonnées dédié, {@code description}
- * est toujours retournée vide.
+ * <p><strong>{@code description}</strong> provient de {@link fr.pivot.core.modules.PivotModule#getDescription()}
+ * — jamais {@code null}, potentiellement vide si le module n'en fournit pas (voir la Javadoc de
+ * {@code PivotModule} pour le contrat exact).
  *
  * <p><strong>{@code source} (US03.3.3) :</strong> seuls les modules visibles pour le tenant
  * apparaissent dans la liste — voir {@link AdminModuleListService} pour la résolution complète
@@ -22,7 +20,7 @@ package fr.pivot.modules.api;
  * @param id      identifiant technique unique du module (ex. {@code "whiteboard"})
  * @param name    nom affiché en UI
  * @param enabled {@code true} si le module est activé pour le tenant de l'administrateur courant
- * @param description description du module — toujours vide pour le moment (voir limitation ci-dessus)
+ * @param description description du module, alimentée par {@link fr.pivot.core.modules.PivotModule#getDescription()}
  * @param source  origine de la visibilité de ce module pour ce tenant : {@code "plan"} si le
  *     module est inclus dans le plan commercial souscrit par le tenant (ou si le tenant n'a
  *     encore aucun plan assigné — aucune restriction ne s'applique alors, voir

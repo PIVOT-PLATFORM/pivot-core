@@ -214,11 +214,11 @@ class AdminModuleListServiceTest {
     }
 
     // ----------------------------------------------------------------
-    // Description toujours vide (limitation documentée, inchangée par cette US)
+    // Description alimentée depuis PivotModule#getDescription() (Dette S2, fix pivot-core#183)
     // ----------------------------------------------------------------
 
     @Test
-    void list_shouldAlwaysReturnEmptyDescription() {
+    void list_shouldPopulateDescriptionFromModule() {
         init();
         stubRegistry(MODULE_A);
         stubTenant(TENANT_ID, null);
@@ -227,7 +227,7 @@ class AdminModuleListServiceTest {
 
         final List<AdminModuleDto> result = service.list(TENANT_ID);
 
-        assertThat(result.get(0).description()).isEmpty();
+        assertThat(result.get(0).description()).isEqualTo("Description de " + MODULE_A);
     }
 
     // ----------------------------------------------------------------
@@ -243,6 +243,7 @@ class AdminModuleListServiceTest {
         final PivotModule module = mock(PivotModule.class);
         lenient().when(module.getId()).thenReturn(id);
         lenient().when(module.getName()).thenReturn("Module " + id);
+        lenient().when(module.getDescription()).thenReturn("Description de " + id);
         return module;
     }
 

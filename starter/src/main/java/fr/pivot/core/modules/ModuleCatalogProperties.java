@@ -36,10 +36,26 @@ public record ModuleCatalogProperties(List<CatalogEntry> catalog) {
     /**
      * Une entrée du catalogue statique — identité d'un module réellement déployé.
      *
-     * @param id      identifiant technique stable, ex. {@code "whiteboard"}
-     * @param name    nom affiché en UI
-     * @param version version sémantique du module déployé
+     * @param id          identifiant technique stable, ex. {@code "whiteboard"}
+     * @param name        nom affiché en UI
+     * @param version     version sémantique du module déployé
+     * @param description description courte affichée en UI (carte module, écran
+     *                    d'administration) — {@code null} normalisé en chaîne vide, voir
+     *                    le constructeur canonique
      */
-    public record CatalogEntry(String id, String name, String version) {
+    public record CatalogEntry(String id, String name, String version, String description) {
+
+        /**
+         * Normalise {@code description} à une chaîne non nulle.
+         *
+         * @param id          identifiant technique stable
+         * @param name        nom affiché en UI
+         * @param version     version sémantique du module déployé
+         * @param description description brute liée depuis la configuration, peut être
+         *                    {@code null}
+         */
+        public CatalogEntry {
+            description = description == null ? "" : description;
+        }
     }
 }

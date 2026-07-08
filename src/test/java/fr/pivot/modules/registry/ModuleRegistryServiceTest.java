@@ -48,6 +48,7 @@ class ModuleRegistryServiceTest {
     void shouldReturnOnlineDto_whenModuleIsEnabled() {
         when(enabledModule.getId()).thenReturn("whiteboard");
         when(enabledModule.getName()).thenReturn("Tableau blanc");
+        when(enabledModule.getDescription()).thenReturn("Tableau blanc collaboratif temps réel");
         when(enabledModule.getVersion()).thenReturn("1.0.0");
         when(enabledModule.isEnabled(CTX)).thenReturn(true);
 
@@ -59,6 +60,7 @@ class ModuleRegistryServiceTest {
         final ModuleDto dto = result.get(0);
         assertThat(dto.id()).isEqualTo("whiteboard");
         assertThat(dto.name()).isEqualTo("Tableau blanc");
+        assertThat(dto.description()).isEqualTo("Tableau blanc collaboratif temps réel");
         assertThat(dto.version()).isEqualTo("1.0.0");
         assertThat(dto.enabled()).isTrue();
         assertThat(dto.status()).isEqualTo(ModuleStatus.ONLINE);

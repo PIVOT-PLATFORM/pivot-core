@@ -34,6 +34,11 @@ class ModuleRegistryTest {
             }
 
             @Override
+            public String getDescription() {
+                return "";
+            }
+
+            @Override
             public boolean isEnabled(final TenantContext ctx) {
                 return true;
             }

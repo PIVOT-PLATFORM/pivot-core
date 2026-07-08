@@ -17,6 +17,7 @@ final class ConfiguredPivotModule implements PivotModule {
     private final String id;
     private final String name;
     private final String version;
+    private final String description;
     private final ModuleActivationService moduleActivationService;
 
     /**
@@ -25,16 +26,18 @@ final class ConfiguredPivotModule implements PivotModule {
      * @param id                       identifiant technique du module
      * @param name                     nom affiché en UI
      * @param version                  version déployée
+     * @param description              description courte affichée en UI
      * @param moduleActivationService  service de résolution de l'activation par tenant
      *                                 (injecté {@code @Lazy} par l'auto-configuration pour éviter
      *                                 un cycle de construction avec {@link ModuleRegistry}, dont
      *                                 {@link ModuleActivationService} dépend lui-même)
      */
-    ConfiguredPivotModule(final String id, final String name, final String version,
+    ConfiguredPivotModule(final String id, final String name, final String version, final String description,
                            final ModuleActivationService moduleActivationService) {
         this.id = id;
         this.name = name;
         this.version = version;
+        this.description = description;
         this.moduleActivationService = moduleActivationService;
     }
 
@@ -51,6 +54,11 @@ final class ConfiguredPivotModule implements PivotModule {
     @Override
     public String getVersion() {
         return version;
+    }
+
+    @Override
+    public String getDescription() {
+        return description;
     }
 
     /**
