@@ -28,7 +28,6 @@ class AuthenticatedPrincipalTest {
         final AuthenticatedPrincipal b = new AuthenticatedPrincipal(1L, 10L, "ROLE_USER");
         final AuthenticatedPrincipal different = new AuthenticatedPrincipal(2L, 10L, "ROLE_USER");
 
-        assertThat(a).isEqualTo(b).hasSameHashCodeAs(b);
-        assertThat(a).isNotEqualTo(different);
+        assertThat(a).isEqualTo(b).hasSameHashCodeAs(b).isNotEqualTo(different);
     }
 }
