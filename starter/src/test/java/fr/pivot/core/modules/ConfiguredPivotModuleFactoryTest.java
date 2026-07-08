@@ -41,13 +41,34 @@ class ConfiguredPivotModuleFactoryTest {
     @Test
     void fromCatalog_shouldBuildOneModulePerEntry_inDeclaredOrder() {
         final ModuleCatalogProperties properties = new ModuleCatalogProperties(List.of(
-                new ModuleCatalogProperties.CatalogEntry("whiteboard", "Tableau blanc collaboratif", "0.1.0"),
-                new ModuleCatalogProperties.CatalogEntry("roadmap", "Roadmap", "0.1.0")));
+                new ModuleCatalogProperties.CatalogEntry(
+                        "whiteboard", "Tableau blanc collaboratif", "0.1.0",
+                        "Tableau blanc collaboratif temps réel"),
+                new ModuleCatalogProperties.CatalogEntry("roadmap", "Roadmap", "0.1.0", "Roadmap produit")));
 
         final List<PivotModule> modules = ConfiguredPivotModuleFactory.fromCatalog(properties, moduleActivationService);
 
         assertThat(modules).hasSize(2);
         assertThat(modules.get(0).getId()).isEqualTo("whiteboard");
+        assertThat(modules.get(0).getDescription()).isEqualTo("Tableau blanc collaboratif temps réel");
         assertThat(modules.get(1).getId()).isEqualTo("roadmap");
+        assertThat(modules.get(1).getDescription()).isEqualTo("Roadmap produit");
+    }
+
+    /**
+     * Given une entrée de catalogue sans description (liaison de configuration incomplète),
+     * when fromCatalog() est appelé,
+     * then le module construit expose une description vide plutôt que {@code null} —
+     * normalisation portée par {@link ModuleCatalogProperties.CatalogEntry}.
+     */
+    @Test
+    void fromCatalog_shouldNormalizeNullDescriptionToEmptyString() {
+        final ModuleCatalogProperties properties = new ModuleCatalogProperties(List.of(
+                new ModuleCatalogProperties.CatalogEntry("roadmap", "Roadmap", "0.1.0", null)));
+
+        final List<PivotModule> modules = ConfiguredPivotModuleFactory.fromCatalog(properties, moduleActivationService);
+
+        assertThat(modules).hasSize(1);
+        assertThat(modules.get(0).getDescription()).isEmpty();
     }
 }

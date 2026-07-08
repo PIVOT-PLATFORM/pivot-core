@@ -30,11 +30,13 @@ class ConfiguredPivotModuleTest {
     @Test
     void identity_shouldMatchConstructorArguments() {
         final ConfiguredPivotModule module = new ConfiguredPivotModule(
-                MODULE_ID, "Tableau blanc collaboratif", "0.1.0", moduleActivationService);
+                MODULE_ID, "Tableau blanc collaboratif", "0.1.0",
+                "Tableau blanc collaboratif temps réel", moduleActivationService);
 
         assertThat(module.getId()).isEqualTo(MODULE_ID);
         assertThat(module.getName()).isEqualTo("Tableau blanc collaboratif");
         assertThat(module.getVersion()).isEqualTo("0.1.0");
+        assertThat(module.getDescription()).isEqualTo("Tableau blanc collaboratif temps réel");
     }
 
     /**
@@ -46,7 +48,8 @@ class ConfiguredPivotModuleTest {
     @Test
     void isEnabled_shouldDelegateToModuleActivationService() {
         final ConfiguredPivotModule module = new ConfiguredPivotModule(
-                MODULE_ID, "Tableau blanc collaboratif", "0.1.0", moduleActivationService);
+                MODULE_ID, "Tableau blanc collaboratif", "0.1.0",
+                "Tableau blanc collaboratif temps réel", moduleActivationService);
         final TenantContext ctx = new TenantContext(42L, "user-1", "ROLE_USER");
         when(moduleActivationService.isEnabled(42L, MODULE_ID)).thenReturn(true);
 
@@ -62,7 +65,8 @@ class ConfiguredPivotModuleTest {
     @Test
     void isEnabled_shouldReturnFalse_whenContextHasNoTenant_withoutCallingService() {
         final ConfiguredPivotModule module = new ConfiguredPivotModule(
-                MODULE_ID, "Tableau blanc collaboratif", "0.1.0", moduleActivationService);
+                MODULE_ID, "Tableau blanc collaboratif", "0.1.0",
+                "Tableau blanc collaboratif temps réel", moduleActivationService);
         final TenantContext ctx = new TenantContext(null, "super-admin-1", "ROLE_SUPER_ADMIN");
 
         assertThat(module.isEnabled(ctx)).isFalse();

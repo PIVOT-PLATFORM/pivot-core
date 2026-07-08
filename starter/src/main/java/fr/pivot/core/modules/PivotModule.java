@@ -39,6 +39,14 @@ public interface PivotModule {
     String getVersion();
 
     /**
+     * Description courte du module, affichée en UI (carte module, écran d'administration).
+     *
+     * @return description lisible, ex. {@code "Tableau blanc collaboratif temps réel"} —
+     *     jamais {@code null}, chaîne vide acceptée si le module n'en fournit pas
+     */
+    String getDescription();
+
+    /**
      * Indique si ce module est activé pour le tenant courant.
      *
      * <p>Module désactivé = 403 côté API + bundle non chargé côté Angular.

@@ -67,7 +67,8 @@ class PivotModulesAutoConfigurationTest {
                 .withPropertyValues(
                         "pivot.modules.catalog[0].id=whiteboard",
                         "pivot.modules.catalog[0].name=Tableau blanc collaboratif",
-                        "pivot.modules.catalog[0].version=0.1.0")
+                        "pivot.modules.catalog[0].version=0.1.0",
+                        "pivot.modules.catalog[0].description=Tableau blanc collaboratif temps réel")
                 .run(context -> {
                     final ModuleRegistry registry = context.getBean(ModuleRegistry.class);
 
@@ -77,6 +78,8 @@ class PivotModulesAutoConfigurationTest {
                             .hasValueSatisfying(module -> {
                                 assertThat(module.getName()).isEqualTo("Tableau blanc collaboratif");
                                 assertThat(module.getVersion()).isEqualTo("0.1.0");
+                                assertThat(module.getDescription())
+                                        .isEqualTo("Tableau blanc collaboratif temps réel");
                             });
                 });
     }
@@ -140,6 +143,11 @@ class PivotModulesAutoConfigurationTest {
                 @Override
                 public String getVersion() {
                     return "1.0.0";
+                }
+
+                @Override
+                public String getDescription() {
+                    return "Module de test";
                 }
 
                 @Override
