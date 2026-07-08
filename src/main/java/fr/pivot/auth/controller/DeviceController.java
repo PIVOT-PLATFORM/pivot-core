@@ -42,7 +42,7 @@ import java.util.List;
  * a shared base class, consistent with how this codebase structures these two controllers).
  */
 @RestController
-@RequestMapping("/api/auth/devices")
+@RequestMapping("/auth/devices")
 public class DeviceController {
 
     private static final Logger LOG = LoggerFactory.getLogger(DeviceController.class);

@@ -64,7 +64,7 @@ import java.util.Map;
  * nom spécifique au rôle) pour ce genre de réutilisation entre endpoints admin.
  */
 @RestController
-@RequestMapping("/api/admin/users")
+@RequestMapping("/admin/users")
 public class AdminUserController {
 
     private static final Logger LOG = LoggerFactory.getLogger(AdminUserController.class);

@@ -41,7 +41,7 @@ import java.util.Optional;
  * {@code /api/account/*} endpoints).
  */
 @RestController
-@RequestMapping("/api/account/export")
+@RequestMapping("/account/export")
 public class AccountExportController {
 
     private static final Logger LOG = LoggerFactory.getLogger(AccountExportController.class);

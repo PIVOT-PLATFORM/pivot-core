@@ -234,7 +234,7 @@ class AdminUserControllerTest {
                 9L, "bob@pivot.test", "Bob", "Dupont", "ROLE_ADMIN", UserStatus.ACTIVE, Instant.now());
         when(adminUserService.updateRole(42L, 1L, 9L, AssignableRole.ROLE_ADMIN)).thenReturn(updated);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", 9L)
+        mockMvc.perform(patch("/admin/users/{userId}/role", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_ADMIN\"}"))
                 .andExpect(status().isOk())
@@ -255,7 +255,7 @@ class AdminUserControllerTest {
     void ac0613Err_returns400_whenRoleFieldMissingOrInvalid(final String body) throws Exception {
         setAuthentication(buildUser(1L, 42L));
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", 9L)
+        mockMvc.perform(patch("/admin/users/{userId}/role", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest());
@@ -273,7 +273,7 @@ class AdminUserControllerTest {
         when(adminUserService.updateRole(42L, 1L, 1L, AssignableRole.ROLE_USER))
                 .thenThrow(new SelfRoleChangeForbiddenException(1L));
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", 1L)
+        mockMvc.perform(patch("/admin/users/{userId}/role", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_USER\"}"))
                 .andExpect(status().isForbidden())
@@ -292,7 +292,7 @@ class AdminUserControllerTest {
         when(adminUserService.updateRole(42L, 1L, 999L, AssignableRole.ROLE_ADMIN))
                 .thenThrow(new AdminUserNotFoundException(999L));
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", 999L)
+        mockMvc.perform(patch("/admin/users/{userId}/role", 999L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_ADMIN\"}"))
                 .andExpect(status().isNotFound())
@@ -311,7 +311,7 @@ class AdminUserControllerTest {
         when(adminUserService.updateRole(42L, 1L, 77L, AssignableRole.ROLE_USER))
                 .thenThrow(new SuperAdminRoleChangeForbiddenException(77L));
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", 77L)
+        mockMvc.perform(patch("/admin/users/{userId}/role", 77L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_USER\"}"))
                 .andExpect(status().isForbidden())
@@ -328,7 +328,7 @@ class AdminUserControllerTest {
     void ac0613Err04_returns401_whenNoAuthentication() throws Exception {
         SecurityContextHolder.clearContext();
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/role", 9L)
+        mockMvc.perform(patch("/admin/users/{userId}/role", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"role\":\"ROLE_ADMIN\"}"))
                 .andExpect(status().isUnauthorized());
@@ -347,7 +347,7 @@ class AdminUserControllerTest {
                 9L, "bob@pivot.test", "Bob", "Dupont", "ROLE_USER", UserStatus.INACTIVE, Instant.now());
         when(adminUserService.updateStatus(42L, 1L, 9L, AssignableStatus.INACTIVE)).thenReturn(updated);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+        mockMvc.perform(patch("/admin/users/{userId}/status", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"INACTIVE\"}"))
                 .andExpect(status().isOk())
@@ -366,7 +366,7 @@ class AdminUserControllerTest {
                 9L, "bob@pivot.test", "Bob", "Dupont", "ROLE_USER", UserStatus.ACTIVE, Instant.now());
         when(adminUserService.updateStatus(42L, 1L, 9L, AssignableStatus.ACTIVE)).thenReturn(updated);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+        mockMvc.perform(patch("/admin/users/{userId}/status", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"ACTIVE\"}"))
                 .andExpect(status().isOk())
@@ -387,7 +387,7 @@ class AdminUserControllerTest {
                 9L, "bob@pivot.test", "Bob", "Dupont", "ROLE_USER", UserStatus.ACTIVE, Instant.now());
         when(adminUserService.updateStatus(42L, 1L, 9L, AssignableStatus.ACTIVE)).thenReturn(alreadyActive);
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+        mockMvc.perform(patch("/admin/users/{userId}/status", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"ACTIVE\"}"))
                 .andExpect(status().isOk())
@@ -405,7 +405,7 @@ class AdminUserControllerTest {
     void ac0614Err_returns400_whenStatusFieldMissingOrInvalid(final String body) throws Exception {
         setAuthentication(buildUser(1L, 42L));
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+        mockMvc.perform(patch("/admin/users/{userId}/status", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest());
@@ -423,7 +423,7 @@ class AdminUserControllerTest {
         when(adminUserService.updateStatus(42L, 1L, 1L, AssignableStatus.INACTIVE))
                 .thenThrow(new SelfStatusChangeForbiddenException(1L));
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", 1L)
+        mockMvc.perform(patch("/admin/users/{userId}/status", 1L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"INACTIVE\"}"))
                 .andExpect(status().isForbidden())
@@ -442,7 +442,7 @@ class AdminUserControllerTest {
         when(adminUserService.updateStatus(42L, 1L, 999L, AssignableStatus.INACTIVE))
                 .thenThrow(new AdminUserNotFoundException(999L));
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", 999L)
+        mockMvc.perform(patch("/admin/users/{userId}/status", 999L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"INACTIVE\"}"))
                 .andExpect(status().isNotFound())
@@ -459,7 +459,7 @@ class AdminUserControllerTest {
     void ac0614Err04_returns401_whenNoAuthentication() throws Exception {
         SecurityContextHolder.clearContext();
 
-        mockMvc.perform(patch("/api/admin/users/{userId}/status", 9L)
+        mockMvc.perform(patch("/admin/users/{userId}/status", 9L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"INACTIVE\"}"))
                 .andExpect(status().isUnauthorized());

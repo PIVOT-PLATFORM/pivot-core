@@ -119,7 +119,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         final String otherRaw = issueToken(userAlice, "Safari sur iPhone", "203.0.113.2");
         issueToken(userAdmin, "Firefox sur Linux", "198.51.100.1"); // must never appear
 
-        mockMvc.perform(get("/api/account/sessions")
+        mockMvc.perform(get("/account/sessions")
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(2))
@@ -128,7 +128,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$[*].isCurrent").value(org.hamcrest.Matchers.containsInAnyOrder(true, false)));
 
         // Sanity: the "other" user's device label never leaks into Alice's list.
-        mockMvc.perform(get("/api/account/sessions")
+        mockMvc.perform(get("/account/sessions")
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(jsonPath("$[*].device").value(
                 org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("Firefox sur Linux"))));
@@ -141,7 +141,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         // TokenService already sanitizes at write time — this asserts the guarantee end-to-end.
         final String raw = issueToken(userAlice, "<img src=x onerror=alert(1)>Chrome", "203.0.113.1");
 
-        mockMvc.perform(get("/api/account/sessions")
+        mockMvc.perform(get("/account/sessions")
                 .header("Authorization", "Bearer " + raw))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].device").value("Chrome"))
@@ -155,7 +155,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         // default with JavaTimeModule), never epoch millis.
         final String raw = issueToken(userAlice, "Chrome", "203.0.113.1");
 
-        mockMvc.perform(get("/api/account/sessions")
+        mockMvc.perform(get("/account/sessions")
                 .header("Authorization", "Bearer " + raw))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].createdAt",
@@ -170,7 +170,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         tokenService.revokeByRawToken(revokedRaw);
         final String currentRaw = issueToken(userAlice, "Chrome", "203.0.113.1");
 
-        mockMvc.perform(get("/api/account/sessions")
+        mockMvc.perform(get("/account/sessions")
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(1))
@@ -182,7 +182,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         // No AuthenticationEntryPoint is configured (see SecurityConfig) — Spring Security's
         // default for an unauthenticated request denied by isAuthenticated() is 403, not 401,
         // consistent with every other authenticated endpoint in this app (e.g. ModuleController).
-        mockMvc.perform(get("/api/account/sessions"))
+        mockMvc.perform(get("/account/sessions"))
             .andExpect(status().isForbidden());
     }
 
@@ -196,7 +196,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         final String otherRaw = issueToken(userAlice, "Safari", "203.0.113.2");
         final Long otherId = activeTokenId(otherRaw);
 
-        mockMvc.perform(delete("/api/account/sessions/{tokenId}", otherId)
+        mockMvc.perform(delete("/account/sessions/{tokenId}", otherId)
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isNoContent());
 
@@ -210,7 +210,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         final String otherRaw = issueToken(userAlice, "Safari", "203.0.113.2");
         final Long otherId = activeTokenId(otherRaw);
 
-        mockMvc.perform(delete("/api/account/sessions/{tokenId}", otherId)
+        mockMvc.perform(delete("/account/sessions/{tokenId}", otherId)
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isNoContent());
 
@@ -224,7 +224,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         final String adminRaw = issueToken(userAdmin, "Firefox", "198.51.100.1");
         final Long adminTokenId = activeTokenId(adminRaw);
 
-        mockMvc.perform(delete("/api/account/sessions/{tokenId}", adminTokenId)
+        mockMvc.perform(delete("/account/sessions/{tokenId}", adminTokenId)
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isNotFound());
 
@@ -237,7 +237,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         final String currentRaw = issueToken(userAlice, "Chrome", "203.0.113.1");
         final Long currentId = activeTokenId(currentRaw);
 
-        mockMvc.perform(delete("/api/account/sessions/{tokenId}", currentId)
+        mockMvc.perform(delete("/account/sessions/{tokenId}", currentId)
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isForbidden());
 
@@ -249,14 +249,14 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
     void deleteOne_unknownId_returns404() throws Exception {
         final String currentRaw = issueToken(userAlice, "Chrome", "203.0.113.1");
 
-        mockMvc.perform(delete("/api/account/sessions/{tokenId}", 999_999_999L)
+        mockMvc.perform(delete("/account/sessions/{tokenId}", 999_999_999L)
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isNotFound());
     }
 
     @Test
     void deleteOne_returns403_whenNoBearerToken() throws Exception {
-        mockMvc.perform(delete("/api/account/sessions/{tokenId}", 1L))
+        mockMvc.perform(delete("/account/sessions/{tokenId}", 1L))
             .andExpect(status().isForbidden());
     }
 
@@ -273,7 +273,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         final Long otherId1 = activeTokenId(otherRaw1);
         final Long otherId2 = activeTokenId(otherRaw2);
 
-        mockMvc.perform(delete("/api/account/sessions")
+        mockMvc.perform(delete("/account/sessions")
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isNoContent());
 
@@ -292,7 +292,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
         final String adminRaw = issueToken(userAdmin, "Firefox", "198.51.100.1");
         final Long adminTokenId = activeTokenId(adminRaw);
 
-        mockMvc.perform(delete("/api/account/sessions")
+        mockMvc.perform(delete("/account/sessions")
                 .header("Authorization", "Bearer " + currentRaw))
             .andExpect(status().isNoContent());
 
@@ -301,7 +301,7 @@ class SessionControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void deleteAll_returns403_whenNoBearerToken() throws Exception {
-        mockMvc.perform(delete("/api/account/sessions"))
+        mockMvc.perform(delete("/account/sessions"))
             .andExpect(status().isForbidden());
     }
 
