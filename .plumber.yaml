@@ -33,6 +33,8 @@ github:
         # EN07.5 — deploy.yml (déploiement prod SSH + notification)
         - appleboy/ssh-action
         - slackapi/slack-github-action
+        # US05.13.1 — dast-baseline.yml (ZAP baseline scan staging pivot-ui)
+        - zaproxy/action-baseline
 
     # --- Images : pas de tags mutables ---
     containerImageMustNotUseForbiddenTags:
