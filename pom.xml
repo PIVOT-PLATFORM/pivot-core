@@ -29,8 +29,8 @@
 	  Modules are listed in build order: starter must be installed before app depends on it.
 	-->
 	<modules>
-		<module>pivot-core-starter</module>
-		<module>pivot-core-app</module>
+		<module>starter</module>
+		<module>app</module>
 	</modules>
 
 	<properties>

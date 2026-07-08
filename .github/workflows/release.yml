@@ -142,8 +142,8 @@ jobs:
       - name: Compute build checksums
         id: checksums
         run: |
-          # EN17.1 — multi-module: collect JARs from both pivot-core-starter and pivot-core-app
-          find pivot-core-starter/target pivot-core-app/target -maxdepth 1 \
+          # EN17.1 — multi-module: collect JARs from both starter/ and app/ (pivot-core-starter / pivot-core-app)
+          find starter/target app/target -maxdepth 1 \
             -name '*.jar' ! -name '*-sources.jar' ! -name '*.original' \
             -exec sha256sum {} \; > build-checksums.txt
           echo "Checksums :"; cat build-checksums.txt
@@ -173,7 +173,7 @@ jobs:
           echo "IMAGE_VERSION=${IMAGE}:${VERSION}" >> "$GITHUB_ENV"
           echo "IMAGE_LATEST=${IMAGE}:latest" >> "$GITHUB_ENV"
           echo "image_name=${IMAGE}" >> "$GITHUB_OUTPUT"
-          # EN17.1 — multi-module: Docker context is root; Dockerfile copies from pivot-core-app/target/
+          # EN17.1 — multi-module: Docker context is root; Dockerfile copies from app/target/
           docker buildx build --platform linux/amd64 --load \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:${VERSION}" \
@@ -254,15 +254,15 @@ jobs:
             fi
           }
 
-          # 1. Deploy pivot-core-starter (library consumed by pivot-xxx-core repos)
-          STARTER_JAR=$(find pivot-core-starter/target -maxdepth 1 \
+          # 1. Deploy pivot-core-starter (library consumed by pivot-xxx-core repos), from starter/
+          STARTER_JAR=$(find starter/target -maxdepth 1 \
             -name 'pivot-core-starter-*.jar' ! -name '*-sources.jar' | head -1)
-          deploy_jar "${STARTER_JAR}" "pivot-core-starter/pom.xml" "pivot-core-starter" || exit $?
+          deploy_jar "${STARTER_JAR}" "starter/pom.xml" "pivot-core-starter" || exit $?
 
-          # 2. Deploy pivot-core-app (runnable shell — optional artifact, used for audit/SLSA)
-          APP_JAR=$(find pivot-core-app/target -maxdepth 1 \
+          # 2. Deploy pivot-core-app (runnable shell — optional artifact, used for audit/SLSA), from app/
+          APP_JAR=$(find app/target -maxdepth 1 \
             -name 'pivot-core-app-*.jar' ! -name '*-sources.jar' ! -name '*.original' | head -1)
-          deploy_jar "${APP_JAR}" "pivot-core-app/pom.xml" "pivot-core-app" || exit $?
+          deploy_jar "${APP_JAR}" "app/pom.xml" "pivot-core-app" || exit $?
 
       - name: Semantic Release (create tag + release)
         env:
