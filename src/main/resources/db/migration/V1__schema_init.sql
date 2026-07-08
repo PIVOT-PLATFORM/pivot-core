@@ -667,6 +667,63 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread
     WHERE read_at IS NULL;
 
 -- ================================================================
+-- TABLE: teams
+-- ================================================================
+-- EN17.1 (volet team, pivot-core#171) — entité fondatrice partagée schéma public. Chaque
+-- pivot-xxx-core référence public.teams(id) par FK cross-schéma (convention déjà documentée par
+-- EN17.4) plutôt que de dupliquer localement la notion d'équipe. Pas d'API REST ni de logique
+-- métier tant qu'aucune US ne la spécifie (voir fr.pivot.core.team.Team Javadoc, starter) —
+-- uniquement le socle BDD + repositories dans ce ticket.
+-- parent_team_id : auto-référence anticipée pour E15/EN15.3 (pivot-docs EPIC-equipes,
+-- PR pivot-docs#151, encore phase-3/verrouillé) — une équipe est orpheline (racine, NULL) ou
+-- rattachée à une équipe parente, structure en arbre. Ajoutée maintenant pour éviter une
+-- migration de retrofit une fois E15 déverrouillé ; aucune logique de parcours/partage n'est
+-- implémentée dans ce ticket, seule la colonne + sa FK existent.
+CREATE TABLE IF NOT EXISTS teams (
+    id              BIGSERIAL    NOT NULL,
+    tenant_id       BIGINT       NOT NULL,
+    name            VARCHAR(255) NOT NULL,
+    parent_team_id  BIGINT,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_teams PRIMARY KEY (id),
+    CONSTRAINT uq_teams_tenant_name UNIQUE (tenant_id, name),
+    CONSTRAINT fk_teams_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+    -- ON DELETE SET NULL (pas CASCADE) : supprimer une équipe parente ne doit pas supprimer en
+    -- cascade tout son sous-arbre — ses enfants directs deviennent orphelins (promus racine),
+    -- comportement par défaut le moins destructeur en l'absence de logique de partage implémentée
+    -- (E15 verrouillé). À revisiter si EN15.1 spécifie explicitement un autre comportement.
+    CONSTRAINT fk_teams_parent FOREIGN KEY (parent_team_id) REFERENCES teams (id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_teams_tenant_id ON teams (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_teams_parent_team_id ON teams (parent_team_id);
+
+-- ================================================================
+-- TABLE: team_members
+-- ================================================================
+-- Association N-N équipe <-> utilisateur. Pas de colonne "role" : aucune US ne spécifie encore de
+-- hiérarchie/permission au sein d'une équipe (voir fr.pivot.core.team.TeamMember Javadoc) — un
+-- utilisateur appartient ou non à l'équipe, point. Suit la même convention que plan_modules
+-- ci-dessus (table d'association pure, pas d'updated_at : l'appartenance ne se "modifie" pas,
+-- elle se crée ou se supprime).
+CREATE TABLE IF NOT EXISTS team_members (
+    id          BIGSERIAL   NOT NULL,
+    team_id     BIGINT      NOT NULL,
+    user_id     BIGINT      NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_team_members PRIMARY KEY (id),
+    CONSTRAINT uq_team_members_team_user UNIQUE (team_id, user_id),
+    CONSTRAINT fk_tm_team FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE,
+    CONSTRAINT fk_tm_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tm_team_id ON team_members (team_id);
+CREATE INDEX IF NOT EXISTS idx_tm_user_id ON team_members (user_id);
+
+-- ================================================================
 -- SEED DATA: initial tenant + feature flags
 -- ================================================================
 

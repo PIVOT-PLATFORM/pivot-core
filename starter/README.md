@@ -5,13 +5,22 @@ and consumed by all `pivot-xxx-core` module repositories.
 
 ## Packages exported
 
+State verified file by file (2026-07-08, `pivot-core#171`) — this table only lists what
+actually ships in this module today, not the target architecture:
+
 | Package | Content |
 |---------|---------|
-| `fr.pivot.core.auth` | Spring Security config, opaque token filter, OIDC resource server |
-| `fr.pivot.core.tenant` | `TenantContext`, `TenantContextHolder`, `@TenantAware` |
-| `fr.pivot.core.team` | `Team`, `TeamMember` entities (public schema, cross-module) |
+| `fr.pivot.core.tenant` | `TenantContext` only. `TenantContextHolder`/`@TenantAware` are deferred — no real consumer identified yet (see `PivotCoreAutoConfiguration` Javadoc) |
+| `fr.pivot.core.team` | `Team`, `TeamMember` entities + repositories (public schema, cross-module). No REST API/service — none specified by any US yet |
 | `fr.pivot.core.modules` | `PivotModule` interface, `ModuleRegistry`, `@RequiresModule` |
 | `fr.pivot.core.db` | Flyway public schema baseline, `ModuleFlywayConfigurer` (multi-schema) |
+
+**`fr.pivot.core.auth` — not yet extracted.** Escalated on `pivot-core#171`: the opaque-token
+validation path (`TokenService`/`TokenAuthenticationFilter`) is hard-coupled to the concrete
+`fr.pivot.auth.entity.User` JPA entity, so a mechanical move is not safe — a clean extraction
+requires a new shared minimal-principal abstraction, which is an architecture decision on a
+security-critical component, not a unilateral agent call. See the `PivotCoreAutoConfiguration`
+Javadoc for the full reasoning.
 
 ## Consuming the library in a module repo
 
@@ -122,5 +131,5 @@ export PATH="$JAVA_HOME/bin:$PATH"
 ./mvnw package -DskipTests
 
 # Run starter tests only (includes Testcontainers integration tests)
-./mvnw test -pl pivot-core-starter
+./mvnw test -pl starter
 ```
