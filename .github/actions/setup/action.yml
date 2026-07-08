@@ -1,0 +1,63 @@
+name: Setup (Java + Node + cache)
+description: >-
+  Composite action partagee (source unique) : installe Java (Temurin) et/ou Node.js selon les
+  parametres fournis, avec cache Maven (~/.m2) et npm (~/.npm) via actions/cache. Consommee en
+  local par pivot-core (ce repo) et referencee cross-repo par pivot-ui via
+  `uses: PIVOT-PLATFORM/pivot-core/.github/actions/setup@main` (composite action cross-repo,
+  resolue nativement par GitHub Actions meme sur un repo prive du meme org — aucun checkout du
+  repo hote requis).
+
+inputs:
+  java-version:
+    description: >-
+      Version de Java (distribution Temurin) a installer, ex. '25'. Laisser vide pour ne pas
+      installer Java (job Node uniquement) — le cache Maven est alors aussi desactive.
+    required: false
+    default: ''
+  node-version:
+    description: >-
+      Version de Node.js a installer, ex. '24'. Laisser vide pour ne pas installer Node (job
+      Java uniquement) — le cache npm est alors aussi desactive.
+    required: false
+    default: ''
+  cache-key:
+    description: >-
+      Segment additionnel injecte dans les cles de cache Maven/npm (ex. nom du job ou du repo
+      appelant) pour isoler un cache specifique. Optionnel : vide = cache partage (single
+      source of truth) commun a tous les appelants qui ne renseignent pas ce parametre.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Java (Temurin)
+      if: inputs.java-version != ''
+      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: temurin
+
+    - name: Cache Maven dependencies
+      if: inputs.java-version != ''
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ inputs.cache-key }}-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-${{ inputs.cache-key }}-
+
+    - name: Setup Node.js
+      if: inputs.node-version != ''
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Cache npm dependencies
+      if: inputs.node-version != ''
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-npm-${{ inputs.cache-key }}-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-${{ inputs.cache-key }}-

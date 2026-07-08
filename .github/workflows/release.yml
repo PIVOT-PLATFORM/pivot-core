@@ -60,10 +60,9 @@ jobs:
           token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: ./.github/actions/setup
         with:
           node-version: '24'
-          # Pas de cache: npm — pivot-core n'a pas de package-lock.json (projet Maven).
 
       - name: Install Semantic Release
         run: npm install --save-dev semantic-release @semantic-release/changelog @semantic-release/git @semantic-release/exec
@@ -111,7 +110,7 @@ jobs:
           token: ${{ secrets.SEMANTIC_RELEASE_TOKEN }}
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: ./.github/actions/setup
         with:
           node-version: '24'
 

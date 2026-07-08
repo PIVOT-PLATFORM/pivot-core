@@ -22,7 +22,9 @@ jobs:
           persist-credentials: false
 
       - name: Setup Java + Maven
-        uses: ./.github/actions/setup-java
+        uses: ./.github/actions/setup
+        with:
+          java-version: '25'
 
       - name: Generate SBOM - Maven CycloneDX
         run: |

@@ -36,7 +36,9 @@ jobs:
           persist-credentials: false
 
       - name: Setup Java + Maven
-        uses: ./.github/actions/setup-java
+        uses: ./.github/actions/setup
+        with:
+          java-version: '25'
 
       - name: Compile + Checkstyle + SpotBugs
         run: mvn --no-transfer-progress compile checkstyle:check spotbugs:check -Dmaven.compiler.release=24
@@ -69,7 +71,9 @@ jobs:
           persist-credentials: false
 
       - name: Setup Java + Maven
-        uses: ./.github/actions/setup-java
+        uses: ./.github/actions/setup
+        with:
+          java-version: '25'
 
       - name: Run tests with coverage
         env:
@@ -112,7 +116,9 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Java + Maven
-        uses: ./.github/actions/setup-java
+        uses: ./.github/actions/setup
+        with:
+          java-version: '25'
 
       - name: Download backend build (classes + coverage)
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

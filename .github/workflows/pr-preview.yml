@@ -35,7 +35,9 @@ jobs:
           persist-credentials: false
 
       - name: Setup Java + Maven
-        uses: ./.github/actions/setup-java
+        uses: ./.github/actions/setup
+        with:
+          java-version: '25'
 
       # Step-level continue-on-error so the job (and PR check) stays green:
       # mutation score is a quality indicator, not a hard merge gate (CLAUDE.md).
