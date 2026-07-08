@@ -79,6 +79,85 @@ services:
         aliases:
           - pivot-core
 
+  # EN17.9 — modules satellites, service name = hostname attendu par pivot-ui/nginx.conf
+  # (résolution DNS Docker par défaut sur le nom de service, pas besoin d'alias réseau
+  # comme pour `backend` ci-dessus). Aucun des trois n'expose de `management.server.port`
+  # séparé aujourd'hui (application.yml de chaque repo) — l'actuator vit donc sous le même
+  # port ET le même `context-path` que l'API (contrairement à pivot-core, qui isole son
+  # actuator sur :8081 hors context-path) : le healthcheck doit inclure le context-path.
+
+  pivot-pilotage-core:
+    build:
+      context: ../pivot-pilotage-core
+      dockerfile: Dockerfile
+    container_name: pivot-pilotage-core
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot_dev
+      SPRING_DATASOURCE_USERNAME: pivot
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/api/pilotage/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  pivot-agilite-core:
+    build:
+      context: ../pivot-agilite-core
+      dockerfile: Dockerfile
+    container_name: pivot-agilite-core
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot_dev
+      SPRING_DATASOURCE_USERNAME: pivot
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/api/agilite/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  pivot-collaboratif-core:
+    build:
+      context: ../pivot-collaboratif-core
+      dockerfile: Dockerfile
+    container_name: pivot-collaboratif-core
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot_dev
+      SPRING_DATASOURCE_USERNAME: pivot
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/api/collaboratif/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
   frontend:
     build:
       context: ../pivot-ui
@@ -90,6 +169,9 @@ services:
       - ../pivot-ui/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
+      - pivot-pilotage-core
+      - pivot-agilite-core
+      - pivot-collaboratif-core
     restart: unless-stopped
 
 volumes:
