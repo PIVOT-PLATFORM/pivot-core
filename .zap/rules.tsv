@@ -1,12 +1,14 @@
-# ZAP DAST Rules — PIVOT-CORE (dast-baseline.yml, US05.13.1)
-# Format : <pluginid>	<action>	<comment>
-# Actions reconnues par zap-baseline.py : IGNORE | WARN | FAIL | INFO
-#   - IGNORE : faux positif trié — exclu du gate Medium+ (voir job "gate" de dast-baseline.yml)
-#   - WARN   : comportement par défaut ZAP si absent de ce fichier (n'affecte pas le gate)
-# Le gate Medium+ de dast-baseline.yml ignore un pluginid affecté par le scan UNIQUEMENT s'il
-# est marqué IGNORE ici — WARN/FAIL n'ont pas d'effet sur ce gate custom (voir commentaire de
-# tête du workflow pour le raisonnement).
+# ZAP DAST Rules — PIVOT-CORE
+# Partagé par dast-baseline.yml (US05.13.1) et dast-full.yml (US05.13.2) — les deux scannent
+# la même application (staging pivot-ui), donc la même liste de pluginid ZAP triés comme faux
+# positifs s'applique aux deux.
 #
-# Aucun faux positif trié à ce jour — première mise en place du scan (US05.13.1).
-# Ajouter une ligne ici dès qu'une alerte Medium+ est triée comme non pertinente pour PIVOT,
+# Format : <pluginid>	<action>	<comment>
+# Actions reconnues par zap-baseline.py / zap-full-scan.py : IGNORE | WARN | FAIL | INFO
+#   - IGNORE : faux positif trié — exclu du gate Medium+ (job "gate" de dast-baseline.yml) ET
+#     du job "process-alerts" (issue si nouvelle alerte High, dast-full.yml)
+#   - WARN   : comportement par défaut ZAP si absent de ce fichier (n'affecte aucun des deux gates)
+#
+# Aucun faux positif trié à ce jour — première mise en place des scans (US05.13.1 / US05.13.2).
+# Ajouter une ligne ici dès qu'une alerte Medium+/High est triée comme non pertinente pour PIVOT,
 # jamais pour la faire disparaître sans justification (cf. Expert Red Team / Blue Team).

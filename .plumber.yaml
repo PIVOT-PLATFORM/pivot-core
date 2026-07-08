@@ -35,6 +35,8 @@ github:
         - slackapi/slack-github-action
         # US05.13.1 — dast-baseline.yml (ZAP baseline scan staging pivot-ui)
         - zaproxy/action-baseline
+        # US05.13.2 — dast-full.yml (ZAP full scan authentifié staging pivot-ui)
+        - zaproxy/action-full-scan
 
     # --- Images : pas de tags mutables ---
     containerImageMustNotUseForbiddenTags:
