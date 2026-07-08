@@ -1,0 +1,136 @@
+<!--
+    EN07.3 — ActiveMQ Classic broker configuration (KahaDB persistence, per-domain DLQ).
+
+    Based on the image's own default conf/activemq.xml (apache/activemq-classic), trimmed to
+    only the transports PIVOT actually uses (openwire for ops/admin tooling, stomp for each
+    module-core's Spring enableStompBrokerRelay()) and extended with a destinationPolicy entry
+    per domain for a fixed, shared Dead Letter Queue name (DLQ.pilotage / DLQ.agilite /
+    DLQ.collaboratif — pivot-docs EN07.3 AC).
+
+    pivot-core itself never connects to this broker — no WS/STOMP relay in the shell (its only
+    STOMP code, fr.pivot.notification.config.NotificationWebSocketConfig, is an in-process
+    Spring SimpleBroker for in-app browser notifications, unrelated and untouched by this
+    Enabler). Only pivot-pilotage-core, pivot-agilite-core and pivot-collaboratif-core connect,
+    each via its own enableStompBrokerRelay() wired to this broker's STOMP port (61613).
+
+    Destination naming convention: the backlog AC describes topics as "/topic/pilotage/**"
+    (prose, not a literal STOMP path). Real destinations use DOT hierarchy after the STOMP
+    "/topic/" prefix — e.g. "/topic/pilotage.roadmap-updated" — because ActiveMQ's wildcard
+    destination matching (the ">" used below, required for per-domain DLQ routing) only
+    operates on dot-separated segments. A slash-based destination (e.g. "/topic/foo/bar")
+    becomes ONE opaque physical segment to ActiveMQ and never matches a dot-based wildcard —
+    verified empirically against this broker (raw STOMP CONNECT/SUBSCRIBE/SEND test, cross-
+    checked against the web console's /admin/xml/topics.jsp topic listing). Each module-core's
+    own PR follows this same dot convention for its own domain prefix.
+
+    Known gap (accepted, same posture as the already-documented unauthenticated Redis gap in
+    docker-compose.prod.yml): the web console (jetty.xml import below) keeps its default
+    admin/admin credentials — out of scope for this Enabler (would need a full secret-rotation
+    story like EN07.2). Network isolation is the only control: the broker sits on
+    pivot-net-data only (internal, no route out, never attached to pivot-net-app/nginx) and its
+    console is never published as a host port in production (docker-compose.prod.yml) — dev
+    compose publishes 8161 to the host for developer convenience only, same precedent as the
+    Actuator port 8081 in compose.yml.
+-->
+<beans
+  xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+  http://activemq.apache.org/schema/core http://activemq.apache.org/schema/core/activemq-core.xsd">
+
+    <bean class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+        <property name="locations">
+            <value>file:${activemq.conf}/credentials.properties</value>
+        </property>
+    </bean>
+
+    <broker xmlns="http://activemq.apache.org/schema/core" brokerName="pivot-activemq" dataDirectory="${activemq.data}">
+
+        <destinationPolicy>
+            <policyMap>
+              <policyEntries>
+                <!-- Fallback for any topic outside the three known domains. -->
+                <policyEntry topic=">">
+                  <pendingMessageLimitStrategy>
+                    <constantPendingMessageLimitStrategy limit="1000"/>
+                  </pendingMessageLimitStrategy>
+                </policyEntry>
+
+                <policyEntry topic="pilotage.>">
+                  <pendingMessageLimitStrategy>
+                    <constantPendingMessageLimitStrategy limit="1000"/>
+                  </pendingMessageLimitStrategy>
+                  <deadLetterStrategy>
+                    <sharedDeadLetterStrategy processExpired="true" processNonPersistent="false">
+                      <deadLetterQueue>
+                        <queue physicalName="DLQ.pilotage"/>
+                      </deadLetterQueue>
+                    </sharedDeadLetterStrategy>
+                  </deadLetterStrategy>
+                </policyEntry>
+
+                <policyEntry topic="agilite.>">
+                  <pendingMessageLimitStrategy>
+                    <constantPendingMessageLimitStrategy limit="1000"/>
+                  </pendingMessageLimitStrategy>
+                  <deadLetterStrategy>
+                    <sharedDeadLetterStrategy processExpired="true" processNonPersistent="false">
+                      <deadLetterQueue>
+                        <queue physicalName="DLQ.agilite"/>
+                      </deadLetterQueue>
+                    </sharedDeadLetterStrategy>
+                  </deadLetterStrategy>
+                </policyEntry>
+
+                <policyEntry topic="collaboratif.>">
+                  <pendingMessageLimitStrategy>
+                    <constantPendingMessageLimitStrategy limit="1000"/>
+                  </pendingMessageLimitStrategy>
+                  <deadLetterStrategy>
+                    <sharedDeadLetterStrategy processExpired="true" processNonPersistent="false">
+                      <deadLetterQueue>
+                        <queue physicalName="DLQ.collaboratif"/>
+                      </deadLetterQueue>
+                    </sharedDeadLetterStrategy>
+                  </deadLetterStrategy>
+                </policyEntry>
+              </policyEntries>
+            </policyMap>
+        </destinationPolicy>
+
+        <managementContext>
+            <managementContext createConnector="false"/>
+        </managementContext>
+
+        <persistenceAdapter>
+            <kahaDB directory="${activemq.data}/kahadb"/>
+        </persistenceAdapter>
+
+        <systemUsage>
+            <systemUsage>
+                <memoryUsage>
+                    <memoryUsage percentOfJvmHeap="70"/>
+                </memoryUsage>
+                <storeUsage>
+                    <storeUsage limit="5 gb"/>
+                </storeUsage>
+                <tempUsage>
+                    <tempUsage limit="1 gb"/>
+                </tempUsage>
+            </systemUsage>
+        </systemUsage>
+
+        <transportConnectors>
+            <transportConnector name="openwire" uri="tcp://0.0.0.0:61616?maximumConnections=1000&amp;wireFormat.maxFrameSize=104857600"/>
+            <transportConnector name="stomp" uri="stomp://0.0.0.0:61613?maximumConnections=1000&amp;wireFormat.maxFrameSize=104857600"/>
+        </transportConnectors>
+
+        <shutdownHooks>
+            <bean xmlns="http://www.springframework.org/schema/beans" class="org.apache.activemq.hooks.SpringContextHook" />
+        </shutdownHooks>
+
+    </broker>
+
+    <import resource="jetty.xml"/>
+
+</beans>

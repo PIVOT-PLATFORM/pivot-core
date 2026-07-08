@@ -218,7 +218,7 @@ jobs:
           services = config["services"]
           errors = []
 
-          for name in ("nginx", "pivot-core", "postgres", "redis"):
+          for name in ("nginx", "pivot-core", "postgres", "redis", "activemq"):
               svc = services.get(name)
               if svc is None:
                   errors.append(f"missing service: {name}")
@@ -226,7 +226,7 @@ jobs:
               if "healthcheck" not in svc:
                   errors.append(f"{name}: no healthcheck defined")
 
-          for name in ("pivot-core", "postgres", "redis"):
+          for name in ("pivot-core", "postgres", "redis", "activemq"):
               svc = services.get(name, {})
               if svc.get("ports"):
                   errors.append(f"{name}: must not publish a host port (found {svc['ports']})")

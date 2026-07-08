@@ -4,19 +4,22 @@
 #
 # Scope note (Gate 1, confirmed against the current org — see PR description for detail):
 # the enabler's original AC also lists pivot-pilotage-core / pivot-agilite-core /
-# pivot-collaboratif-core, and an activemq + pgbouncer layer. None of that exists today:
-#   - the three module-core repos are "à créer avec le repo" (pivot-platform/CLAUDE.md) —
-#     not started, so no image to pull and no service block is defined for them here.
-#   - pivot-core has zero ActiveMQ/RabbitMQ/Kafka/pgbouncer dependency — verified against
-#     pom.xml, application*.yml and src/ (grep for activemq|pgbouncer|rabbitmq|kafka|jms
-#     returns nothing). The only messaging-adjacent dependency is
-#     spring-boot-starter-websocket, which backs Spring's in-process STOMP *simple* broker —
-#     no external broker process is involved, so activemq would be dead infrastructure today.
-# See the "not wired yet" comment blocks below for exactly where each one slots in once it
-# becomes real — the intent isn't dropped, just not fabricated ahead of the repos existing.
-# ActiveMQ and PgBouncer are in fact already tracked as their own Enablers for exactly this
-# reason (EN07.3 — ActiveMQ persistence KahaDB, EN07.4 — PgBouncer session mode) — this file
-# doesn't preempt them.
+# pivot-collaboratif-core, and an activemq + pgbouncer layer. Still only partially true as of
+# EN07.3:
+#   - the three module-core repos are real bootstrap repos today (no longer "à créer") but
+#     have not published a Docker image yet — no service block is defined for them here.
+#     Each wires its own `enableStompBrokerRelay()` in its own repo/PR — see the commented
+#     module-core template below for the env vars it expects once it IS wired here.
+#   - pivot-core itself still has zero ActiveMQ/JMS/STOMP-relay dependency — verified again for
+#     this PR (grep for activemq|jms|stomp.*relay across pom.xml, application*.yml, src/
+#     returns nothing beyond the pre-existing in-process notification SimpleBroker, which
+#     never talks to an external broker). EN07.3 adds the ActiveMQ *broker* itself below
+#     (KahaDB persistence, per-domain DLQ, internal-only) purely as shared infrastructure for
+#     the module-cores to relay into — pivot-core does not connect to it.
+#   - pgbouncer remains un-added (EN07.4, still Backlog) — see its own "not included" note
+#     further down.
+# ActiveMQ and PgBouncer are tracked as their own Enablers for exactly this incremental-rollout
+# reason (EN07.3 — ActiveMQ persistence KahaDB, EN07.4 — PgBouncer session mode).
 #
 # Images: built + pushed to GHCR by each repo's own release.yml (Semantic Release) —
 # ghcr.io/pivot-platform/pivot-core and ghcr.io/pivot-platform/pivot-ui. Pin
@@ -166,12 +169,17 @@ services:
   #       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot
   #       SPRING_DATASOURCE_USERNAME: pivot
   #       SPRING_DATA_REDIS_HOST: redis
+  #       # EN07.3 — this module-core's own enableStompBrokerRelay() reads these (defaults
+  #       # already match if omitted, explicit here for consistency with this file's style).
+  #       PIVOT_ACTIVEMQ_RELAY_HOST: activemq
+  #       PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
   #     secrets:
   #       - source: postgres_password
   #         target: secret.datasource-password
   #     depends_on:
-  #       postgres: { condition: service_healthy }
-  #       redis:    { condition: service_healthy }
+  #       postgres:  { condition: service_healthy }
+  #       redis:     { condition: service_healthy }
+  #       activemq:  { condition: service_healthy }
   #     healthcheck:
   #       test: ["CMD-SHELL", "curl -f http://localhost:9081/actuator/health || exit 1"]
   #       interval: 10s
@@ -228,19 +236,44 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # --- activemq / pgbouncer — NOT included --------------------------------------------
-  # Verified against this codebase (pom.xml, application*.yml, src/): no ActiveMQ, RabbitMQ,
-  # Kafka or pgbouncer dependency exists today. WebSocket STOMP (spring-boot-starter-websocket)
-  # runs on Spring's in-process simple broker — it does not talk to an external broker, so
-  # activemq would be dead infrastructure if added now.
-  # Both already have their own tracked Enabler (Backlog, not started) rather than being
+  # EN07.3 — shared cross-module-core event bus. KahaDB persistence (custom
+  # docker/activemq/activemq.xml — see its header comment for the per-domain DLQ policy and
+  # destination naming convention), memory/store/temp usage limits, only openwire+stomp
+  # transport connectors. pivot-net-data only — never pivot-net-app — so the web console
+  # (:8161) can never be reached through nginx; no `ports:` published either, matching
+  # postgres/redis. pivot-core itself never depends on or connects to this service (no
+  # WS/STOMP relay in the shell). Module-core services will add `activemq: { condition:
+  # service_healthy }` to their own `depends_on:` once wired (see commented template above).
+  activemq:
+    image: apache/activemq-classic:6.2.0
+    container_name: pivot-activemq
+    environment:
+      ACTIVEMQ_DATA: /var/lib/activemq/data
+    volumes:
+      - ./docker/activemq/activemq.xml:/opt/apache-activemq/conf/activemq.xml:ro
+      - activemq_data:/var/lib/activemq/data
+    networks:
+      - pivot-net-data
+    # No `ports:` — reachable only from module-core containers over pivot-net-data, same
+    # reasoning as postgres/redis above. Console requires HTTP Basic auth (default
+    # admin/admin) — known gap, same posture as the unauthenticated Redis gap below: network
+    # isolation is the only control, out of scope for this Enabler (would need a
+    # secret-rotation story like EN07.2).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8161/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # --- pgbouncer — NOT included --------------------------------------------------------
+  # Verified against this codebase (pom.xml, application*.yml, src/): no pgbouncer dependency
+  # exists today. Already tracked as its own Enabler (Backlog, not started) rather than being
   # speculatively wired here:
-  #   - EN07.3 — ActiveMQ persistence KahaDB (multi-repo): STOMP relay for cross-module-core
-  #     pub/sub, topics per domain (pilotage/agilite/collaboratif), pivot-core explicitly does
-  #     NOT subscribe (per that Enabler's own AC).
   #   - EN07.4 — PgBouncer session mode configuration prod: connection pooling in front of
   #     the single Postgres instance once connection count from multiple backends needs it.
-  # When either lands, add the service on pivot-net-data alongside postgres/redis above,
+  # When it lands, add the service on pivot-net-data alongside postgres/redis/activemq above,
   # following the same no-host-port / healthcheck / restart:unless-stopped pattern.
   # ------------------------------------------------------------------------------------
 
@@ -254,6 +287,7 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  activemq_data:
 
 secrets:
   postgres_password:
