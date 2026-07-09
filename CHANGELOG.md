@@ -1,3 +1,27 @@
+# [0.27.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.26.0...v0.27.0) (2026-07-09)
+
+
+### Bug Fixes
+
+* **api:** double préfixe /api/api sur 6 contrôleurs REST ([#182](https://github.com/PIVOT-PLATFORM/pivot-core/issues/182)) ([2f93033](https://github.com/PIVOT-PLATFORM/pivot-core/commit/2f930333dc0f4627b09e8885a894766146ad4e8b)), closes [#181](https://github.com/PIVOT-PLATFORM/pivot-core/issues/181)
+* **backend:** enable SMTP STARTTLS/auth in production profile ([#199](https://github.com/PIVOT-PLATFORM/pivot-core/issues/199)) ([660cc0e](https://github.com/PIVOT-PLATFORM/pivot-core/commit/660cc0ee0d65b68bf5a222363016b05e73c04670))
+* **ci:** docker login to GHCR before pull in deploy.yml ([#200](https://github.com/PIVOT-PLATFORM/pivot-core/issues/200)) ([659771e](https://github.com/PIVOT-PLATFORM/pivot-core/commit/659771e9fbda41a572100efbe938f2c491f6cac8))
+* **ci:** GHCR image path doubled the repo segment ([#198](https://github.com/PIVOT-PLATFORM/pivot-core/issues/198)) ([657ee63](https://github.com/PIVOT-PLATFORM/pivot-core/commit/657ee631d92d0a33d19354fa99fe2fdcd4ef21ad))
+* **ci:** require exact-line match for the release trigger, not substring ([#164](https://github.com/PIVOT-PLATFORM/pivot-core/issues/164)) ([4a84aeb](https://github.com/PIVOT-PLATFORM/pivot-core/commit/4a84aeb1a1cf2b368b83cfa1cc950a91f336ed07))
+* **deps:** bump logback-core to 1.5.35 (CVE-2026-10532) ([#208](https://github.com/PIVOT-PLATFORM/pivot-core/issues/208)) ([c2925cd](https://github.com/PIVOT-PLATFORM/pivot-core/commit/c2925cd7d6506a234d41a5ad120cbbc37b8e5fc0))
+* **infra:** compose dev — alias réseau pivot-core + montage nginx.dev.conf ([#175](https://github.com/PIVOT-PLATFORM/pivot-core/issues/175)) ([aeaf6d3](https://github.com/PIVOT-PLATFORM/pivot-core/commit/aeaf6d364eafc8aa0d1d48aed714cd709b6dd783)), closes [#174](https://github.com/PIVOT-PLATFORM/pivot-core/issues/174)
+* **modules:** aligner le champ description API modules avec PivotModule ([#184](https://github.com/PIVOT-PLATFORM/pivot-core/issues/184)) ([66f6bb1](https://github.com/PIVOT-PLATFORM/pivot-core/commit/66f6bb15204718477838afff88e4207ac0dac45a)), closes [#183](https://github.com/PIVOT-PLATFORM/pivot-core/issues/183)
+* **modules:** module registry always empty — cross-service auto-discovery is impossible ([#178](https://github.com/PIVOT-PLATFORM/pivot-core/issues/178)) ([c76b1bf](https://github.com/PIVOT-PLATFORM/pivot-core/commit/c76b1bf7e43ea17a37c9b1b1512009f785d3bc00)), closes [pivot-ui#118](https://github.com/pivot-ui/issues/118)
+
+
+### Features
+
+* **auth:** EN17.1 — principal d'authentification minimal partagé (ADR-022) ([#180](https://github.com/PIVOT-PLATFORM/pivot-core/issues/180)) ([00ccb07](https://github.com/PIVOT-PLATFORM/pivot-core/commit/00ccb071c9c08a65dc88922bd56e0fa7cb5e1ebe)), closes [#171](https://github.com/PIVOT-PLATFORM/pivot-core/issues/171) [#171](https://github.com/PIVOT-PLATFORM/pivot-core/issues/171)
+* **db:** EN17.1 — extraire fr.pivot.core.modules + TenantContext vers pivot-core-starter ([#173](https://github.com/PIVOT-PLATFORM/pivot-core/issues/173)) ([124dbb9](https://github.com/PIVOT-PLATFORM/pivot-core/commit/124dbb97c71d22a70c2c3ad05bf7a3696ff4fc90)), closes [#172](https://github.com/PIVOT-PLATFORM/pivot-core/issues/172)
+* **db:** EN17.1 + EN17.4 — pivot-core-starter multi-module + ModuleFlywayConfigurer ([#167](https://github.com/PIVOT-PLATFORM/pivot-core/issues/167)) ([eacd8ed](https://github.com/PIVOT-PLATFORM/pivot-core/commit/eacd8edb9fbc07e78543a9845412a96456065d2c))
+* **infra:** EN07.3 — ActiveMQ Classic broker (KahaDB, per-domain DLQ) ([#193](https://github.com/PIVOT-PLATFORM/pivot-core/issues/193)) ([286daea](https://github.com/PIVOT-PLATFORM/pivot-core/commit/286daea2f421048d5d6c0cc012eed9174bfcee6b)), closes [#192](https://github.com/PIVOT-PLATFORM/pivot-core/issues/192)
+* **infra:** EN17.9 — modules satellites dans le compose dev ([#179](https://github.com/PIVOT-PLATFORM/pivot-core/issues/179)) ([f0ff86b](https://github.com/PIVOT-PLATFORM/pivot-core/commit/f0ff86b82e28bb6a05e47adf661e49c30f086e0f))
+
 # [0.26.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.25.0...v0.26.0) (2026-07-06)
 
 
