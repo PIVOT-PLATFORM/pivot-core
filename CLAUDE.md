@@ -172,7 +172,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 |-------|---------|
 | Item Type | Epic / Feature / Enabler / US |
 | Parent | clé du parent (ex. `E01`, `F01.1`) |
-| Stage | Backlog / Ready / In progress / Review / Done |
+| Stage | ⬜ (pas encore terminé) / ✅ (Done — recette mainteneur). États intermédiaires internes, non persistés → pivot-docs/docs/backlog/README.md §2/§5 |
 | Priority | Critical / High / Medium / Low |
 | Module | core / auth / admin / oidc / pilotage / agilite / collaboratif (extensible par domaine) |
 | Phase | Socle / v1-enterprise / phase-3 |
@@ -288,7 +288,7 @@ hors sprint (`fix/`, `refactor/`, `chore/`, `docs/`) — **sans exception** :
    - **Convergence** — Gate 4 = 100/100 (ou convergence confirmée sans finding restant) ET CI verte → sortir
 3. Gate 4 = 100/100 (ou convergence confirmée sans finding restant) :
    - Sortir la PR du mode draft (`gh pr ready`)
-   - `Stage: Review` dans frontmatter US + `sprints/sprint-{N}.md` (backlog pivot-docs sur la branche courante, cf. règle ci-dessus — pas de branche docs séparée)
+   - État interne Review (Stage frontmatter reste ⬜) + mise à jour `sprints/sprint-{N}.md` (backlog pivot-docs sur la branche courante, cf. règle ci-dessus — pas de branche docs séparée)
    - **Gate 5** — générer/mettre à jour la spec fonctionnelle et technique figée `pivot-docs/docs/specs/{EPIC}/{us-id}-{slug}.md` (branche/PR `pivot-docs` dédiée — jamais de commit cross-repo, voir `pivot-docs/docs/workflow/README.md`)
    - Signal mainteneur
 4. Blocage 20 boucles → Breaking Point 2
@@ -392,7 +392,7 @@ dossier `gates/`). Le statut vit dans le champ **Stage** du frontmatter US (pivo
 
 | Gate | Moment | Seuils |
 |------|--------|--------|
-| **1 — READINESS** | Avant implémentation | PO Agent self-challenge · = 100 → Stage: Ready → procéder · < 100 → PO Agent réécrit ACs |
+| **1 — READINESS** | Avant implémentation | PO Agent self-challenge · = 100 → état interne Ready → procéder (Stage frontmatter reste ⬜) · < 100 → PO Agent réécrit ACs |
 | **2 — COVERAGE** | Par commit | ≥ 85 → continuer · 70–84 → compléter tests · < 70 → stop |
 | **3 — QUALITY** | Après CI verte | Hard blocks : secret Gitleaks, label `security`/`breaking-change`, modif contrat module/OIDC |
 | **4 — MERGE CONFIDENCE** | Avant merge | = 100/100 → sortie du mode draft (merge autonome) · 60–99 → merge documenté · < 60 → Breaking Point 2 |
@@ -439,7 +439,7 @@ PO Agent rédige Epic + US avec AC
     ├── QA Agent : testabilité de chaque AC
     └── → Gate 1 READINESS
            │
-           ├── Score = 100 → Stage: Ready → procéder (PO Agent autonome)
+           ├── Score = 100 → état interne Ready → procéder (Stage frontmatter reste ⬜, PO Agent autonome)
            │     └── Le mainteneur valide → Dev Agent implémente
            └── Score < 100 → clarification PO Agent avant tout
 ```
@@ -458,7 +458,7 @@ AC ambigu à l'implémentation → **stopper et demander au PO Agent** — jamai
 ### Gates (commentaires de PR)
 
 Chaque gate est consigné en **commentaire de PR** (plus de fichiers `gates/`) :
-- Gate 1 Readiness (avant implémentation) — PO Agent valide ACs · = 100 → Stage: Ready
+- Gate 1 Readiness (avant implémentation) — PO Agent valide ACs · = 100 → état interne Ready (Stage frontmatter reste ⬜)
 - Gate 2 Coverage (après chaque commit)
 - Gate 3 Quality (après CI verte)
 - Gate 4 Merge confidence (décision finale)
@@ -481,7 +481,7 @@ Chaque gate est consigné en **commentaire de PR** (plus de fichiers `gates/`) :
 
 ```bash
 # 1. Fermer l'issue GitHub liée (si "Closes #N" dans la PR ne l'a pas déjà fait automatiquement)
-# 2. Mainteneur : passe Stage → Done dans le frontmatter US (recette humaine — jamais Claude)
+# 2. Mainteneur : passe Stage: ⬜ → ✅ dans le frontmatter US (recette humaine — jamais Claude)
 # 3. Débloquer les US dépendantes
 # 4. Nettoyer la branche
 git push origin --delete feat/{us-id}-{slug}
