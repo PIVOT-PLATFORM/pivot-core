@@ -68,6 +68,68 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # EN07.4 — session-mode connection pooler in front of the single dev Postgres instance,
+  # same role as in production (docker-compose.prod.yml) — see that file's pgbouncer service
+  # comment for the full rationale (why session mode, why these pool sizes). Wired into dev
+  # too (not just prod) so `backend`/the module satellites below exercise the exact same
+  # connection path locally, and so docker/pgbouncer/loadtest.sh has something real to run
+  # against without needing the full prod stack (TLS certs, Docker secrets, etc).
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    container_name: pivot-pgbouncer
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: pivot_dev
+      DB_USER: pivot
+      # Dev only — compose.yml has no Docker secrets mechanism (see docker-compose.prod.yml /
+      # docs/deployment/secret-management.md for the file-based secret used in prod instead).
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
+      POOL_MODE: session
+      MAX_CLIENT_CONN: "200"
+      DEFAULT_POOL_SIZE: "20"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      RESERVE_POOL_TIMEOUT: "3"
+      AUTH_TYPE: scram-sha-256
+      # Reuses the same `pivot` role as admin/stats user (see pgbouncer-exporter below) —
+      # PgBouncer's admin flag is internal to PgBouncer, grants no extra Postgres privilege.
+      ADMIN_USERS: pivot
+      STATS_USERS: pivot
+      SERVER_RESET_QUERY: DISCARD ALL
+      LOG_STATS: "1"
+    ports:
+      # Dev convenience only (inspect pools directly via
+      # `psql postgresql://pivot:...@localhost:6432/pgbouncer`, or point a local tool
+      # straight at the pooled port) — docker-compose.prod.yml does not publish this port,
+      # same precedent as postgres/activemq above.
+      - "6432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U pivot -d pivot_dev || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # EN07.4 — Prometheus sidecar exposing PgBouncer pool utilization (SHOW POOLS/SHOW STATS)
+  # as /metrics — see prometheus.yml (not scraped by any running Prometheus server in this
+  # stack yet, same posture as pivot-core's own :8081/actuator/prometheus target there).
+  pgbouncer-exporter:
+    image: prometheuscommunity/pgbouncer-exporter:v0.12.1
+    container_name: pivot-pgbouncer-exporter
+    environment:
+      PGBOUNCER_EXPORTER_CONNECTION_STRING: "postgres://pivot:${POSTGRES_PASSWORD:-pivot_dev}@pgbouncer:5432/pgbouncer?sslmode=disable"
+    ports:
+      - "9127:9127"   # dev convenience only, same precedent as above.
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -80,7 +142,10 @@ services:
       # Internet) — docker-compose.prod.yml (EN07.1) does NOT publish this port.
       - "8081:8081"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot_dev
+      # EN07.4 — routed through pgbouncer (session mode), never straight to postgres. Port
+      # stays 5432: edoburu/pgbouncer listens on 5432 by default (transparent drop-in), only
+      # the hostname changes.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:5432/pivot_dev
       SPRING_DATASOURCE_USERNAME: pivot
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       SPRING_DATA_REDIS_HOST: redis
@@ -95,7 +160,7 @@ services:
       OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -118,7 +183,8 @@ services:
       dockerfile: Dockerfile
     container_name: pivot-pilotage-core
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot_dev
+      # EN07.4 — routed through pgbouncer (session mode), never straight to postgres.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:5432/pivot_dev
       SPRING_DATASOURCE_USERNAME: pivot
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       SPRING_DATA_REDIS_HOST: redis
@@ -128,7 +194,7 @@ services:
       PIVOT_ACTIVEMQ_RELAY_HOST: activemq
       PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -148,7 +214,8 @@ services:
       dockerfile: Dockerfile
     container_name: pivot-agilite-core
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot_dev
+      # EN07.4 — routed through pgbouncer (session mode), never straight to postgres.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:5432/pivot_dev
       SPRING_DATASOURCE_USERNAME: pivot
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       SPRING_DATA_REDIS_HOST: redis
@@ -158,7 +225,7 @@ services:
       PIVOT_ACTIVEMQ_RELAY_HOST: activemq
       PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -178,7 +245,8 @@ services:
       dockerfile: Dockerfile
     container_name: pivot-collaboratif-core
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot_dev
+      # EN07.4 — routed through pgbouncer (session mode), never straight to postgres.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:5432/pivot_dev
       SPRING_DATASOURCE_USERNAME: pivot
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       SPRING_DATA_REDIS_HOST: redis
@@ -188,7 +256,7 @@ services:
       PIVOT_ACTIVEMQ_RELAY_HOST: activemq
       PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
     depends_on:
-      postgres:
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
