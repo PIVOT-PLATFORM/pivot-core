@@ -266,6 +266,13 @@ version ni publier quoi que ce soit.
 
 Release-Trigger: true"` — trailer sur sa propre ligne finale, précédée d'une ligne vide, jamais
   intégré dans une phrase. Uniquement sur le merge identifié comme dernier item du sprint courant.
+- **Exception hors cycle (2026-07-09)** : `fr.pivot:pivot-core-starter` (multi-module EN17.1,
+  #167/#173/#176/#177/#180) n'avait jamais été publié en version stable — seul
+  `0.0.0-pr167-SNAPSHOT` existait sur GitHub Packages, aucune release réelle depuis le split
+  `starter`/`app`. `pivot-collaboratif-core` (EN08.3, correction d'un contournement
+  d'authentification cross-tenant actif) a besoin d'une coordonnée Maven stable pour ce contrat —
+  son propre `CLAUDE.md` interdit d'y dépendre avec une version devinée. Release déclenchée hors
+  fin de sprint, mainteneur informé et confirmation donnée, pour lever ce blocage.
 
 ## Workflow — Autoloop PR
 
