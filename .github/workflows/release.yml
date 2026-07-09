@@ -259,6 +259,28 @@ jobs:
             fi
           }
 
+          # 0. Deploy the root aggregator POM itself (packaging=pom, no JAR) — starter/pom.xml
+          # and app/pom.xml both declare it as <parent>, so any consumer resolving
+          # fr.pivot:pivot-core-starter must also be able to fetch fr.pivot:pivot-core at the
+          # same $VERSION to build the effective POM. Missed since the EN17.1 multi-module split
+          # (#167): only the two submodule JARs were ever deploy-file'd below, never this parent —
+          # confirmed 2026-07-09 breaking pivot-collaboratif-core's EN08.3 dependency resolution
+          # (fr.pivot:pivot-core:0.27.0 not found, only 0.26.0 — the last pre-split single-module
+          # version — existed in the registry).
+          set +e
+          echo "Déploiement du POM parent fr.pivot:pivot-core (version ${VERSION})…"
+          OUT=$(mvn --no-transfer-progress -B deploy:deploy-file \
+            -DrepositoryId=github \
+            -Durl="https://maven.pkg.github.com/${GITHUB_REPOSITORY}" \
+            -Dfile="pom.xml" -DpomFile="pom.xml" -Dpackaging=pom 2>&1)
+          code=$?
+          echo "$OUT"
+          if [ "$code" -ne 0 ] && ! echo "$OUT" | grep -qiE "already exist|409|Conflict"; then
+            echo "::error::Échec de déploiement du POM parent fr.pivot:pivot-core (autre que 409)."
+            exit "$code"
+          fi
+          set -e
+
           # 1. Deploy pivot-core-starter (library consumed by pivot-xxx-core repos), from starter/
           STARTER_JAR=$(find starter/target -maxdepth 1 \
             -name 'pivot-core-starter-*.jar' ! -name '*-sources.jar' | head -1)
