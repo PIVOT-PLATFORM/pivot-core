@@ -35,6 +35,17 @@ scrape_configs:
         labels:
           service: pivot-core
 
+  # EN07.4 — PgBouncer pool utilization (SHOW POOLS/SHOW STATS translated to Prometheus
+  # gauges/counters by prometheuscommunity/pgbouncer-exporter — see docker-compose.prod.yml's
+  # pgbouncer-exporter service comment). Same reachability caveat as pivot-core above: no
+  # host port published, a Prometheus server needs pivot-net-data to reach it.
+  - job_name: pgbouncer
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["pgbouncer-exporter:9127"]
+        labels:
+          service: pgbouncer
+
   # --- Module-core targets — NOT wired yet ------------------------------------------
   # pivot-pilotage-core, pivot-agilite-core, pivot-collaboratif-core don't exist as repos yet
   # ("à créer avec le repo" — pivot-platform/CLAUDE.md). Once one exists, ships EN04.2/EN04.3

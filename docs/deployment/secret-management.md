@@ -105,6 +105,24 @@ Aucune de ces valeurs n'apparaît jamais dans `docker-compose.prod.yml` en clair
 chemin vers un fichier de secret externe au dépôt (`./secrets/*.txt`, exclu de Git, ou secret
 Swarm/Kubernetes) y figure.
 
+## Consommateurs additionnels hors Spring (EN07.4)
+
+Le secret `postgres_password` (fichier Docker secret ci-dessus) est aussi monté, tel quel, sur
+deux nouveaux services introduits par EN07.4 dans `docker-compose.prod.yml` — `pgbouncer` et
+`pgbouncer-exporter` — **sans créer de second secret** : les deux authentifient le même rôle
+`pivot` que `pivot-core` lui-même.
+
+Ni l'image `edoburu/pgbouncer` ni `prometheuscommunity/pgbouncer-exporter` ne supportent la
+convention `_FILE` (contrairement à l'image officielle `postgres`, via `POSTGRES_PASSWORD_FILE`,
+ou au mécanisme `configtree` côté Spring décrit plus haut) : chacune attend le mot de passe
+directement dans une variable d'environnement ou un flag, ce qui violerait la règle « aucun
+secret en clair dans ce fichier » si on l'y écrivait tel quel. `docker/pgbouncer/entrypoint.sh`
+et `docker/pgbouncer/exporter-entrypoint.sh` comblent cet écart : chacun lit le fichier secret
+monté (`DB_PASSWORD_FILE=/run/secrets/postgres_password`) au démarrage du conteneur et
+matérialise la valeur uniquement dans l'environnement du process concerné, jamais dans ce
+fichier compose, jamais visible via `docker inspect`. Voir l'en-tête de chaque script pour le
+détail.
+
 ## Développement local
 
 En dehors du profil `prod`, aucun secret Docker n'est requis : `.env` (copié depuis

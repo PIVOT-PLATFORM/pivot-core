@@ -5,7 +5,7 @@
 # Scope note (Gate 1, confirmed against the current org — see PR description for detail):
 # the enabler's original AC also lists pivot-pilotage-core / pivot-agilite-core /
 # pivot-collaboratif-core, and an activemq + pgbouncer layer. Still only partially true as of
-# EN07.3:
+# EN07.4:
 #   - the three module-core repos are real bootstrap repos today (no longer "à créer") but
 #     have not published a Docker image yet — no service block is defined for them here.
 #     Each wires its own `enableStompBrokerRelay()` in its own repo/PR — see the commented
@@ -16,8 +16,9 @@
 #     never talks to an external broker). EN07.3 adds the ActiveMQ *broker* itself below
 #     (KahaDB persistence, per-domain DLQ, internal-only) purely as shared infrastructure for
 #     the module-cores to relay into — pivot-core does not connect to it.
-#   - pgbouncer remains un-added (EN07.4, still Backlog) — see its own "not included" note
-#     further down.
+#   - pgbouncer (EN07.4) is now wired below: a session-mode pooler sits between pivot-core
+#     and postgres (`SPRING_DATASOURCE_URL` now points at `pgbouncer`, never `postgres`
+#     directly) — see the pgbouncer service comment further down for the full rationale.
 # ActiveMQ and PgBouncer are tracked as their own Enablers for exactly this incremental-rollout
 # reason (EN07.3 — ActiveMQ persistence KahaDB, EN07.4 — PgBouncer session mode).
 #
@@ -90,7 +91,11 @@ services:
       # from SECRET_FILE_PATH (defaults to /run/secrets, set explicitly below for clarity).
       SPRING_PROFILES_ACTIVE: prod
       SECRET_FILE_PATH: /run/secrets
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot
+      # EN07.4 — routed through pgbouncer (session mode), never straight to postgres — the
+      # "pivot-core se connecte à PgBouncer (pas directement à Postgres)" AC. Port stays 5432:
+      # edoburu/pgbouncer listens on 5432 by default (transparent drop-in), only the hostname
+      # changes. See the pgbouncer service below for pool sizing / mode rationale.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:5432/pivot
       SPRING_DATASOURCE_USERNAME: pivot
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
@@ -117,7 +122,11 @@ services:
       - source: otp_secret
         target: secret.auth-otp-secret
     depends_on:
-      postgres:
+      # EN07.4 — depends on pgbouncer being healthy, not postgres directly: pivot-core never
+      # opens a socket to postgres itself anymore (see SPRING_DATASOURCE_URL above). pgbouncer
+      # itself depends on postgres (see its own depends_on below), so the effective startup
+      # order (postgres → pgbouncer → pivot-core) is unchanged, just one hop longer.
+      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -166,7 +175,9 @@ services:
   #       pivot-net-data: {}  # reachable by postgres/redis — no host port exposed
   #     environment:
   #       SPRING_PROFILES_ACTIVE: prod
-  #       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pivot
+  #       # EN07.4 — routed through pgbouncer (session mode), never straight to postgres —
+  #       # same reasoning as pivot-core's own SPRING_DATASOURCE_URL above.
+  #       SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:5432/pivot
   #       SPRING_DATASOURCE_USERNAME: pivot
   #       SPRING_DATA_REDIS_HOST: redis
   #       # EN07.3 — this module-core's own enableStompBrokerRelay() reads these (defaults
@@ -177,7 +188,7 @@ services:
   #       - source: postgres_password
   #         target: secret.datasource-password
   #     depends_on:
-  #       postgres:  { condition: service_healthy }
+  #       pgbouncer: { condition: service_healthy }
   #       redis:     { condition: service_healthy }
   #       activemq:  { condition: service_healthy }
   #     healthcheck:
@@ -267,15 +278,134 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # --- pgbouncer — NOT included --------------------------------------------------------
-  # Verified against this codebase (pom.xml, application*.yml, src/): no pgbouncer dependency
-  # exists today. Already tracked as its own Enabler (Backlog, not started) rather than being
-  # speculatively wired here:
-  #   - EN07.4 — PgBouncer session mode configuration prod: connection pooling in front of
-  #     the single Postgres instance once connection count from multiple backends needs it.
-  # When it lands, add the service on pivot-net-data alongside postgres/redis/activemq above,
-  # following the same no-host-port / healthcheck / restart:unless-stopped pattern.
-  # ------------------------------------------------------------------------------------
+  # EN07.4 — session-mode connection pooler sitting between pivot-core (and, once wired, the
+  # module-core services above) and postgres. Absorbs the "N Spring Boot services, each its
+  # own unmutualized Hikari pool, one shared Postgres instance" risk introduced by EN17.9: as
+  # more services/replicas start, their combined Hikari pools could otherwise exceed
+  # postgres's max_connections and get hard-refused. PgBouncer turns that into a soft queue
+  # instead — clients wait for a free pool slot rather than Postgres rejecting the connection
+  # outright.
+  #
+  # Why `session` mode specifically (not the more commonly-touted `transaction` mode): a
+  # session-mode pool assigns one real backend connection to a client for that client's
+  # entire connection lifetime, which is exactly what JPA/Hibernate needs — server-side
+  # prepared statements survive across statements (transaction/statement-mode pooling can
+  # silently break these, since a client may get handed a *different* backend connection
+  # between statements), long-running transactions are safe, and Flyway's advisory locks
+  # (used by pivot-core's own migration run at startup — session-scoped by design in
+  # Postgres) keep working. The trade-off — a session-mode pool only bounds real connections
+  # if clients actually reconnect rather than holding one open forever — is verified in
+  # practice by docker/pgbouncer/loadtest.sh (see "Verified locally" in this PR's description).
+  #
+  # Pool sizing (`max_client_conn` / `default_pool_size` AC): single (user=pivot, db=pivot)
+  # pool — every service here authenticates as the same `pivot` role against the same `pivot`
+  # database (see DB_USER/DB_NAME below), so PgBouncer enforces one shared ceiling regardless
+  # of how many services/replicas are asking.
+  #   - DEFAULT_POOL_SIZE=20 real backend connections to postgres — comfortably under
+  #     postgres's compiled-in default max_connections=100 (superuser_reserved_connections=3
+  #     leaves ~97 for regular roles), leaving headroom for autovacuum, admin psql sessions,
+  #     and future replicas without touching postgres's own config.
+  #   - MAX_CLIENT_CONN=200 client-side sockets accepted by pgbouncer itself — today's 4
+  #     services (pivot-core + the 3 module-cores once wired) x Hikari's default
+  #     maximum-pool-size (10) = 40 baseline; 200 leaves room to scale each service to several
+  #     replicas before this ceiling (not postgres's own hard limit) is what queues new
+  #     connection attempts. See application-prod.yml for pivot-core's own explicit Hikari
+  #     sizing tied to this same math.
+  #   - MIN_POOL_SIZE=5 / RESERVE_POOL_SIZE=5 (+3s RESERVE_POOL_TIMEOUT): keep a handful of
+  #     backend connections warm instead of opening one from cold on every burst, with a
+  #     small reserve pgbouncer can dip into under a sudden spike beyond DEFAULT_POOL_SIZE.
+  #
+  # AUTH_TYPE=scram-sha-256: matches postgres 18's default password_encryption/pg_hba method
+  # (this stack never overrides POSTGRES_HOST_AUTH_METHOD) — `md5`-only auth would fail
+  # against the real backend. The edoburu image stores the plaintext password in
+  # userlist.txt for both `plain` and `scram-sha-256` (never a bare MD5 digest), which is what
+  # lets pgbouncer itself perform SCRAM against postgres.
+  #
+  # Secret handling: reuses the SAME `postgres_password` Docker secret as the `postgres`
+  # service above — no new secret to provision or rotate. Neither this image nor the exporter
+  # below supports the "_FILE" Docker-secrets convention the official postgres image does, so
+  # docker/pgbouncer/entrypoint.sh bridges the gap (reads the secret file, exports it as
+  # DB_PASSWORD, then hands off to the image's real entrypoint) — see that script's header
+  # comment for the full reasoning. The plaintext password never appears in this file, an
+  # env var visible to `docker inspect`, or a committed .env.
+  #
+  # ADMIN_USERS/STATS_USERS=pivot: reuses the same `pivot` role for pgbouncer's own admin
+  # console (SHOW POOLS/SHOW STATS) rather than provisioning a second secret purely for
+  # metrics — PgBouncer's admin flag is internal to PgBouncer itself and grants no extra
+  # privilege on the real Postgres role.
+  #
+  # pivot-net-data only — never pivot-net-app — and no `ports:` published, same posture as
+  # postgres/redis/activemq above: reachable only from containers on pivot-net-data.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    container_name: pivot-pgbouncer
+    entrypoint: ["/docker-entrypoint-wrapper.sh"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: pivot
+      DB_USER: pivot
+      DB_PASSWORD_FILE: /run/secrets/postgres_password
+      POOL_MODE: session
+      MAX_CLIENT_CONN: "200"
+      DEFAULT_POOL_SIZE: "20"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      RESERVE_POOL_TIMEOUT: "3"
+      AUTH_TYPE: scram-sha-256
+      ADMIN_USERS: pivot
+      STATS_USERS: pivot
+      SERVER_RESET_QUERY: DISCARD ALL
+      LOG_STATS: "1"
+    volumes:
+      - ./docker/pgbouncer/entrypoint.sh:/docker-entrypoint-wrapper.sh:ro
+    secrets:
+      - postgres_password
+    networks:
+      - pivot-net-data
+    # No `ports:` — reachable only from pivot-core (and future module-cores) over
+    # pivot-net-data, same reasoning as postgres/redis/activemq above.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U pivot -d pivot || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # EN07.4 — Prometheus sidecar exposing PgBouncer pool utilization (SHOW POOLS/SHOW STATS —
+  # client/server active/idle/waiting connections, configured max_client_conn, oldest unserved
+  # client age...) as /metrics — the "Métriques PgBouncer exposées (pool utilization)" AC. Same
+  # posture as prometheus.yml's existing pivot-core target: exposes the endpoint, does not run
+  # a Prometheus server to scrape it (out of scope here, see prometheus.yml's own header
+  # comment) — pivot-net-data only, no `ports:` published.
+  pgbouncer-exporter:
+    image: prometheuscommunity/pgbouncer-exporter:v0.12.1
+    container_name: pivot-pgbouncer-exporter
+    entrypoint: ["/docker-entrypoint-wrapper.sh"]
+    environment:
+      DB_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - ./docker/pgbouncer/exporter-entrypoint.sh:/docker-entrypoint-wrapper.sh:ro
+    secrets:
+      - postgres_password
+    networks:
+      - pivot-net-data
+    # No `ports:` — a future Prometheus server (see prometheus.yml) would need to join
+    # pivot-net-data to scrape :9127, same reasoning as pivot-core's own :8081 today.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9127/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    restart: unless-stopped
 
 networks:
   pivot-net-app:
