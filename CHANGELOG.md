@@ -1,3 +1,10 @@
+## [0.27.1](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.27.0...v0.27.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* **ci:** publish root aggregator POM alongside starter/app JARs ([#209](https://github.com/PIVOT-PLATFORM/pivot-core/issues/209)) ([6196f67](https://github.com/PIVOT-PLATFORM/pivot-core/commit/6196f675d9a48a1e09ad9bc5ccdd5dd6ff4e7be0))
+
 # [0.27.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.26.0...v0.27.0) (2026-07-09)
 
 
