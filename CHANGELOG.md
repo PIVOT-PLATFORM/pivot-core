@@ -1,3 +1,16 @@
+# [0.28.0](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.27.1...v0.28.0) (2026-07-09)
+
+
+### Bug Fixes
+
+* **build:** mark starter's Spring Security deps optional ([#211](https://github.com/PIVOT-PLATFORM/pivot-core/issues/211)) ([b11d665](https://github.com/PIVOT-PLATFORM/pivot-core/commit/b11d6651f876180a6bf911e922ce33f65c410bfc))
+* **modules:** Dette S2 — raccorder le cache Redis EN03.3 au chemin de lecture du statut module ([#196](https://github.com/PIVOT-PLATFORM/pivot-core/issues/196)) ([b172b89](https://github.com/PIVOT-PLATFORM/pivot-core/commit/b172b890252cdd06488e4e48660b8d828ee98f29)), closes [#195](https://github.com/PIVOT-PLATFORM/pivot-core/issues/195)
+
+
+### Features
+
+* **infra:** EN07.4 — PgBouncer session mode connection pooler (prod) ([#197](https://github.com/PIVOT-PLATFORM/pivot-core/issues/197)) ([6eb8bb8](https://github.com/PIVOT-PLATFORM/pivot-core/commit/6eb8bb8cb094f4e11f77658d462b0f078cb7dd35)), closes [#185](https://github.com/PIVOT-PLATFORM/pivot-core/issues/185)
+
 ## [0.27.1](https://github.com/PIVOT-PLATFORM/pivot-core/compare/v0.27.0...v0.27.1) (2026-07-09)
 
 
