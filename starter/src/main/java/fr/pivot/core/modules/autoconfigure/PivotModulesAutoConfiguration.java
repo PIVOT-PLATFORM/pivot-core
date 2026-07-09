@@ -5,6 +5,7 @@ import fr.pivot.core.modules.ModuleActivationService;
 import fr.pivot.core.modules.ModuleCatalogProperties;
 import fr.pivot.core.modules.ModuleRegistry;
 import fr.pivot.core.modules.PivotModule;
+import fr.pivot.core.modules.cache.ModuleActivationCacheService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -48,22 +49,24 @@ public class PivotModulesAutoConfiguration {
      * <p>{@code @ConditionalOnMissingBean} : une application peut fournir son propre
      * registre pour des besoins de test ou de composition avancée.
      *
-     * @param modules                 fournisseur des beans {@link PivotModule} découverts
-     *                                (peut être vide)
-     * @param catalogProperties       catalogue statique des modules réellement déployés
-     * @param moduleActivationService résolution de l'activation par tenant, injecté
-     *                                {@code @Lazy} pour rompre le cycle de construction (ce
-     *                                service dépend lui-même de {@link ModuleRegistry})
+     * @param modules                      fournisseur des beans {@link PivotModule} découverts
+     *                                     (peut être vide)
+     * @param catalogProperties            catalogue statique des modules réellement déployés
+     * @param moduleActivationCacheService  cache-aside Redis (EN03.3) de résolution de
+     *                                     l'activation par tenant, injecté {@code @Lazy} pour
+     *                                     rompre le cycle de construction (ce cache délègue à
+     *                                     {@link ModuleActivationService}, qui dépend lui-même
+     *                                     de {@link ModuleRegistry})
      * @return registre immuable des modules disponibles
      */
     @Bean
     @ConditionalOnMissingBean
     public ModuleRegistry moduleRegistry(final ObjectProvider<PivotModule> modules,
                                           final ModuleCatalogProperties catalogProperties,
-                                          @Lazy final ModuleActivationService moduleActivationService) {
+                                          @Lazy final ModuleActivationCacheService moduleActivationCacheService) {
         final List<PivotModule> discovered = modules.orderedStream().toList();
         final List<PivotModule> catalogued = ConfiguredPivotModuleFactory.fromCatalog(
-                catalogProperties, moduleActivationService);
+                catalogProperties, moduleActivationCacheService);
 
         final List<PivotModule> all = new ArrayList<>(discovered);
         all.addAll(catalogued);

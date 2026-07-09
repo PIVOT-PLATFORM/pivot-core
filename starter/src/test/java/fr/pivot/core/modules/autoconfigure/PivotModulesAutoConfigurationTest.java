@@ -1,8 +1,8 @@
 package fr.pivot.core.modules.autoconfigure;
 
-import fr.pivot.core.modules.ModuleActivationService;
 import fr.pivot.core.modules.ModuleRegistry;
 import fr.pivot.core.modules.PivotModule;
+import fr.pivot.core.modules.cache.ModuleActivationCacheService;
 import fr.pivot.core.tenant.TenantContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -63,7 +63,7 @@ class PivotModulesAutoConfigurationTest {
      */
     @Test
     void shouldRegisterModuleFromStaticCatalog_withoutAnyDiscoveredBean() {
-        runner.withUserConfiguration(ModuleActivationServiceStubConfig.class)
+        runner.withUserConfiguration(ModuleActivationCacheServiceStubConfig.class)
                 .withPropertyValues(
                         "pivot.modules.catalog[0].id=whiteboard",
                         "pivot.modules.catalog[0].name=Tableau blanc collaboratif",
@@ -91,7 +91,7 @@ class PivotModulesAutoConfigurationTest {
      */
     @Test
     void shouldMergeDiscoveredBeansAndStaticCatalog() {
-        runner.withUserConfiguration(ExternalModuleConfig.class, ModuleActivationServiceStubConfig.class)
+        runner.withUserConfiguration(ExternalModuleConfig.class, ModuleActivationCacheServiceStubConfig.class)
                 .withPropertyValues(
                         "pivot.modules.catalog[0].id=whiteboard",
                         "pivot.modules.catalog[0].name=Tableau blanc collaboratif",
@@ -106,17 +106,17 @@ class PivotModulesAutoConfigurationTest {
     }
 
     /**
-     * Fournit un {@link ModuleActivationService} minimal (mock Mockito) pour les scénarios
+     * Fournit un {@link ModuleActivationCacheService} minimal (mock Mockito) pour les scénarios
      * catalogue statique — cette classe n'est jamais réellement invoquée dans ces tests
      * (aucun appel à {@code isEnabled}), seule sa présence comme bean est nécessaire pour que
      * l'injection {@code @Lazy} du bean {@code moduleRegistry} se résolve.
      */
     @Configuration(proxyBeanMethods = false)
-    static class ModuleActivationServiceStubConfig {
+    static class ModuleActivationCacheServiceStubConfig {
 
         @Bean
-        ModuleActivationService moduleActivationService() {
-            return org.mockito.Mockito.mock(ModuleActivationService.class);
+        ModuleActivationCacheService moduleActivationCacheService() {
+            return org.mockito.Mockito.mock(ModuleActivationCacheService.class);
         }
     }
 

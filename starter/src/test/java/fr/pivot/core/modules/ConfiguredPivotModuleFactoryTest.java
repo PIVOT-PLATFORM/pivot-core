@@ -1,5 +1,6 @@
 package fr.pivot.core.modules;
 
+import fr.pivot.core.modules.cache.ModuleActivationCacheService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -16,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ConfiguredPivotModuleFactoryTest {
 
     @Mock
-    private ModuleActivationService moduleActivationService;
+    private ModuleActivationCacheService moduleActivationCacheService;
 
     /**
      * Given un catalogue vide,
@@ -27,7 +28,7 @@ class ConfiguredPivotModuleFactoryTest {
     void fromCatalog_shouldReturnEmptyList_whenCatalogEmpty() {
         final ModuleCatalogProperties properties = new ModuleCatalogProperties(List.of());
 
-        final List<PivotModule> modules = ConfiguredPivotModuleFactory.fromCatalog(properties, moduleActivationService);
+        final List<PivotModule> modules = ConfiguredPivotModuleFactory.fromCatalog(properties, moduleActivationCacheService);
 
         assertThat(modules).isEmpty();
     }
@@ -36,7 +37,7 @@ class ConfiguredPivotModuleFactoryTest {
      * Given un catalogue avec plusieurs entrées,
      * when fromCatalog() est appelé,
      * then un PivotModule est construit par entrée, dans l'ordre déclaré, partageant la même
-     * instance de ModuleActivationService.
+     * instance de ModuleActivationCacheService.
      */
     @Test
     void fromCatalog_shouldBuildOneModulePerEntry_inDeclaredOrder() {
@@ -46,7 +47,7 @@ class ConfiguredPivotModuleFactoryTest {
                         "Tableau blanc collaboratif temps réel"),
                 new ModuleCatalogProperties.CatalogEntry("roadmap", "Roadmap", "0.1.0", "Roadmap produit")));
 
-        final List<PivotModule> modules = ConfiguredPivotModuleFactory.fromCatalog(properties, moduleActivationService);
+        final List<PivotModule> modules = ConfiguredPivotModuleFactory.fromCatalog(properties, moduleActivationCacheService);
 
         assertThat(modules).hasSize(2);
         assertThat(modules.get(0).getId()).isEqualTo("whiteboard");
@@ -66,7 +67,7 @@ class ConfiguredPivotModuleFactoryTest {
         final ModuleCatalogProperties properties = new ModuleCatalogProperties(List.of(
                 new ModuleCatalogProperties.CatalogEntry("roadmap", "Roadmap", "0.1.0", null)));
 
-        final List<PivotModule> modules = ConfiguredPivotModuleFactory.fromCatalog(properties, moduleActivationService);
+        final List<PivotModule> modules = ConfiguredPivotModuleFactory.fromCatalog(properties, moduleActivationCacheService);
 
         assertThat(modules).hasSize(1);
         assertThat(modules.get(0).getDescription()).isEmpty();
