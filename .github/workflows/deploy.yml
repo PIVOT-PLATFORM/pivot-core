@@ -30,6 +30,15 @@ name: Deploy
 #                                                     workflow, qui ne fait que piloter les
 #                                                     conteneurs à partir de ce répertoire déjà
 #                                                     présent)
+#   - GH_PACKAGES_USERNAME, GH_PACKAGES_TOKEN      : login GHCR sur le serveur avant `docker
+#                                                     compose pull` — les packages GHCR sont
+#                                                     privés par défaut (org), confirmé bloquant
+#                                                     en déployant une vraie instance
+#                                                     (2026-07-09) : 401/403 sans ce login.
+#                                                     Token = PAT dédié, scope `read:packages`
+#                                                     uniquement (jamais le GITHUB_TOKEN du
+#                                                     run — ce login s'exécute sur le serveur,
+#                                                     pas dans le job)
 #   - SLACK_WEBHOOK_URL                            : optionnel — absent = notification Slack
 #                                                     dégradée en warning explicite (aucun
 #                                                     webhook Slack connu dans l'org à ce jour),
@@ -110,15 +119,22 @@ jobs:
         env:
           PIVOT_CORE_VERSION: ${{ steps.version.outputs.version }}
           DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+          GH_PACKAGES_USERNAME: ${{ secrets.GH_PACKAGES_USERNAME }}
+          GH_PACKAGES_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
         with:
           host: ${{ secrets.PROD_SSH_HOST }}
           username: ${{ secrets.PROD_SSH_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
           port: ${{ secrets.PROD_SSH_PORT || '22' }}
-          envs: PIVOT_CORE_VERSION,DEPLOY_PATH
+          envs: PIVOT_CORE_VERSION,DEPLOY_PATH,GH_PACKAGES_USERNAME,GH_PACKAGES_TOKEN
           script: |
             set -euo pipefail
             cd "${DEPLOY_PATH:?PROD_DEPLOY_PATH not set}"
+            # GHCR packages are private (org default) — docker login persists to
+            # ~/.docker/config.json on the server, so this only needs to run once per
+            # deploy, not on every SSH step in this job. Confirmed necessary deploying a
+            # real instance (2026-07-09): `docker compose pull` fails 401/403 without it.
+            echo "${GH_PACKAGES_TOKEN}" | docker login ghcr.io -u "${GH_PACKAGES_USERNAME}" --password-stdin
             echo "Pull + restart pivot-core:${PIVOT_CORE_VERSION}"
             docker compose -f docker-compose.prod.yml pull pivot-core
             docker compose -f docker-compose.prod.yml up -d pivot-core
