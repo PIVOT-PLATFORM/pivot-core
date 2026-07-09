@@ -274,6 +274,12 @@ services:
     build:
       context: ../pivot-ui
       dockerfile: Dockerfile
+      # Local dev build needs read access to the private @pivot-platform/collaboratif-ui
+      # GitHub Package (EN17.10) — same secret id/mechanism as CI (see pivot-ui's
+      # publish-ui-core.yml / Dockerfile), sourced here from the host's NODE_AUTH_TOKEN env
+      # var (set once in the developer's shell profile, never committed).
+      secrets:
+        - npm_token
     container_name: pivot-frontend
     ports:
       - "80:80"
@@ -289,3 +295,7 @@ services:
 volumes:
   postgres_data:
   activemq_data:
+
+secrets:
+  npm_token:
+    environment: NODE_AUTH_TOKEN
