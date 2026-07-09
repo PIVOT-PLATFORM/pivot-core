@@ -15,7 +15,8 @@ import java.util.List;
  * {@link ModuleRegistry} vide en toutes circonstances réelles.
  *
  * <p>Chaque entrée du catalogue devient un {@link ConfiguredPivotModule} dont l'activation par
- * tenant reste résolue exactement comme avant, via {@link ModuleActivationService} (BDD
+ * tenant est résolue via {@link fr.pivot.core.modules.cache.ModuleActivationCacheService}
+ * (cache-aside Redis, EN03.3, devant {@link ModuleActivationService} et sa persistance
  * {@code module_activations}/{@code module_overrides}) — seule l'existence/l'identité du module
  * change de source, pas la logique d'activation.
  *
