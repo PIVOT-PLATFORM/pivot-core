@@ -161,7 +161,13 @@ jobs:
       - name: Build & load Docker image (amd64)
         id: build-docker
         run: |
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/pivot-core"
+          # NOT "${GITHUB_REPOSITORY,,}/pivot-core" — GITHUB_REPOSITORY is already
+          # "PIVOT-PLATFORM/pivot-core"; appending the repo name again doubled the path
+          # segment (ghcr.io/pivot-platform/pivot-core/pivot-core), which docker-compose.prod.yml
+          # (ghcr.io/pivot-platform/pivot-core:*) can never resolve. Confirmed empirically
+          # 2026-07-09 deploying a real instance — every previously published image (v0.26.0
+          # and earlier) only exists at the doubled path.
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
           echo "IMAGE_REF=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_ENV"
           # EN07.5 — tag semver stable, en plus de GITHUB_SHA/latest : le tag Git / la GitHub
           # Release que deploy.yml observe (déclenché par `release: published`) pointe sur le
