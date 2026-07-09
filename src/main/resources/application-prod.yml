@@ -21,3 +21,15 @@
 spring:
   config:
     import: "optional:configtree:${SECRET_FILE_PATH:/run/secrets}/"
+  # application.yml (base) hardcodes spring.mail.properties.mail.smtp.auth/starttls.enable to
+  # false — correct for the dev/test target (Mailpit: no auth, no TLS), wrong here: any real
+  # SMTP relay (Gmail, Brevo, SendGrid...) requires both on port 587 and rejects mail
+  # otherwise. Confirmed empirically deploying a real instance against Gmail SMTP
+  # (2026-07-09): "530-5.7.0 Must issue a STARTTLS command first."
+  mail:
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
