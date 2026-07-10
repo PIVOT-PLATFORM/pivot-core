@@ -23,11 +23,12 @@
 # reason (EN07.3 — ActiveMQ persistence KahaDB, EN07.4 — PgBouncer session mode).
 #
 # Images: built + pushed to GHCR by each repo's own release.yml (Semantic Release) —
-# ghcr.io/pivot-platform/pivot-core and ghcr.io/pivot-platform/pivot-ui. Pin
-# PIVOT_CORE_VERSION / PIVOT_UI_VERSION (shell env, NOT a committed .env) to a released tag
-# for real deployments; the `latest` default is for first bring-up only. Actually pulling and
-# deploying this file in CI is EN07.5 (deploy.yml) — still `Stage: Backlog`, not wired yet;
-# `deploy.yml` today is a `TODO` placeholder.
+# ghcr.io/pivot-platform/pivot-core and ghcr.io/pivot-platform/pivot-ui. Neither repo publishes
+# a `latest` tag (forbidden by each repo's .plumber.yaml, see pivot-core#213 / pivot-ui#146) —
+# PIVOT_CORE_VERSION / PIVOT_UI_VERSION (shell env, NOT a committed .env) are therefore required,
+# pinned to a released tag, with no fallback. Actually pulling and deploying this file in CI is
+# EN07.5 (deploy.yml) — fully implemented (SSH deploy, smoke test, auto-rollback, Slack
+# notification), triggered on `release: published` or manual `workflow_dispatch`.
 #
 # Secrets: no plaintext credential in this file or in a committed .env — see the `secrets:`
 # block at the bottom and pivot-docs deployment doc for the full explanation of how each
@@ -42,7 +43,7 @@
 services:
 
   nginx:
-    image: ghcr.io/pivot-platform/pivot-ui:${PIVOT_UI_VERSION:-latest}
+    image: ghcr.io/pivot-platform/pivot-ui:${PIVOT_UI_VERSION:?PIVOT_UI_VERSION is required in production, pin to a released tag}
     container_name: pivot-nginx
     ports:
       - "80:80"
@@ -77,7 +78,7 @@ services:
       start_period: 10s
 
   pivot-core:
-    image: ghcr.io/pivot-platform/pivot-core:${PIVOT_CORE_VERSION:-latest}
+    image: ghcr.io/pivot-platform/pivot-core:${PIVOT_CORE_VERSION:?PIVOT_CORE_VERSION is required in production, pin to a released tag}
     container_name: pivot-core
     # No `ports:` — never reachable directly from the host. Only nginx (pivot-net-app) can
     # reach it; that's the "no backend port exposed directly" AC.
@@ -167,7 +168,7 @@ services:
   # Once a repo exists and publishes ghcr.io/pivot-platform/<repo>:<tag>, add a service block:
   #
   #   pivot-pilotage-core:
-  #     image: ghcr.io/pivot-platform/pivot-pilotage-core:${PIVOT_PILOTAGE_VERSION:-latest}
+  #     image: ghcr.io/pivot-platform/pivot-pilotage-core:${PIVOT_PILOTAGE_VERSION:?PIVOT_PILOTAGE_VERSION is required in production}
   #     container_name: pivot-pilotage-core
   #     # server.port=8081, management.server.port=9081 (set in that repo's application.yml)
   #     networks:
