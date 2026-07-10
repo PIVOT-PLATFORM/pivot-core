@@ -169,20 +169,19 @@ jobs:
           # and earlier) only exists at the doubled path.
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
           echo "IMAGE_REF=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_ENV"
-          # EN07.5 — tag semver stable, en plus de GITHUB_SHA/latest : le tag Git / la GitHub
+          # EN07.5 — tag semver stable, en plus de GITHUB_SHA : le tag Git / la GitHub
           # Release que deploy.yml observe (déclenché par `release: published`) pointe sur le
           # commit de bump créé plus bas par @semantic-release/git (pom.xml/CHANGELOG.md), PAS
           # sur GITHUB_SHA (le commit buildé ici). Sans ce tag, deploy.yml n'a aucune façon
-          # fiable de retrouver l'image de cette release — et `latest` est de toute façon
-          # interdit en déploiement par .plumber.yaml (containerImageMustNotUseForbiddenTags).
+          # fiable de retrouver l'image de cette release. `latest` n'est PAS poussé — tag mutable
+          # interdit en déploiement par .plumber.yaml (containerImageMustNotUseForbiddenTags),
+          # cf. #213.
           echo "IMAGE_VERSION=${IMAGE}:${VERSION}" >> "$GITHUB_ENV"
-          echo "IMAGE_LATEST=${IMAGE}:latest" >> "$GITHUB_ENV"
           echo "image_name=${IMAGE}" >> "$GITHUB_OUTPUT"
           # EN17.1 — multi-module: Docker context is root; Dockerfile copies from app/target/
           docker buildx build --platform linux/amd64 --load \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:${VERSION}" \
-            -t "${IMAGE}:latest" \
             .
 
       - name: Scan Docker image - Trivy (gate avant push)
@@ -206,8 +205,7 @@ jobs:
         id: push
         run: |
           docker push "${IMAGE_REF}"
-          docker push "${IMAGE_VERSION}"
-          PUSH_OUT=$(docker push "${IMAGE_LATEST}" 2>&1)
+          PUSH_OUT=$(docker push "${IMAGE_VERSION}" 2>&1)
           printf '%s\n' "${PUSH_OUT}"
           DIGEST=$(printf '%s\n' "${PUSH_OUT}" | grep -oE 'sha256:[a-f0-9]{64}' | tail -1)
           if [ -z "${DIGEST}" ]; then
