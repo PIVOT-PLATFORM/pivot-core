@@ -202,7 +202,8 @@ jobs:
             PIVOT_MAIL_FROM=ci@pivot.invalid PIVOT_APP_URL=https://ci.invalid \
             CORS_ALLOWED_ORIGINS=https://ci.invalid \
             TLS_CERT_PATH=/ci/dummy.crt TLS_KEY_PATH=/ci/dummy.key \
-            PIVOT_UI_VERSION=0.0.0-ci PIVOT_CORE_VERSION=0.0.0-ci
+            PIVOT_UI_VERSION=0.0.0-ci PIVOT_CORE_VERSION=0.0.0-ci \
+            PIVOT_COLLABORATIF_CORE_VERSION=0.0.0-ci
           docker compose -f docker-compose.prod.yml config > /tmp/compose-config.yml
           rm -f secrets/postgres_password.txt secrets/mail_password.txt secrets/otp_secret.txt
 
@@ -219,7 +220,7 @@ jobs:
           services = config["services"]
           errors = []
 
-          for name in ("nginx", "pivot-core", "postgres", "redis", "activemq", "pgbouncer", "pgbouncer-exporter"):
+          for name in ("nginx", "pivot-core", "pivot-collaboratif-core", "postgres", "redis", "activemq", "pgbouncer", "pgbouncer-exporter"):
               svc = services.get(name)
               if svc is None:
                   errors.append(f"missing service: {name}")
@@ -227,7 +228,7 @@ jobs:
               if "healthcheck" not in svc:
                   errors.append(f"{name}: no healthcheck defined")
 
-          for name in ("pivot-core", "postgres", "redis", "activemq", "pgbouncer", "pgbouncer-exporter"):
+          for name in ("pivot-core", "pivot-collaboratif-core", "postgres", "redis", "activemq", "pgbouncer", "pgbouncer-exporter"):
               svc = services.get(name, {})
               if svc.get("ports"):
                   errors.append(f"{name}: must not publish a host port (found {svc['ports']})")
@@ -238,8 +239,8 @@ jobs:
                   print(f"  - {e}")
               sys.exit(1)
 
-          print("OK — healthchecks present on nginx/pivot-core/postgres/redis, "
-                "no host port on pivot-core/postgres/redis.")
+          print("OK — healthchecks present on nginx/pivot-core/pivot-collaboratif-core/postgres/redis, "
+                "no host port on pivot-core/pivot-collaboratif-core/postgres/redis.")
           PY
 
   # Les jobs réservés aux PR (Mutation PITest + previews Docker/Maven) vivent dans
