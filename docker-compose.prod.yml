@@ -168,22 +168,28 @@ services:
   # (`set $collaboratif_rest http://pivot-collaboratif-core:8083;` — EN17.7). No nginx change
   # needed here, per that same file's header comment.
   #
-  # Three deliberate deviations from the commented template below (each verified against
+  # Healthcheck now matches the pivot-core convention exactly (management.server.port=9083,
+  # curl) — NOT the wget/:8083/context-path deviation this PR originally shipped with. That
+  # deviation was correct when written (pivot-collaboratif-core#57, "add HEALTHCHECK, curl,
+  # and separate actuator port", landed AFTER this PR was opened — merged 2026-07-10, see
+  # that repo's git history for application.yml/Dockerfile) but is stale now that #57 merged
+  # to main: application.yml sets `management.server.port: ${MANAGEMENT_SERVER_PORT:9083}`
+  # (Spring Boot serves Actuator ONLY on that dedicated port once it differs from server.port
+  # — the exact same behavior already documented on pivot-core's own healthcheck comment
+  # above, "EN04.2 moved Actuator to its own management.server.port, which does NOT inherit
+  # server.servlet.context-path"), and the Dockerfile now installs curl and exposes 9083
+  # itself. Gate 4 review finding, fixed here: the original :8083/api/collaboratif/wget
+  # healthcheck would 100% fail against any image built from current main — Actuator no
+  # longer answers on the app port at all, so this container would report permanently
+  # "unhealthy" the moment `latest` picks up #57. Re-verify this comment (and the healthcheck
+  # below) against pivot-collaboratif-core's current application.yml/Dockerfile before relying
+  # on it — this class of drift (companion repo changing shape between PR write-up and merge)
+  # is exactly what happened here once already.
+  #
+  # One remaining deliberate deviation from the commented template below (verified against
   # pivot-collaboratif-core's actual source, not assumed from the template/convention table —
   # flagged in this PR's description for maintainer review):
-  #   1. Healthcheck targets :8083/api/collaboratif/actuator/health, NOT a :9083 management
-  #      port. pivot-collaboratif-core's application.yml never sets management.server.port
-  #      (no EN04.2-equivalent there yet) — Actuator is only reachable on the main server port,
-  #      under the servlet context-path (confirmed against that repo's own README.md, which
-  #      documents this exact URL). A :9083 healthcheck would 100% fail (nothing listens
-  #      there) and leave this container permanently "unhealthy".
-  #   2. `curl` -> `wget`: pivot-collaboratif-core's Dockerfile (eclipse-temurin:25-jre-alpine)
-  #      never installs curl, unlike pivot-core's own Dockerfile (see pivot-core's healthcheck
-  #      comment above, "the Dockerfile's own HEALTHCHECK already installs curl"). Verified by
-  #      running the base image: only busybox `wget` is present. Using `curl` here would fail
-  #      with "not found" regardless of actual app health. `wget` also matches this same
-  #      file's nginx healthcheck a few lines up.
-  #   3. `secrets:` below is wired for forward-compatibility with the postgres_password Docker
+  #   1. `secrets:` below is wired for forward-compatibility with the postgres_password Docker
   #      secret (same source/target shape as pivot-core), but is CURRENTLY INERT:
   #      pivot-collaboratif-core has no application-prod.yml and no
   #      `spring.config.import: configtree:...` (EN07.2-equivalent) — its application.yml reads
@@ -236,7 +242,7 @@ services:
       # the app's own default (relay-enabled: true) would take over silently.
       PIVOT_ACTIVEMQ_RELAY_ENABLED: "false"
     secrets:
-      # See deviation #3 above — wired for forward-compatibility, currently inert until
+      # See deviation #1 above — wired for forward-compatibility, currently inert until
       # pivot-collaboratif-core adds its own EN07.2-equivalent configtree import.
       - source: postgres_password
         target: secret.datasource-password
@@ -247,11 +253,13 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      # See deviations #1/#2 above: real endpoint (server port + context-path, no separate
-      # management port), real available tool (wget, no curl in this image). Root aggregate
-      # health group (health,info,prometheus exposure — no dedicated readiness/liveness groups
-      # defined in this repo yet), same rationale as pivot-core's own healthcheck comment above.
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8083/api/collaboratif/actuator/health || exit 1"]
+      # See the block comment above: dedicated management port (9083) + curl, matching
+      # pivot-core's own healthcheck exactly now that pivot-collaboratif-core#57 landed —
+      # NOT the :8083/api/collaboratif/wget this PR originally shipped with (that deviation
+      # is now stale, see above). Root aggregate health group (health,info,prometheus
+      # exposure — no dedicated readiness/liveness groups defined in this repo yet), same
+      # rationale as pivot-core's own healthcheck comment above.
+      test: ["CMD-SHELL", "curl -f http://localhost:9083/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -268,10 +276,9 @@ services:
   #   pivot-pilotage-core    → 8081  (Spring management port: 9081)
   #   pivot-agilite-core     → 8082  (Spring management port: 9082)
   #
-  # pivot-collaboratif-core (:8083, management :9083 per the convention table — see the real
-  # service block above for why its healthcheck does NOT actually use :9083 today) is wired
-  # above as a real service now that its repo publishes an image; this template is kept only
-  # for the two repos that still don't exist.
+  # pivot-collaboratif-core (:8083, management :9083 per the convention table) is wired above
+  # as a real service now that its repo publishes an image; this template is kept only for the
+  # two repos that still don't exist.
   #
   # Once a repo exists and publishes ghcr.io/pivot-platform/<repo>:<tag>, add a service block:
   #
