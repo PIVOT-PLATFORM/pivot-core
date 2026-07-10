@@ -194,15 +194,21 @@ services:
   #      setting SPRING_DATASOURCE_PASSWORD in plaintext instead (would violate this file's own
   #      "no plaintext credential" rule, see header comment).
   #
-  # Also note (not a deviation, a real-topology risk worth a human decision — see PR
-  # description): pivot.activemq.relay-enabled defaults to `true` and relay-host defaults to
-  # `activemq` in pivot-collaboratif-core's own application.yml. Per this PR's instructions,
-  # no PIVOT_ACTIVEMQ_RELAY_* env var is set below (module-core's ActiveMQ relay wiring is
-  # explicitly out of scope — collaboratif-core's own CLAUDE.md: "rien n'y publie encore").
-  # However this service still shares pivot-net-data with the real `activemq` service defined
-  # further down in this same file, so Docker's embedded DNS resolves the `activemq` hostname
-  # regardless of `depends_on` — the relay may attempt to connect on startup purely from the
-  # app's own defaults, with no override in this file either way.
+  # ActiveMQ relay explicitly pinned OFF for now (Gate 4 review finding, resolved — was an
+  # open question in the original PR description). pivot.activemq.relay-enabled defaults to
+  # `true` and relay-host defaults to `activemq` in pivot-collaboratif-core's own
+  # application.yml (verified: src/main/resources/application.yml —
+  # `relay-enabled: ${PIVOT_ACTIVEMQ_RELAY_ENABLED:true}`, `relay-host:
+  # ${PIVOT_ACTIVEMQ_RELAY_HOST:activemq}`). This service shares pivot-net-data with the real
+  # `activemq` service defined further down in this same file, so Docker's embedded DNS
+  # resolves the `activemq` hostname regardless of `depends_on` — without an explicit
+  # override, the relay would attempt to connect on startup purely from the app's own
+  # defaults, with nothing in this file having deliberately decided that. Per this same
+  # file's stated principle for this exact block ("purement additif... rien n'y publie encore"
+  # — see the module-core template's own header above), the relay stays off here until a
+  # human deliberately turns it on alongside real STOMP-relay wiring (own `depends_on:
+  # activemq`, EN07.3 DLQ/destination review for this module). PIVOT_ACTIVEMQ_RELAY_ENABLED
+  # is the exact env var this repo's application.yml reads (not relaxed-binding guesswork).
   pivot-collaboratif-core:
     image: ghcr.io/pivot-platform/pivot-collaboratif-core:${PIVOT_COLLABORATIF_CORE_VERSION:?PIVOT_COLLABORATIF_CORE_VERSION is required in production, pin to a released tag}
     container_name: pivot-collaboratif-core
@@ -224,6 +230,11 @@ services:
       # production behavior: pivot-collaboratif-core's own default
       # (pivot.cors.allowed-origins) is http://localhost:4200, wrong for any real deployment.
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required in production}
+      # See the block comment above: pinned off deliberately until a human wires the relay for
+      # real (own depends_on: activemq, DLQ/destination review). Without this, Docker DNS
+      # would still resolve the `activemq` hostname via the shared pivot-net-data network and
+      # the app's own default (relay-enabled: true) would take over silently.
+      PIVOT_ACTIVEMQ_RELAY_ENABLED: "false"
     secrets:
       # See deviation #3 above — wired for forward-compatibility, currently inert until
       # pivot-collaboratif-core adds its own EN07.2-equivalent configtree import.
