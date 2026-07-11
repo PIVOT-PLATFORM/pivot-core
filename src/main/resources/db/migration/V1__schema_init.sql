@@ -679,16 +679,25 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread
 -- rattachée à une équipe parente, structure en arbre. Ajoutée maintenant pour éviter une
 -- migration de retrofit une fois E15 déverrouillé ; aucune logique de parcours/partage n'est
 -- implémentée dans ce ticket, seule la colonne + sa FK existent.
+-- slug / color / description : sous-ensemble découplé et inerte anticipé pour E15 (ADR-027,
+-- pivot-docs#227, encore phase-3/verrouillé), même logique que parent_team_id (EN17.1,
+-- pivot-core#171). slug = identifiant URL-safe unique par tenant (uq_teams_tenant_slug) ;
+-- color / description = métadonnées d'affichage optionnelles. Colonnes découplées de la table
+-- org_units (non créée, différée à E15) — aucune logique métier ici, seul le socle BDD existe.
 CREATE TABLE IF NOT EXISTS teams (
     id              BIGSERIAL    NOT NULL,
     tenant_id       BIGINT       NOT NULL,
     name            VARCHAR(255) NOT NULL,
+    slug            VARCHAR(255) NOT NULL,
+    color           VARCHAR(30),
+    description     TEXT,
     parent_team_id  BIGINT,
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
     CONSTRAINT pk_teams PRIMARY KEY (id),
     CONSTRAINT uq_teams_tenant_name UNIQUE (tenant_id, name),
+    CONSTRAINT uq_teams_tenant_slug UNIQUE (tenant_id, slug),
     CONSTRAINT fk_teams_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
     -- ON DELETE SET NULL (pas CASCADE) : supprimer une équipe parente ne doit pas supprimer en
     -- cascade tout son sous-arbre — ses enfants directs deviennent orphelins (promus racine),
@@ -703,19 +712,24 @@ CREATE INDEX IF NOT EXISTS idx_teams_parent_team_id ON teams (parent_team_id);
 -- ================================================================
 -- TABLE: team_members
 -- ================================================================
--- Association N-N équipe <-> utilisateur. Pas de colonne "role" : aucune US ne spécifie encore de
--- hiérarchie/permission au sein d'une équipe (voir fr.pivot.core.team.TeamMember Javadoc) — un
--- utilisateur appartient ou non à l'équipe, point. Suit la même convention que plan_modules
--- ci-dessus (table d'association pure, pas d'updated_at : l'appartenance ne se "modifie" pas,
--- elle se crée ou se supprime).
+-- Association équipe <-> utilisateur (voir fr.pivot.core.team.TeamMember Javadoc).
+-- role / updated_at : sous-ensemble découplé et inerte anticipé pour E15 (ADR-027, pivot-docs#227,
+-- encore phase-3/verrouillé), même logique que parent_team_id (EN17.1, pivot-core#171). L'ADR-027
+-- introduit une sémantique de rôle intra-équipe (RESPONSABLE|ADJOINT|MEMBRE) : l'appartenance
+-- porte désormais un rôle modifiable, d'où l'ajout d'updated_at (l'appartenance peut évoluer, plus
+-- seulement se créer/supprimer). CHECK côté BDD borne les valeurs ; aucune logique métier de rôle
+-- (permission, promotion...) n'est implémentée ici — seul le socle BDD existe.
 CREATE TABLE IF NOT EXISTS team_members (
     id          BIGSERIAL   NOT NULL,
     team_id     BIGINT      NOT NULL,
     user_id     BIGINT      NOT NULL,
+    role        VARCHAR(20) NOT NULL DEFAULT 'MEMBRE',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT pk_team_members PRIMARY KEY (id),
     CONSTRAINT uq_team_members_team_user UNIQUE (team_id, user_id),
+    CONSTRAINT chk_tm_role CHECK (role IN ('RESPONSABLE', 'ADJOINT', 'MEMBRE')),
     CONSTRAINT fk_tm_team FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE,
     CONSTRAINT fk_tm_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
