@@ -26,6 +26,55 @@ class TeamTest {
     }
 
     @Test
+    void constructor_shouldDeriveSlugFromName() {
+        final Team team = new Team(1L, "Squad Alpha");
+
+        assertThat(team.getSlug()).isEqualTo("squad-alpha");
+    }
+
+    @Test
+    void constructor_shouldDeriveSlug_strippingAccentsAndPunctuation() {
+        final Team team = new Team(1L, "Équipe Créativité & Co !");
+
+        assertThat(team.getSlug()).isEqualTo("equipe-creativite-co");
+    }
+
+    @Test
+    void constructor_shouldDefaultColorAndDescriptionToNull() {
+        final Team team = new Team(1L, "Squad Alpha");
+
+        assertThat(team.getColor()).isNull();
+        assertThat(team.getDescription()).isNull();
+    }
+
+    @Test
+    void setSlug_shouldOverrideDerivedSlug() {
+        final Team team = new Team(1L, "Squad Alpha");
+
+        team.setSlug("custom-slug");
+
+        assertThat(team.getSlug()).isEqualTo("custom-slug");
+    }
+
+    @Test
+    void setColor_shouldStoreColor() {
+        final Team team = new Team(1L, "Squad Alpha");
+
+        team.setColor("#1E90FF");
+
+        assertThat(team.getColor()).isEqualTo("#1E90FF");
+    }
+
+    @Test
+    void setDescription_shouldStoreDescription() {
+        final Team team = new Team(1L, "Squad Alpha");
+
+        team.setDescription("Équipe transverse produit");
+
+        assertThat(team.getDescription()).isEqualTo("Équipe transverse produit");
+    }
+
+    @Test
     void constructor_shouldDefaultToOrphan_parentTeamIdNull() {
         final Team team = new Team(1L, "Squad Alpha");
 
