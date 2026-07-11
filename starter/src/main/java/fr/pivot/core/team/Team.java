@@ -9,7 +9,9 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
+import java.text.Normalizer;
 import java.time.Instant;
+import java.util.Locale;
 
 /**
  * Équipe PIVOT — table {@code public.teams} (schéma partagé, propriété {@code pivot-core}).
@@ -36,10 +38,23 @@ import java.time.Instant;
  * EN15.3} ({@code pivot-docs} EPIC-equipes, PR pivot-docs#151), encore {@code phase-3}/verrouillé
  * — seule la colonne existe ici, aucune logique de parcours d'arbre ou de partage par équipe
  * n'est implémentée dans ce ticket (évite une migration de retrofit une fois E15 déverrouillé).
+ *
+ * <p><strong>Métadonnées anticipées (ADR-027) :</strong> {@code slug} (identifiant URL-safe,
+ * unique par tenant via {@code uq_teams_tenant_slug}), {@code color} et {@code description}
+ * (métadonnées d'affichage optionnelles) sont un sous-ensemble découplé et inerte du concept
+ * d'équipes raffiné par l'ADR-027 ({@code pivot-docs#227}, {@code E15} encore
+ * {@code phase-3}/verrouillé), replié ici sous la même logique que {@code parent_team_id} (EN17.1,
+ * {@code pivot-core#171}). {@code slug} étant {@code NOT NULL}, il est dérivé du nom par défaut à la
+ * construction ({@link #setSlug(String)} permet de le surcharger) ; aucune logique métier
+ * (validation, unicité applicative, affichage) n'est implémentée dans ce ticket — seul le socle
+ * entité + colonnes existe. Les éléments couplés à la table {@code org_units} (non créée) restent
+ * différés à E15.
  */
 @Entity
-@Table(name = "teams",
-        uniqueConstraints = @UniqueConstraint(name = "uq_teams_tenant_name", columnNames = {"tenant_id", "name"}))
+@Table(name = "teams", uniqueConstraints = {
+        @UniqueConstraint(name = "uq_teams_tenant_name", columnNames = {"tenant_id", "name"}),
+        @UniqueConstraint(name = "uq_teams_tenant_slug", columnNames = {"tenant_id", "slug"})
+})
 public class Team {
 
     @Id
@@ -51,6 +66,27 @@ public class Team {
 
     @Column(nullable = false)
     private String name;
+
+    /**
+     * Identifiant URL-safe de l'équipe, unique au sein du tenant ({@code uq_teams_tenant_slug}).
+     * Colonne anticipée (ADR-027), dérivée du nom par défaut. Voir la Javadoc de classe.
+     */
+    @Column(nullable = false)
+    private String slug;
+
+    /**
+     * Couleur d'affichage optionnelle (ex. code hexadécimal {@code #1E90FF}). Colonne anticipée
+     * (ADR-027), inerte tant qu'aucune US ne la spécifie.
+     */
+    @Column(length = 30)
+    private String color;
+
+    /**
+     * Description libre optionnelle de l'équipe. Colonne anticipée (ADR-027), inerte tant qu'aucune
+     * US ne la spécifie.
+     */
+    @Column(columnDefinition = "TEXT")
+    private String description;
 
     /**
      * Identifiant de l'équipe parente ({@code public.teams.id}), ou {@code null} si cette équipe
@@ -73,7 +109,8 @@ public class Team {
     }
 
     /**
-     * Construit une équipe pour un tenant.
+     * Construit une équipe pour un tenant. Le {@code slug} ({@code NOT NULL}) est dérivé du nom par
+     * défaut ; utiliser {@link #setSlug(String)} pour le surcharger.
      *
      * @param tenantId identifiant du tenant propriétaire ({@code public.tenants.id})
      * @param name     nom de l'équipe, unique au sein du tenant ({@code uq_teams_tenant_name})
@@ -81,6 +118,33 @@ public class Team {
     public Team(final Long tenantId, final String name) {
         this.tenantId = tenantId;
         this.name = name;
+        this.slug = slugify(name);
+    }
+
+    /**
+     * Dérive un {@code slug} URL-safe à partir d'un libellé : minuscules, accents retirés,
+     * caractères non alphanumériques réduits à des tirets simples, tirets de bord supprimés.
+     *
+     * @param value libellé source (typiquement le nom d'équipe), peut être {@code null}
+     * @return slug dérivé, ou {@code null} si {@code value} est {@code null}
+     */
+    private static String slugify(final String value) {
+        if (value == null) {
+            return null;
+        }
+        final String withoutAccents = Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "");
+        final String hyphenated = withoutAccents.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-");
+        int start = 0;
+        int end = hyphenated.length();
+        while (start < end && hyphenated.charAt(start) == '-') {
+            start++;
+        }
+        while (end > start && hyphenated.charAt(end - 1) == '-') {
+            end--;
+        }
+        return hyphenated.substring(start, end);
     }
 
     /**
@@ -125,6 +189,60 @@ public class Team {
      */
     public void setName(final String name) {
         this.name = name;
+    }
+
+    /**
+     * Slug URL-safe de l'équipe (ADR-027).
+     *
+     * @return slug, unique au sein du tenant ({@code uq_teams_tenant_slug})
+     */
+    public String getSlug() {
+        return slug;
+    }
+
+    /**
+     * Définit le slug de l'équipe (surcharge le slug dérivé du nom).
+     *
+     * @param slug nouveau slug, unique au sein du tenant
+     */
+    public void setSlug(final String slug) {
+        this.slug = slug;
+    }
+
+    /**
+     * Couleur d'affichage de l'équipe (ADR-027).
+     *
+     * @return couleur, ou {@code null} si non définie
+     */
+    public String getColor() {
+        return color;
+    }
+
+    /**
+     * Définit la couleur d'affichage de l'équipe.
+     *
+     * @param color couleur (ex. code hexadécimal), ou {@code null}
+     */
+    public void setColor(final String color) {
+        this.color = color;
+    }
+
+    /**
+     * Description libre de l'équipe (ADR-027).
+     *
+     * @return description, ou {@code null} si non définie
+     */
+    public String getDescription() {
+        return description;
+    }
+
+    /**
+     * Définit la description de l'équipe.
+     *
+     * @param description description libre, ou {@code null}
+     */
+    public void setDescription(final String description) {
+        this.description = description;
     }
 
     /**
