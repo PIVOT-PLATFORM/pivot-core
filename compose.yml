@@ -87,9 +87,15 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       POOL_MODE: session
       MAX_CLIENT_CONN: "200"
-      DEFAULT_POOL_SIZE: "20"
+      # EN17.9 — the dev stack runs FOUR Spring Boot apps (backend + pilotage/agilite/collaboratif)
+      # through this single pooler. In session mode each Hikari connection pins one server
+      # connection for its whole lifetime, so the pool must cover every app's Hikari pool at once
+      # (Spring default maximumPoolSize=10 → up to 4×10=40) plus headroom — otherwise a cold
+      # start or a single-service restart under load exhausts the pool and the late app dies with
+      # `FATAL: query_wait_timeout` during Flyway init. 20 was sized for one app; 50 fits four.
+      DEFAULT_POOL_SIZE: "50"
       MIN_POOL_SIZE: "5"
-      RESERVE_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "10"
       RESERVE_POOL_TIMEOUT: "3"
       AUTH_TYPE: scram-sha-256
       # Reuses the same `pivot` role as admin/stats user (see pgbouncer-exporter below) —
@@ -212,6 +218,14 @@ services:
     build:
       context: ../pivot-agilite-core
       dockerfile: Dockerfile
+      # Local dev build needs read access to the private fr.pivot:pivot-core-starter
+      # GitHub Package (Maven) — same secret ids/mechanism as CI (see this repo's
+      # .github/actions/setup-java and pivot-agilite-core/Dockerfile), sourced here from the
+      # host's GITHUB_ACTOR / GITHUB_TOKEN env vars (a GitHub PAT with read:packages, or
+      # `gh auth token`; set once in the developer's shell — never committed). See README §Local dev.
+      secrets:
+        - github_actor
+        - github_token
     container_name: pivot-agilite-core
     environment:
       # EN07.4 — routed through pgbouncer (session mode), never straight to postgres.
@@ -243,6 +257,11 @@ services:
     build:
       context: ../pivot-collaboratif-core
       dockerfile: Dockerfile
+      # Same as pivot-agilite-core above: private fr.pivot:pivot-core-starter (GitHub Packages,
+      # Maven) needs GITHUB_ACTOR / GITHUB_TOKEN at build time. See README §Local dev.
+      secrets:
+        - github_actor
+        - github_token
     container_name: pivot-collaboratif-core
     environment:
       # EN07.4 — routed through pgbouncer (session mode), never straight to postgres.
@@ -263,7 +282,12 @@ services:
       activemq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8083/api/collaboratif/actuator/health"]
+      # collaboratif-core (unlike pilotage/agilite) exposes Actuator on a SEPARATE management
+      # port 9083 with root context (management.server.port=9083 in its application.yml, EN04.2)
+      # — when the mgmt port differs from server.port, Spring Boot does NOT apply
+      # server.servlet.context-path to Actuator, so health lives at :9083/actuator/health, NOT
+      # :8083/api/collaboratif/actuator/health (which 404s).
+      test: ["CMD", "wget", "-qO-", "http://localhost:9083/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -297,5 +321,13 @@ volumes:
   activemq_data:
 
 secrets:
+  # Frontend (pivot-ui) build — private @pivot-platform/* npm packages (GitHub Packages, npm).
   npm_token:
     environment: NODE_AUTH_TOKEN
+  # Module-core builds (agilite, collaboratif) — private fr.pivot:pivot-core-starter (GitHub
+  # Packages, Maven). GITHUB_ACTOR = your GitHub username, GITHUB_TOKEN = a PAT with read:packages
+  # (or `gh auth token`). All three vars are read from the shell running `docker compose`.
+  github_actor:
+    environment: GITHUB_ACTOR
+  github_token:
+    environment: GITHUB_TOKEN

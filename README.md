@@ -67,28 +67,92 @@ Chaque module est activable individuellement par les administrateurs tenant.
 | Tests | JUnit 5 · Mockito · Testcontainers · Jest · Playwright |
 | Observabilité | Spring Actuator · Micrometer · Prometheus |
 
-## Déploiement (Docker Compose)
+## Développement local — lancer tout l'écosystème
 
-```bash
-# Cloner et configurer
-git clone https://github.com/ApoSkunz/PIVOT.git
-cd PIVOT
-cp .env.example .env
-# Éditer .env — DATABASE_URL, REDIS_URL, OIDC_ISSUER, JWT_SECRET
+`compose.yml` (ce repo) est l'**orchestrateur** de la plateforme complète en local : il build et
+démarre le backend + les trois module-cores + le frontend, plus toute l'infra. PIVOT est un
+multi-repo : les repos siblings doivent être **clonés côte à côte** (mêmes parents), car le compose
+les build depuis `../` :
 
-# Démarrer
-docker compose up -d
+```
+un-dossier-parent/
+├── pivot-core/                 # ← ce repo (backend shell + compose.yml orchestrateur)
+├── pivot-ui/                   # frontend Angular (service `frontend`, nginx :80)
+├── pivot-pilotage-core/        # module-core Pilotage  (:8081 interne, /api/pilotage)
+├── pivot-agilite-core/         # module-core Agilité   (:8082 interne, /api/agilite)
+└── pivot-collaboratif-core/    # module-core Collaboratif (:8083 interne, /api/collaboratif)
 ```
 
-Services :
-- Frontend : http://localhost:4200
-- API : http://localhost:8080
-- Healthcheck : http://localhost:8081/actuator/health (port de management séparé — EN04.2 —
-  distinct de l'API `:8080/api` ; `server.servlet.context-path` ne s'applique pas à ce port).
-  Groupes dédiés (EN04.4) : `/actuator/health/liveness` (JVM uniquement) et
-  `/actuator/health/readiness` (JVM + DB + Redis + migrations Flyway)
-- Métriques Prometheus : http://localhost:8081/actuator/prometheus
-- API Docs (OpenAPI) : http://localhost:8080/swagger-ui.html
+### Prérequis
+
+| Outil | Version | Note |
+|-------|---------|------|
+| Docker (+ Compose v2) | 24+ | seule dépendance runtime — tout build dans des conteneurs |
+| GitHub CLI (`gh`) | — | authentifié (`gh auth login`) ; ou, à défaut, un PAT `read:packages` |
+
+> Java/Maven/Node **ne sont pas requis sur l'hôte** : chaque service build dans son image.
+
+### Credentials de build (GitHub Packages)
+
+Le build tire des packages **privés** de GitHub Packages et exige des credentials **au moment du
+build** (secrets BuildKit, jamais dans les layers ni le runtime) :
+
+| Secret compose | Variable d'env source | Sert à |
+|----------------|----------------------|--------|
+| `github_actor` / `github_token` | `GITHUB_ACTOR` / `GITHUB_TOKEN` | Maven — `fr.pivot:pivot-core-starter` (module-cores agilite & collaboratif) |
+| `npm_token` | `NODE_AUTH_TOKEN` | npm — `@pivot-platform/*` (frontend) |
+
+`compose.yml` lit ces variables dans le **shell** qui lance `docker compose` (jamais depuis `.env` —
+ce sont des secrets de build, pas des variables du conteneur). Un PAT `read:packages` suffit ;
+`gh auth token` fait l'affaire.
+
+### Lancer (une commande)
+
+```bash
+cd pivot-core
+./dev-up.sh          # résout les tokens via `gh`, puis `docker compose up -d --build`
+```
+
+Le **premier build à froid est long** (~15–20 min : chaque service Java télécharge son arbre Maven).
+Les builds suivants réutilisent le cache et sont quasi instantanés.
+
+### Lancer (manuel, équivalent)
+
+```bash
+cd pivot-core
+export GITHUB_ACTOR="$(gh api user -q .login)"
+export GITHUB_TOKEN="$(gh auth token)"
+export NODE_AUTH_TOKEN="$GITHUB_TOKEN"
+docker compose up -d --build
+```
+
+> Le build parallèle est **sûr même à froid** : les Dockerfiles des services Java verrouillent leur
+> cache Maven partagé (`--mount=type=cache,target=/root/.m2,sharing=locked`), ce qui évite la
+> corruption du zip du Maven Wrapper (`zip END header not found`) qu'un `--build` parallèle
+> provoquait auparavant. `dev-up.sh` n'est donc qu'un confort (résolution des tokens via `gh`).
+
+### Accès
+
+| Service | URL |
+|---------|-----|
+| UI (SPA + gateway API nginx) | http://localhost/ |
+| API pivot-core (via nginx) | http://localhost/api/… |
+| API modules (via nginx) | http://localhost/api/{pilotage,agilite,collaboratif}/… |
+| Health backend (port management EN04.2, hors context-path) | http://localhost:8081/actuator/health · groupes `/liveness`, `/readiness` |
+| Métriques Prometheus backend | http://localhost:8081/actuator/prometheus |
+| Mailpit (emails dev) | http://localhost:8025/ |
+| Console ActiveMQ | http://localhost:8161/ |
+
+> Les module-cores ne publient pas de port sur l'hôte : ils passent par le gateway nginx du
+> frontend. `pivot-collaboratif-core` expose son Actuator sur un **port de management séparé
+> (`9083`, context racine)** — son healthcheck compose le cible directement ; il n'est donc pas
+> atteignable via `/api/collaboratif/actuator/health` (404 par conception).
+
+### Config runtime (`.env`, optionnel)
+
+Les valeurs runtime (mots de passe dev, CORS, SMTP, OIDC…) ont des défauts dans `compose.yml`.
+Pour les surcharger : `cp .env.example .env` puis éditer. Voir `.env.example` (les credentials de
+**build** ci-dessus n'y vont **pas**).
 
 ### Production
 
@@ -98,42 +162,6 @@ gateway API + SPA statique), `pivot-core`, `postgres`, `redis`. Réseaux isolés
 (pas de `.env` en prod), health checks sur chaque service. Détail complet (mapping des
 secrets, procédure de déploiement, limitations connues) :
 [pivot-docs — déploiement Docker Compose production](https://pivot-platform.github.io/pivot-docs/deployment/docker-compose-prod).
-
-## Prérequis (développement local)
-
-| Outil | Version |
-|-------|---------|
-| Java | 21+ |
-| Maven | 3.9+ |
-| Node.js | 20+ |
-| Angular CLI | 18+ |
-| Docker | 24+ |
-
-## Démarrage local
-
-```bash
-# PostgreSQL + Redis
-docker compose up -d postgres redis
-
-# Backend
-cd backend
-cp src/main/resources/application-local.properties.example \
-   src/main/resources/application-local.properties
-mvn spring-boot:run -Dspring-boot.run.profiles=local
-
-# Frontend (autre terminal)
-cd frontend
-npm install
-ng serve
-```
-
-## SSO OIDC local
-
-```bash
-docker compose --profile sso up -d keycloak
-```
-
-Configurer `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` dans `application-local.properties`.
 
 ## Pipeline CI/CD
 
