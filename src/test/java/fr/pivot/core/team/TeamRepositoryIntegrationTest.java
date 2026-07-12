@@ -27,7 +27,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *       contraintes uniques ({@code tenant_id, name}) / ({@code team_id, user_id}), FK vers
  *       {@code public.tenants}/{@code public.users} ;</li>
  *   <li>repositories {@link TeamRepository}/{@link TeamMemberRepository} : requêtes dérivées ;</li>
- *   <li>{@code ON DELETE CASCADE} : suppression d'une équipe supprime ses appartenances.</li>
+ *   <li>{@code ON DELETE CASCADE} : suppression d'une équipe supprime ses appartenances ;</li>
+ *   <li>colonnes anticipées ADR-027 (pivot-docs#227) : {@code teams.slug} (unique par tenant),
+ *       {@code teams.color}/{@code description}, {@code team_members.role} (défaut {@code MEMBRE},
+ *       {@code CHECK}) et {@code updated_at}.</li>
  * </ul>
  */
 class TeamRepositoryIntegrationTest extends AbstractIntegrationTest {
@@ -81,6 +84,32 @@ class TeamRepositoryIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void save_shouldPersistSlugColorAndDescription() {
+        final Team team = new Team(tenantId, "Squad Alpha");
+        team.setColor("#1E90FF");
+        team.setDescription("Équipe transverse produit");
+
+        final Team saved = teamRepository.saveAndFlush(team);
+
+        final Team reloaded = teamRepository.findById(saved.getId()).orElseThrow();
+        assertThat(reloaded.getSlug()).isEqualTo("squad-alpha");
+        assertThat(reloaded.getColor()).isEqualTo("#1E90FF");
+        assertThat(reloaded.getDescription()).isEqualTo("Équipe transverse produit");
+    }
+
+    @Test
+    void save_shouldRejectDuplicateSlugWithinSameTenant() {
+        final Team first = new Team(tenantId, "Squad Alpha");
+        teamRepository.saveAndFlush(first);
+
+        final Team second = new Team(tenantId, "Squad Bravo");
+        second.setSlug("squad-alpha");
+
+        assertThatThrownBy(() -> teamRepository.saveAndFlush(second))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     void findAllByTenantId_shouldReturnOnlyTeamsOfThatTenant() {
         teamRepository.save(new Team(tenantId, "Squad Alpha"));
         teamRepository.save(new Team(tenantId, "Squad Bravo"));
@@ -117,6 +146,31 @@ class TeamRepositoryIntegrationTest extends AbstractIntegrationTest {
                 .extracting(TeamMember::getTeamId)
                 .containsExactly(team.getId());
         assertThat(teamMemberRepository.findByTeamIdAndUserId(team.getId(), userId)).isPresent();
+    }
+
+    @Test
+    void save_shouldDefaultMemberRoleToMembre_andPersistExplicitRole() {
+        final Team team = teamRepository.save(new Team(tenantId, "Squad Alpha"));
+
+        final TeamMember defaulted = teamMemberRepository.saveAndFlush(
+                new TeamMember(team.getId(), userId));
+        assertThat(teamMemberRepository.findById(defaulted.getId()).orElseThrow().getRole())
+                .isEqualTo(TeamMember.ROLE_MEMBRE);
+
+        defaulted.setRole(TeamMember.ROLE_RESPONSABLE);
+        teamMemberRepository.saveAndFlush(defaulted);
+        assertThat(teamMemberRepository.findById(defaulted.getId()).orElseThrow().getRole())
+                .isEqualTo(TeamMember.ROLE_RESPONSABLE);
+    }
+
+    @Test
+    void save_shouldRejectMemberRoleOutsideCheckConstraint() {
+        final Team team = teamRepository.save(new Team(tenantId, "Squad Alpha"));
+        final TeamMember member = new TeamMember(team.getId(), userId);
+        member.setRole("INTRUS");
+
+        assertThatThrownBy(() -> teamMemberRepository.saveAndFlush(member))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
