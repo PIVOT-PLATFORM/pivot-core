@@ -125,8 +125,15 @@ public class Team {
      * Dérive un {@code slug} URL-safe à partir d'un libellé : minuscules, accents retirés,
      * caractères non alphanumériques réduits à des tirets simples, tirets de bord supprimés.
      *
+     * <p>Dérivation best-effort du socle inerte : un libellé dépourvu de caractère alphanumérique
+     * ASCII (ex. ponctuation ou écriture non latine seule) produit une chaîne <em>vide</em>, et
+     * deux noms distincts peuvent normaliser vers le même slug. La contrainte
+     * {@code uq_teams_tenant_slug} reste le garde-fou (rejet en base) ; la génération applicative
+     * réellement unique (résolution de collision) est différée à E15 (ADR-027 §10). Utiliser
+     * {@link #setSlug(String)} pour fournir un slug explicite si besoin.
+     *
      * @param value libellé source (typiquement le nom d'équipe), peut être {@code null}
-     * @return slug dérivé, ou {@code null} si {@code value} est {@code null}
+     * @return slug dérivé (éventuellement vide), ou {@code null} si {@code value} est {@code null}
      */
     private static String slugify(final String value) {
         if (value == null) {

@@ -40,6 +40,27 @@ class TeamTest {
     }
 
     @Test
+    void constructor_shouldDeriveSlug_strippingLeadingAndTrailingSeparators() {
+        final Team team = new Team(1L, "  !Squad Alpha!  ");
+
+        assertThat(team.getSlug()).isEqualTo("squad-alpha");
+    }
+
+    @Test
+    void constructor_shouldDeriveEmptySlug_whenNameHasNoAlphanumerics() {
+        final Team team = new Team(1L, "!!! ??? ---");
+
+        assertThat(team.getSlug()).isEmpty();
+    }
+
+    @Test
+    void constructor_shouldDeriveNullSlug_whenNameIsNull() {
+        final Team team = new Team(1L, null);
+
+        assertThat(team.getSlug()).isNull();
+    }
+
+    @Test
     void constructor_shouldDefaultColorAndDescriptionToNull() {
         final Team team = new Team(1L, "Squad Alpha");
 
