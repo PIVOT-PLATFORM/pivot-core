@@ -1,0 +1,14 @@
+# Local-only override: build the pivot-ui shell from locally-packed @pivot-platform/*-ui
+# tarballs instead of GitHub Packages. Run pivot-core/scripts/pack-local-ui.sh first, then:
+#
+#   docker compose -f compose.yml -f compose.local.yml up -d --build
+#
+# The module -core services already build from local source in compose.yml (no override needed);
+# this file only swaps the frontend build to the offline Dockerfile.local and drops the npm_token
+# secret, so NODE_AUTH_TOKEN is no longer required. GITHUB_ACTOR/GITHUB_TOKEN are still needed by
+# the -core Maven builds (fr.pivot:pivot-core-starter) unless that artifact is cached in ~/.m2.
+services:
+  frontend:
+    build:
+      dockerfile: Dockerfile.local
+      secrets: []
