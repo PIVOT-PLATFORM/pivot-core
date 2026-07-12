@@ -7,7 +7,12 @@ COPY mvnw pom.xml ./
 COPY starter/pom.xml starter/
 COPY app/pom.xml app/
 RUN chmod +x mvnw
-RUN --mount=type=cache,target=/root/.m2 ./mvnw dependency:go-offline -B -q
+# sharing=locked : le dev compose (pivot-core/compose.yml) build ce service EN PARALLÈLE des
+# module-cores, qui partagent tous ce même cache BuildKit /root/.m2 (le Maven Wrapper y télécharge
+# la distribution Maven). Sans verrou, plusieurs `mvnw` concurrents écrivent le même zip → cache
+# corrompu ("zip END header not found"). `sharing=locked` sérialise l'accès. Sans effet en CI
+# (chaque repo build sur son propre runner, cache non partagé).
+RUN --mount=type=cache,target=/root/.m2,sharing=locked ./mvnw dependency:go-offline -B -q
 COPY src/ src/
 COPY starter/src/ starter/src/
 # app/ (artifactId pivot-core-app) has no src/ of its own — sources are at root src/ (configured via <sourceDirectory>)
@@ -17,7 +22,7 @@ COPY starter/src/ starter/src/
 # carry no git data at all. Discarded with the rest of this builder stage; never copied into
 # the final runtime image below.
 COPY .git/ .git/
-RUN --mount=type=cache,target=/root/.m2 ./mvnw package -DskipTests -B -q
+RUN --mount=type=cache,target=/root/.m2,sharing=locked ./mvnw package -DskipTests -B -q
 # EN17.1 — the runnable app JAR lives in app/target/ after multi-module build (jar file name
 # itself keeps the pivot-core-app artifactId, only the directory was shortened)
 RUN cp app/target/pivot-core-app-*.jar app.jar 2>/dev/null || \
