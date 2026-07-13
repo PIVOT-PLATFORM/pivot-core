@@ -131,6 +131,29 @@ docker compose up -d --build
 > corruption du zip du Maven Wrapper (`zip END header not found`) qu'un `--build` parallèle
 > provoquait auparavant. `dev-up.sh` n'est donc qu'un confort (résolution des tokens via `gh`).
 
+### Lancer sans GitHub — UI buildées depuis les sources locales
+
+Pour **ne rien tirer de GitHub Packages côté npm** (itérer sur les `-ui` sans package publié, ou
+travailler hors-ligne), les trois libs `@pivot-platform/{collaboratif,pilotage,agilite}-ui` sont
+buildées depuis les repos siblings et injectées dans le shell en dépendances `file:` :
+
+```bash
+cd pivot-core
+bash scripts/pack-local-ui.sh                                   # build + npm pack les 3 libs
+docker compose -f compose.yml -f compose.local.yml up -d --build
+```
+
+`scripts/pack-local-ui.sh` build chaque lib (`ng build`) et la `npm pack` vers
+`pivot-ui/local-ui-packages/`. `compose.local.yml` remplace le build du service `frontend` par
+`pivot-ui/Dockerfile.local`, qui installe ces tarballs **sans `.npmrc`/registry GitHub** →
+`NODE_AUTH_TOKEN` devient inutile. Les module-cores (Java) résolvent toujours
+`fr.pivot:pivot-core-starter` via Maven/GitHub au build : `GITHUB_ACTOR`/`GITHUB_TOKEN` restent
+requis (sauf artefact déjà en cache `.m2`).
+
+> Contrairement au mode par défaut tout-conteneur, `pack-local-ui.sh` build les libs **sur l'hôte**
+> (Node + Angular CLI requis). Après toute modif d'une lib `-ui` : relancer `pack-local-ui.sh` puis
+> `docker compose -f compose.yml -f compose.local.yml up -d --build frontend`.
+
 ### Accès
 
 | Service | URL |
@@ -147,6 +170,38 @@ docker compose up -d --build
 > frontend. `pivot-collaboratif-core` expose son Actuator sur un **port de management séparé
 > (`9083`, context racine)** — son healthcheck compose le cible directement ; il n'est donc pas
 > atteignable via `/api/collaboratif/actuator/health` (404 par conception).
+
+### Données de dev (comptes de test + activation des modules)
+
+Le profil `dev` **ne charge pas** les seeds de test (réservés au profil `test` via
+`spring.flyway.locations`). Sur une base fraîche il n'y a donc **ni compte ni module activé**. Pour
+un environnement testable, une fois le stack démarré :
+
+```bash
+cd pivot-core
+
+# 1. Comptes de test (idempotent — ON CONFLICT DO NOTHING) · mot de passe commun : Pivot@Test123!
+docker exec -i pivot-postgres psql -U pivot -d pivot_dev \
+  < src/main/resources/db/seeds/V2__test_seeds.sql
+
+# 2. Activer les modules pour le tenant pivot-saas (id=1)
+docker exec pivot-postgres psql -U pivot -d pivot_dev -c \
+ "INSERT INTO public.module_activations (tenant_id, module_id, enabled)
+  SELECT 1, m.id, true FROM (VALUES ('whiteboard'),('pilotage'),('agilite')) AS m(id)
+  ON CONFLICT (tenant_id, module_id) DO UPDATE SET enabled = true;"
+```
+
+Comptes créés (tenant `pivot-saas`, mot de passe `Pivot@Test123!`) :
+
+| Email | Rôle |
+|-------|------|
+| `super_admin@pivot.test` | SUPER_ADMIN |
+| `admin@pivot.test` | ADMIN |
+| `user@pivot.test` | USER |
+
+Login sur http://localhost/ → la home affiche les modules activés, chacun lazy-loadé sous
+`/whiteboard`, `/pilotage`, `/agilite`. Le statut d'activation est caché côté Redis (TTL 60 s) :
+après un changement, patienter jusqu'à 1 min (ou vider la clé `module*`).
 
 ### Config runtime (`.env`, optionnel)
 

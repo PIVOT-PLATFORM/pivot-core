@@ -239,6 +239,14 @@ pivot:
         name: "Tableau blanc collaboratif"
         version: "0.1.0"
         description: "Tableau blanc collaboratif temps réel"
+      - id: pilotage
+        name: "Pilotage de projet"
+        version: "0.1.0"
+        description: "Roadmap, Gantt, portefeuille et calendrier"
+      - id: agilite
+        name: "Agilité"
+        version: "0.1.0"
+        description: "Scrum Poker, rétrospectives et roues d'équipe"
   tenant:
     # Slug of the tenant hosting ROLE_SUPER_ADMIN accounts (US06.2.2). This tenant can never
     # be deactivated via PATCH /api/superadmin/tenants/{id}/status — configurable rather than
