@@ -276,19 +276,31 @@ pivot:
   # fr.pivot (already covers fr.pivot.agilite by prefix, see below).
   activemq:
     # STOMP relay config consumed by agilite's own WebSocketConfig (EN07.3/EN09.1, poker room +
-    # retro realtime traffic). RISK — flagged for CI/coordination, not resolved here: this
-    # property existed because pivot-agilite-core ran as its OWN JVM needing an external
-    # ActiveMQ relay to fan out STOMP frames to other instances/modules. Now that agilite runs
-    # in-process with the rest of the modulith, whether an external relay is still needed
-    # (vs. a single in-JVM SimpleBroker) depends on horizontal-scaling requirements of
-    # pivot-core-app as a whole, not on agilite alone — out of scope for this Vague 1 wiring
-    # task (agilite/'s own WebSocketConfig is owned by the parallel EN53.1 agent). Defaults
-    # below are ported as-is from pivot-agilite-core so the property keys resolve if that
-    # config class is carried over unchanged; verify in CI whether they are still read.
-    relay-enabled: ${PIVOT_ACTIVEMQ_RELAY_ENABLED:true}
+    # retro realtime traffic). RESOLVED (EN53.1 Vague 1, ADR-030): pivot-agilite-core ran as its
+    # OWN JVM needing an external ActiveMQ relay to fan out STOMP frames to other instances.
+    # ADR-030 makes that cross-instance bus optional in the modulith — a single pivot-core-app
+    # instance has no second JVM to relay to, and its in-process SimpleBroker
+    # ("/queue","/topic" — see fr.pivot.config.WebSocketBrokerTopologyConfig) already covers
+    # every agilite room destination by prefix. Default flipped to false here accordingly; keep
+    # overridable via PIVOT_ACTIVEMQ_RELAY_ENABLED for a future horizontal-scaling need (multiple
+    # pivot-core-app instances requiring real cross-instance fan-out again).
+    relay-enabled: ${PIVOT_ACTIVEMQ_RELAY_ENABLED:false}
     relay-host: ${PIVOT_ACTIVEMQ_RELAY_HOST:activemq}
     relay-port: ${PIVOT_ACTIVEMQ_RELAY_PORT:61613}
   agilite:
+    # EN53.1 Vague 1 (ADR-030) — see fr.pivot.agilite.config.WebSocketConfig#configureMessageBroker
+    # JavaDoc and fr.pivot.config.WebSocketBrokerTopologyConfig JavaDoc for the full reasoning:
+    # exactly one WebSocketMessageBrokerConfigurer may call enableSimpleBroker/
+    # setApplicationDestinationPrefixes in the aggregated app's single MessageBrokerRegistry
+    # (multiple calls silently overwrite one another, last-wins). false here defers ALL broker/
+    # application-destination-prefix registration to fr.pivot.config.WebSocketBrokerTopologyConfig
+    # — agilite's WebSocketConfig still registers its endpoint/interceptors/transport decorator
+    # unconditionally (those accumulate, no conflict). This module's own isolated test suite
+    # (AgiliteTestApplication / WebSocketConfigIT) never reads this file, so it keeps the default
+    # (true) unaffected.
+    websocket:
+      broker:
+        self-managed: ${PIVOT_AGILITE_WEBSOCKET_BROKER_SELF_MANAGED:false}
     poker:
       room:
         # US09.1.1 — default room lifetime when the caller omits `expirationHours` in

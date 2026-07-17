@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.messaging.simp.broker.BrokerAvailabilityEvent;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -43,7 +44,11 @@ import static org.mockito.Mockito.mock;
  */
 @Testcontainers
 @SpringBootTest(
-        classes = {WebSocketConfig.class, WebSocketConfigIT.BrokerAvailabilityCaptureConfig.class},
+        classes = {
+            WebSocketConfig.class,
+            WebSocketConfigIT.BrokerAvailabilityCaptureConfig.class,
+            WebSocketConfigIT.StompBrokerBootstrapConfig.class
+        },
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         properties = "pivot.cors.allowed-origins=http://localhost:4200")
 class WebSocketConfigIT {
@@ -82,6 +87,43 @@ class WebSocketConfigIT {
             Thread.sleep(POLL_INTERVAL_MS);
         }
         assertThat(brokerAvailable).isTrue();
+    }
+
+    /**
+     * Re-enables the STOMP message-broker infrastructure for this narrow test slice.
+     *
+     * <p><strong>EN53.1 Vague 1 modulith merge — root cause of a 15s hang on this test.</strong>
+     * Before the modulith merge, {@link WebSocketConfig} itself carried {@code
+     * @EnableWebSocketMessageBroker}, so loading only {@code WebSocketConfig.class} here was
+     * enough to bring in Spring's {@code DelegatingWebSocketMessageBrokerConfiguration} (message
+     * channels, {@code SimpMessagingTemplate}, and — crucially — the mechanism that actually
+     * invokes {@link WebSocketConfig#configureMessageBroker}). The merge correctly removed that
+     * annotation from {@link WebSocketConfig} (only one {@code @Enable} is allowed per Spring
+     * context; in the aggregated app it now lives on the shell's {@code
+     * fr.pivot.notification.config.NotificationWebSocketConfig}) and re-added it, test-scope, on
+     * {@link fr.pivot.agilite.AgiliteTestApplication} for the 23 other integration tests that use
+     * plain {@code @SpringBootTest} with no explicit {@code classes = ...} (Spring Boot Test
+     * auto-discovers {@code AgiliteTestApplication} as the nearest {@code
+     * @SpringBootConfiguration}). This test slice, however, explicitly overrides {@code classes =
+     * ...} to stay narrow (see this class's own top-level Javadoc) — that bypasses auto-discovery
+     * entirely, so {@code AgiliteTestApplication} (and its {@code @EnableWebSocketMessageBroker})
+     * was never picked up here. Without it, {@code configureMessageBroker} — the method that
+     * calls {@code enableStompBrokerRelay} — was never invoked at all, so the relay never even
+     * attempted a connection: {@link #brokerAvailable} stayed permanently {@code false} until
+     * {@link #AVAILABILITY_TIMEOUT_MS} elapsed and the test failed. This nested class restores
+     * just that one annotation for this slice, without pulling in {@code
+     * AgiliteTestApplication}'s datasource/JPA/Flyway/Redis auto-configuration.
+     *
+     * <p>{@code @TestConfiguration} (not plain {@code @Configuration}), for the same reason as
+     * {@link BrokerAvailabilityCaptureConfig} below: this class has no business being picked up
+     * by any other test's broader component scan. It carries no {@code @Bean} methods, so even
+     * if it were scanned it would be inert — but {@code @TestConfiguration} keeps it excluded via
+     * {@code TypeExcludeFilter} regardless, consistent with this module's hardening policy for
+     * every nested test-support configuration class.
+     */
+    @TestConfiguration
+    @EnableWebSocketMessageBroker
+    static class StompBrokerBootstrapConfig {
     }
 
     /**

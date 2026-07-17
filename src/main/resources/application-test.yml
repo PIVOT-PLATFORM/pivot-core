@@ -136,6 +136,14 @@ pivot:
     # An unreachable relay target is unsafe to leave enabled in tests with no real broker.
     relay-enabled: false
   agilite:
+    # EN53.1 Vague 1 (ADR-030) — same reasoning as application.yml: keeps any full-context test
+    # of the aggregated app (e.g. AbstractIntegrationTest/PivotBackendApplicationTests, which
+    # boot the whole context including agilite's WebSocketConfig bean via component scan) from
+    # reintroducing the last-write-wins broker/prefix collision that
+    # fr.pivot.config.WebSocketBrokerTopologyConfig resolves — see its JavaDoc.
+    websocket:
+      broker:
+        self-managed: false
     retro:
       phase-scheduler:
         # US20.1.2a — much shorter than production so timer-expiry ITs don't need long waits.

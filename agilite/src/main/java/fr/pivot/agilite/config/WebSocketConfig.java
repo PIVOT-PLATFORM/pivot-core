@@ -112,10 +112,18 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
 // l'app agrégée, c'est fr.pivot.notification.config.NotificationWebSocketConfig qui le porte.
 // Cette classe reste un WebSocketMessageBrokerConfigurer (collecté par Spring) pour ses endpoints,
 // interceptors et transport.
-// ⚠️ OUVERT (à trancher / valider en CI) : la topologie de broker n'est PAS encore réconciliée —
-// le SimpleBroker "/topic" du shell recouvre le relay "/topic/agilite." d'agilite, et les appels
-// enableSimpleBroker/setApplicationDestinationPrefixes de deux configurers s'écrasent (last-wins).
-// Une config broker unifiée est nécessaire (même problème attendu en Vague 2 avec collaboratif).
+//
+// RÉSOLU (EN53.1 Vague 1, ADR-030) — topologie de broker réconciliée : le SimpleBroker "/topic"
+// du shell recouvre déjà (par préfixe) toutes les destinations de rooms de ce module
+// ("/topic/agilite/poker|retro|wheels"), et le relais ActiveMQ "/topic/agilite." est
+// intentionnellement désactivé dans l'app agrégée (ADR-030 rend le bus optionnel en modulith) —
+// voir fr.pivot.config.WebSocketBrokerTopologyConfig, seul point d'appel de
+// enableSimpleBroker/enableStompBrokerRelay/setApplicationDestinationPrefixes dans l'app
+// agrégée. #configureMessageBroker ci-dessous reste l'implémentation COMPLETE et INCHANGÉE pour
+// le contexte de test isolé de ce module (AgiliteTestApplication / WebSocketConfigIT, qui ne
+// voient jamais fr.pivot.config — hors de leur component-scan "fr.pivot.agilite") ; elle devient
+// un no-op dans l'app agrégée via le flag pivot.agilite.websocket.broker.self-managed (voir sa
+// JavaDoc). Même schéma prévu pour collaboratif en Vague 2.
 @Configuration
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
@@ -138,6 +146,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final String relayHost;
     private final int relayPort;
     private final boolean relayEnabled;
+    private final boolean selfManagedBroker;
     private final String allowedOrigins;
     private final PokerChannelInterceptor pokerChannelInterceptor;
     private final RetroChannelInterceptor retroChannelInterceptor;
@@ -155,6 +164,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      *                                                at all — {@code false} in the {@code test}
      *                                                profile (see {@link #configureMessageBroker}
      *                                                JavaDoc for why)
+     * @param selfManagedBroker                      whether this class should register the
+     *                                                broker/SimpleBroker/application-destination-
+     *                                                prefixes itself at all — {@code true}
+     *                                                (default) for this module's standalone/
+     *                                                isolated-test use ; {@code false} in the
+     *                                                aggregated {@code pivot-core-app}, where
+     *                                                {@link fr.pivot.config.WebSocketBrokerTopologyConfig}
+     *                                                is the single authoritative owner of those
+     *                                                registry calls (see {@link
+     *                                                #configureMessageBroker} JavaDoc, ADR-030)
      * @param allowedOrigins                         CORS-allowed origins for the WebSocket
      *                                                handshake
      * @param pokerChannelInterceptor                STOMP frame interceptor enforcing planning-
@@ -174,6 +193,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             @Value("${pivot.activemq.relay-host}") final String relayHost,
             @Value("${pivot.activemq.relay-port}") final int relayPort,
             @Value("${pivot.activemq.relay-enabled:true}") final boolean relayEnabled,
+            @Value("${pivot.agilite.websocket.broker.self-managed:true}") final boolean selfManagedBroker,
             @Value("${pivot.cors.allowed-origins}") final String allowedOrigins,
             final PokerChannelInterceptor pokerChannelInterceptor,
             final RetroChannelInterceptor retroChannelInterceptor,
@@ -182,6 +202,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         this.relayHost = relayHost;
         this.relayPort = relayPort;
         this.relayEnabled = relayEnabled;
+        this.selfManagedBroker = selfManagedBroker;
         this.allowedOrigins = allowedOrigins;
         this.pokerChannelInterceptor = pokerChannelInterceptor;
         this.retroChannelInterceptor = retroChannelInterceptor;
@@ -208,10 +229,41 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      * does care about the relay) overrides it back to {@code true} via
      * {@code @DynamicPropertySource}, against a real Testcontainers broker.
      *
+     * <p><strong>{@code pivot.agilite.websocket.broker.self-managed} toggle (EN53.1 Vague 1,
+     * ADR-030 — modulith merge).</strong> This entire method is a no-op when this property is
+     * {@code false}. Rationale: once this module runs inside the aggregated {@code
+     * pivot-core-app}, it shares its {@code ApplicationContext} with {@code
+     * fr.pivot.notification.config.NotificationWebSocketConfig} (shell) — Spring invokes {@code
+     * configureMessageBroker} on every {@code WebSocketMessageBrokerConfigurer} bean against the
+     * SAME {@code MessageBrokerRegistry}, and {@code enableSimpleBroker}/{@code
+     * enableStompBrokerRelay}/{@code setApplicationDestinationPrefixes} are each last-write-wins
+     * on that registry — two configurers both calling them silently erase one another's
+     * topology, with no compile-time or startup signal. {@link
+     * fr.pivot.config.WebSocketBrokerTopologyConfig} is therefore the single authoritative owner
+     * of those three calls in the aggregated app (its {@code "/topic"} SimpleBroker prefix
+     * already subsumes every destination this method would otherwise register under {@link
+     * #ROOM_BROKER_PREFIXES} by simple string-prefix matching, and its {@code
+     * setApplicationDestinationPrefixes("/app", "/app/agilite")} already covers this module's
+     * {@code "/app/agilite"} need) — see its JavaDoc for the full reasoning, including why the
+     * EN07.3 ActiveMQ relay is intentionally absent there (ADR-030 makes the cross-instance bus
+     * optional in a single-instance modulith).
+     *
+     * <p>Default {@code true} (unset) preserves this method's full, historical behaviour —
+     * required by this module's own isolated test context ({@code AgiliteTestApplication}, which
+     * carries its own {@code @EnableWebSocketMessageBroker} and never sees {@code
+     * fr.pivot.config.WebSocketBrokerTopologyConfig}, a class outside its {@code
+     * "fr.pivot.agilite"} component scan) and by {@code WebSocketConfigIT}, which loads only
+     * {@code WebSocketConfig} directly. The aggregated app's {@code application.yml}/{@code
+     * application-test.yml} set this to {@code false}.
+     *
      * @param registry the message broker registry to configure
      */
     @Override
     public void configureMessageBroker(final MessageBrokerRegistry registry) {
+        if (!selfManagedBroker) {
+            return;
+        }
+
         if (relayEnabled) {
             registry.enableStompBrokerRelay(DOMAIN_TOPIC_PREFIX)
                     .setRelayHost(relayHost)
