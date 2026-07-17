@@ -43,8 +43,8 @@ import java.util.Map;
  * InvalidRetroActionStatusException}), as well as Spring MVC/ Bean Validation failures ({@link
  * MethodArgumentNotValidException}, {@link ConstraintViolationException}).
  */
-@RestControllerAdvice
-public class GlobalExceptionHandler {
+@RestControllerAdvice(basePackages = "fr.pivot.agilite")
+public class AgiliteExceptionHandler {
 
     /**
      * Returns HTTP 404 when a planning poker room is not found, or belongs to another tenant

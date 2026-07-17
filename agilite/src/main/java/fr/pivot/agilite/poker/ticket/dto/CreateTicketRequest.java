@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
  * Request body for {@code POST /api/agilite/poker/rooms/{roomId}/tickets} (US09.2.1).
  *
  * <p>{@code title} validation messages double as the machine-readable {@code code} property
- * surfaced by {@code GlobalExceptionHandler#handleValidation} (same convention as {@code
+ * surfaced by {@code AgiliteExceptionHandler#handleValidation} (same convention as {@code
  * CreateRoomRequest}/{@code CreateRetroSessionRequest}).
  *
  * @param title the ticket's display title — required, 1-200 characters

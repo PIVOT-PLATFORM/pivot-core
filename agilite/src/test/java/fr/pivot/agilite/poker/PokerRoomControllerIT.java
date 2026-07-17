@@ -1,7 +1,7 @@
 package fr.pivot.agilite.poker;
 
 import fr.pivot.agilite.AbstractAgiliteIntegrationTest;
-import fr.pivot.agilite.exception.GlobalExceptionHandler;
+import fr.pivot.agilite.exception.AgiliteExceptionHandler;
 import fr.pivot.agilite.poker.exception.PokerFacilitatorOnlyException;
 import fr.pivot.agilite.poker.ws.RoomAccessGrantService;
 import fr.pivot.agilite.testsupport.PlatformAuthTestSupport;
@@ -55,7 +55,7 @@ class PokerRoomControllerIT extends AbstractAgiliteIntegrationTest {
     private RoomAccessGrantService roomAccessGrantService;
 
     @Autowired
-    private GlobalExceptionHandler globalExceptionHandler;
+    private AgiliteExceptionHandler agiliteExceptionHandler;
 
     private MockMvc mockMvc;
 
@@ -692,7 +692,7 @@ class PokerRoomControllerIT extends AbstractAgiliteIntegrationTest {
      * RoomAccessGrantService#requireNonGuest} — the primitive facilitator-only actions
      * (ticket creation/reveal, US09.2.1/US09.2.2, not yet built in this repo — same sprint wave,
      * no dependency on this US) are contractually required to call — then it throws {@link
-     * PokerFacilitatorOnlyException}, which {@link GlobalExceptionHandler} maps to HTTP 403 with
+     * PokerFacilitatorOnlyException}, which {@link AgiliteExceptionHandler} maps to HTTP 403 with
      * code FACILITATOR_ONLY_ACTION: an anonymous session can never perform a facilitator-only
      * action, proven end-to-end from a real join response through to the HTTP mapping, never a
      * silent success.
@@ -712,7 +712,7 @@ class PokerRoomControllerIT extends AbstractAgiliteIntegrationTest {
         assertThat(thrown).isInstanceOf(PokerFacilitatorOnlyException.class);
 
         ProblemDetail problem =
-                globalExceptionHandler.handlePokerFacilitatorOnly((PokerFacilitatorOnlyException) thrown);
+                agiliteExceptionHandler.handlePokerFacilitatorOnly((PokerFacilitatorOnlyException) thrown);
         assertThat(problem.getStatus()).isEqualTo(HttpStatus.FORBIDDEN.value());
         assertThat(problem.getProperties()).containsEntry("code", "FACILITATOR_ONLY_ACTION");
     }

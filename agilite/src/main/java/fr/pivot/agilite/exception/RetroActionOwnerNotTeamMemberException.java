@@ -4,7 +4,7 @@ package fr.pivot.agilite.exception;
  * Thrown when a retro action is created or updated with an {@code ownerUserId} that does not
  * resolve to a member of the session's team (US20.3.1).
  *
- * <p>Mapped to HTTP 400 Bad Request by {@link GlobalExceptionHandler} — unlike a not-found
+ * <p>Mapped to HTTP 400 Bad Request by {@link AgiliteExceptionHandler} — unlike a not-found
  * team/session, this is a client input error, not an access-control boundary.
  */
 public class RetroActionOwnerNotTeamMemberException extends RuntimeException {

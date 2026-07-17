@@ -7,7 +7,7 @@ import java.util.UUID;
  * belongs to a team the caller is not a member of (US20.3.1).
  *
  * <p>Using a single exception for all three cases prevents cross-tenant/cross-team information
- * disclosure — mapped to HTTP 404 Not Found by {@link GlobalExceptionHandler}, same
+ * disclosure — mapped to HTTP 404 Not Found by {@link AgiliteExceptionHandler}, same
  * anti-enumeration convention as {@link RetroSessionNotFoundException} and {@link
  * TeamNotFoundException}.
  */

@@ -5,7 +5,7 @@ package fr.pivot.agilite.exception;
  * customFormatId} although {@code format} is not {@code "CUSTOM"} (US20.2.1) — rejected
  * explicitly rather than silently ignored, per this US's acceptance criteria.
  *
- * <p>Mapped to HTTP 400 Bad Request by {@link GlobalExceptionHandler} with machine-readable
+ * <p>Mapped to HTTP 400 Bad Request by {@link AgiliteExceptionHandler} with machine-readable
  * {@code CUSTOM_FORMAT_ID_NOT_ALLOWED} code.
  */
 public class RetroCustomFormatIdNotAllowedException extends RuntimeException {

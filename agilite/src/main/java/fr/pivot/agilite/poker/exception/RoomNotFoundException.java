@@ -5,7 +5,7 @@ import java.util.UUID;
 /**
  * Thrown when a planning poker room cannot be found for the caller's tenant (US09.1.1) — either
  * because no room exists with the given id, or because it belongs to a different tenant. Both
- * cases are deliberately indistinguishable (mapped to HTTP 404 by {@code GlobalExceptionHandler})
+ * cases are deliberately indistinguishable (mapped to HTTP 404 by {@code AgiliteExceptionHandler})
  * to avoid confirming cross-tenant existence — see the transversal tenant-isolation rule in this
  * repo's {@code CLAUDE.md}.
  */

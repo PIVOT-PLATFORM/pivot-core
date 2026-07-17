@@ -7,7 +7,7 @@ import java.util.UUID;
  * revealed (US09.2.2) — revelation is a one-time, non-idempotent transition ({@code VOTING} →
  * {@code REVEALED}).
  *
- * <p>Mapped to HTTP 409 Conflict by {@code GlobalExceptionHandler} with machine-readable code
+ * <p>Mapped to HTTP 409 Conflict by {@code AgiliteExceptionHandler} with machine-readable code
  * {@code TICKET_ALREADY_REVEALED}. Distinct from {@link ActiveTicketExistsException} (US09.2.1,
  * which guards ticket *creation* against a second concurrently open ticket) — this one guards the
  * *reveal* action against being repeated on an already-revealed ticket.

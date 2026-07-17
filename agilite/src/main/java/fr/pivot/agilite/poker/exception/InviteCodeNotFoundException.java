@@ -4,7 +4,7 @@ package fr.pivot.agilite.poker.exception;
  * Thrown when an invite {@code code} supplied to the join-by-code endpoint (US09.1.2) does not
  * resolve to a currently joinable planning poker room.
  *
- * <p>Mapped to HTTP 404 Not Found by {@code GlobalExceptionHandler}. The message deliberately
+ * <p>Mapped to HTTP 404 Not Found by {@code AgiliteExceptionHandler}. The message deliberately
  * never echoes the raw code back into the response (mirrors {@code RetroJoinCodeNotFoundException}
  * 's style).
  *

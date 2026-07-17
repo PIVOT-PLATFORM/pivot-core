@@ -9,7 +9,7 @@ import java.util.UUID;
  *
  * <p>Using a single exception for both cases prevents cross-tenant information disclosure (the
  * caller cannot distinguish "format doesn't exist" from "format exists but belongs to someone
- * else") — mapped to HTTP 404 Not Found by {@link GlobalExceptionHandler}, never 403.
+ * else") — mapped to HTTP 404 Not Found by {@link AgiliteExceptionHandler}, never 403.
  */
 public class RetroCustomFormatNotFoundException extends RuntimeException {
 

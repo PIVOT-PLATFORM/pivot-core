@@ -6,7 +6,7 @@ package fr.pivot.agilite.poker.exception;
  * inactivity cap, ADR-026 §2), or the room it was issued for has since become inactive or
  * expired.
  *
- * <p>Mapped to HTTP 410 Gone by {@code GlobalExceptionHandler} — the session existed but is no
+ * <p>Mapped to HTTP 410 Gone by {@code AgiliteExceptionHandler} — the session existed but is no
  * longer usable; the caller must rejoin via {@code POST /poker/rooms/join-anonymous} to obtain a
  * fresh one. These causes are deliberately never distinguished — mirrors {@link
  * InviteCodeNotFoundException}'s posture of collapsing every rejection reason into a single,

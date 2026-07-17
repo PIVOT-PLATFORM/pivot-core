@@ -6,7 +6,7 @@ package fr.pivot.agilite.exception;
  *
  * <p>Using a single exception for both cases prevents cross-tenant information disclosure (the
  * caller cannot distinguish "team doesn't exist" from "team exists but belongs to someone
- * else") — mapped to HTTP 404 Not Found by {@link GlobalExceptionHandler}, never 403.
+ * else") — mapped to HTTP 404 Not Found by {@link AgiliteExceptionHandler}, never 403.
  */
 public class RetroTeamNotFoundException extends RuntimeException {
 

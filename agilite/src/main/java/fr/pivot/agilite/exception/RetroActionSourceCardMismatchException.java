@@ -7,7 +7,7 @@ import java.util.UUID;
  * exists but belongs to a different session than the one the action is being created in
  * (US20.3.1).
  *
- * <p>Mapped to HTTP 400 Bad Request by {@link GlobalExceptionHandler} — a client input error, not
+ * <p>Mapped to HTTP 400 Bad Request by {@link AgiliteExceptionHandler} — a client input error, not
  * a 404: the caller already has a valid session in hand, and the invalid part is the card
  * reference within it.
  */

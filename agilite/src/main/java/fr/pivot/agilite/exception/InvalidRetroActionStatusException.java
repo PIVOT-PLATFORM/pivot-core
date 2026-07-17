@@ -6,7 +6,7 @@ package fr.pivot.agilite.exception;
  * /retro/teams/{teamId}/actions}) does not match any {@link
  * fr.pivot.agilite.retro.action.RetroActionStatus} constant (US20.3.1).
  *
- * <p>Mapped to HTTP 400 Bad Request by {@link GlobalExceptionHandler} with a machine-readable
+ * <p>Mapped to HTTP 400 Bad Request by {@link AgiliteExceptionHandler} with a machine-readable
  * {@code INVALID_ACTION_STATUS} code — same pattern as {@code InvalidRetroFormatException}.
  */
 public class InvalidRetroActionStatusException extends RuntimeException {

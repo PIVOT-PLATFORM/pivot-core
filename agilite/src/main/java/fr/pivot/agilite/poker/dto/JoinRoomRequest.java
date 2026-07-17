@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
  *
  * <p>{@code code} is the 6-character invite code generated at room creation ({@link
  * fr.pivot.agilite.poker.InviteCodeGenerator}). Failures are handled by {@code
- * GlobalExceptionHandler}, returning HTTP 400 with {@code { "code": "INVALID_CODE" } } — mirroring
+ * AgiliteExceptionHandler}, returning HTTP 400 with {@code { "code": "INVALID_CODE" } } — mirroring
  * {@link CreateRoomRequest}'s message-as-code convention.
  *
  * <p>Deliberately excludes {@code tenantId}/{@code userId} — both are resolved exclusively from

@@ -12,7 +12,7 @@ import jakarta.validation.constraints.Size;
  * when absent, {@code PokerRoomService} applies its configured default (24h); when present, it
  * must be between 1 and 168 (7 days) inclusive — Bean Validation treats a {@code null} {@code
  * Integer} as valid for {@code @Min}/{@code @Max}, so omitting the field never fails validation.
- * Failures are handled by {@code GlobalExceptionHandler}, returning HTTP 400 with {@code
+ * Failures are handled by {@code AgiliteExceptionHandler}, returning HTTP 400 with {@code
  * { "code": "INVALID_NAME" } } or {@code { "code": "INVALID_EXPIRATION" } }.
  *
  * <p>Deliberately excludes {@code tenantId}/{@code facilitatorUserId}/{@code sequence} — the

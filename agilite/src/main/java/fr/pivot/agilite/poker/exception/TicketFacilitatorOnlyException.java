@@ -6,7 +6,7 @@ import java.util.UUID;
  * Thrown when an authenticated, same-tenant caller attempts a facilitator-only planning poker
  * ticket action (creating a ticket) but is not that room's facilitator (US09.2.1).
  *
- * <p>Mapped to HTTP 403 Forbidden by {@code GlobalExceptionHandler}, code {@code
+ * <p>Mapped to HTTP 403 Forbidden by {@code AgiliteExceptionHandler}, code {@code
  * FACILITATOR_ONLY} — safe to disclose the action is restricted here since tenant match (and
  * room existence) is already established by the time this is thrown (unlike {@link
  * RoomNotFoundException}, which covers the cross-tenant/non-existent cases).

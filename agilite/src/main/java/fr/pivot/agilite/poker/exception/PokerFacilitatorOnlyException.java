@@ -7,7 +7,7 @@ import java.util.UUID;
  * fr.pivot.agilite.poker.ws.RoomAccessGrantService#requireNonGuest} — attempts an action reserved
  * to the room's authenticated facilitator (US09.3.1).
  *
- * <p>Mapped to HTTP 403 Forbidden by {@code GlobalExceptionHandler}, code {@code
+ * <p>Mapped to HTTP 403 Forbidden by {@code AgiliteExceptionHandler}, code {@code
  * FACILITATOR_ONLY_ACTION}. Originally documented as the primitive sibling US09.2.1 (ticket
  * creation) would call to reject an anonymous guest — turned out unnecessary there: ticket
  * creation is a {@code POST /poker/rooms/{roomId}/tickets} REST endpoint requiring a Bearer

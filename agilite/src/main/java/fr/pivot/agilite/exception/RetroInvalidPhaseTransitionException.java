@@ -10,7 +10,7 @@ import java.util.UUID;
  * past {@link RetroPhase#CONTRIBUTION}, or triggering reveal before the session has reached
  * {@link RetroPhase#REVUE}.
  *
- * <p>Mapped to HTTP 409 Conflict by {@link GlobalExceptionHandler}.
+ * <p>Mapped to HTTP 409 Conflict by {@link AgiliteExceptionHandler}.
  */
 public class RetroInvalidPhaseTransitionException extends RuntimeException {
 

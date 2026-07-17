@@ -16,13 +16,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for {@link GlobalExceptionHandler}, directly invoking each handler method to
+ * Unit tests for {@link AgiliteExceptionHandler}, directly invoking each handler method to
  * confirm the mapped HTTP status and, where applicable, the machine-readable {@code code}
  * property (US20.1.1). No Spring context is loaded.
  */
-class GlobalExceptionHandlerTest {
+class AgiliteExceptionHandlerTest {
 
-    private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+    private final AgiliteExceptionHandler handler = new AgiliteExceptionHandler();
 
     @Test
     void handleInviteCodeNotFound_returns404() {

@@ -7,7 +7,7 @@ package fr.pivot.agilite.exception;
  * <p>Deliberately validated in the service layer against the enum's known constants — not via
  * direct Jackson enum deserialization on the DTO — so that an unknown value produces this
  * dedicated exception (mapped to HTTP 400 Bad Request with machine-readable {@code
- * INVALID_FORMAT} code by {@link GlobalExceptionHandler}) instead of a generic Jackson
+ * INVALID_FORMAT} code by {@link AgiliteExceptionHandler}) instead of a generic Jackson
  * deserialization failure.
  */
 public class InvalidRetroFormatException extends RuntimeException {

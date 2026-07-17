@@ -7,7 +7,7 @@ import java.util.UUID;
  * because no ticket exists with the given id, or because it belongs to a different room than the
  * one addressed by the request path.
  *
- * <p>Mapped to HTTP 404 Not Found by {@code GlobalExceptionHandler}. Both causes are deliberately
+ * <p>Mapped to HTTP 404 Not Found by {@code AgiliteExceptionHandler}. Both causes are deliberately
  * collapsed into the same indistinguishable response — same anti-enumeration posture as {@link
  * RoomNotFoundException}/{@code InviteCodeNotFoundException} (US09.1.1/US09.1.2): a caller can
  * never learn whether a ticket id is unknown outright or simply belongs to another room.

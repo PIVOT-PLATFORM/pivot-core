@@ -7,7 +7,7 @@ import java.util.UUID;
  * the caller.
  *
  * <p>Using a single exception for both cases prevents cross-tenant information disclosure —
- * mapped to HTTP 404 Not Found by {@link GlobalExceptionHandler}.
+ * mapped to HTTP 404 Not Found by {@link AgiliteExceptionHandler}.
  */
 public class RetroSessionNotFoundException extends RuntimeException {
 
