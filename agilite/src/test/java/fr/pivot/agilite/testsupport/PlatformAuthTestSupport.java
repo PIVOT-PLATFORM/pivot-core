@@ -102,6 +102,14 @@ public final class PlatformAuthTestSupport {
                         id BIGSERIAL PRIMARY KEY,
                         tenant_id BIGINT NOT NULL REFERENCES public.tenants(id),
                         name VARCHAR(255) NOT NULL,
+                        -- EN53.1 : colonnes du starter Team courant (color/slug/description) — le
+                        -- modulith compile contre le starter interne (plus récent que le 0.28.0
+                        -- publié pour lequel ce mirror avait été écrit). slug/color/description
+                        -- laissées NULLABLES (le seed insère sans elles) ; la vraie migration
+                        -- public.teams (db/migration/public) les porte NOT NULL/uniques.
+                        slug VARCHAR(255),
+                        color VARCHAR(30),
+                        description TEXT,
                         parent_team_id BIGINT REFERENCES public.teams(id),
                         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -113,7 +121,12 @@ public final class PlatformAuthTestSupport {
                         id BIGSERIAL PRIMARY KEY,
                         team_id BIGINT NOT NULL REFERENCES public.teams(id),
                         user_id BIGINT NOT NULL REFERENCES public.users(id),
+                        -- EN53.1 : colonnes du starter TeamMember courant (role/updated_at). Le seed
+                        -- insère seulement (team_id, user_id) → DEFAULT pour rester compatible et
+                        -- garantir un role non-null en lecture (entité : role NOT NULL = 'MEMBRE').
+                        role VARCHAR(20) NOT NULL DEFAULT 'MEMBRE',
                         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                         CONSTRAINT uq_team_members_team_user UNIQUE (team_id, user_id)
                     )
                     """);
