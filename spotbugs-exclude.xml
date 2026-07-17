@@ -77,4 +77,55 @@
         </Or>
     </Match>
 
+    <!--
+        EN53.1 (modulith Vague 1) — module agilite absorbé dans pivot-core. Report des
+        exclusions EI_EXPOSE_REP/EI_EXPOSE_REP2 que portait le spotbugs-exclude.xml propre à
+        pivot-agilite-core (entités JPA à getters/setters mutables requis par Hibernate, beans
+        singleton constructeur-injectés, et DTO records exposant des List/Map déjà immuables —
+        ex. RoomResponse.cardValues = PokerCardDeck.FIBONACCI_VALUES List.of(...) constant).
+        Même justification centralisée que les packages shell ci-dessus (ADR-022, CLAUDE.md :
+        exclusion centralisée en config, jamais de suppression inline).
+        NB : fr.pivot.agilite.auth(.entity) — la revalidation de token dupliquée y a été retirée
+        (EN53.1, fusion sur le TokenService partagé) ; l'exclusion subsiste sans dommage si le
+        package est vide côté main.
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Or>
+            <Package name="fr.pivot.agilite.poker.ws"/>
+            <Package name="fr.pivot.agilite.ws"/>
+            <Package name="fr.pivot.agilite.auth"/>
+            <Package name="fr.pivot.agilite.auth.entity"/>
+            <Package name="fr.pivot.agilite.context"/>
+            <Package name="fr.pivot.agilite.config"/>
+            <Package name="fr.pivot.agilite.exception"/>
+            <Package name="fr.pivot.agilite.retro.session"/>
+            <Package name="fr.pivot.agilite.retro.session.dto"/>
+            <Package name="fr.pivot.agilite.retro.format"/>
+            <Package name="fr.pivot.agilite.retro.format.dto"/>
+            <Package name="fr.pivot.agilite.poker"/>
+            <Package name="fr.pivot.agilite.poker.dto"/>
+            <Package name="fr.pivot.agilite.wheel"/>
+            <Package name="fr.pivot.agilite.wheel.dto"/>
+            <Package name="fr.pivot.agilite.team"/>
+            <Package name="fr.pivot.agilite.team.dto"/>
+            <Package name="fr.pivot.agilite.retro.card"/>
+            <Package name="fr.pivot.agilite.retro.card.ws"/>
+            <Package name="fr.pivot.agilite.retro.phase"/>
+            <Package name="fr.pivot.agilite.retro.ws"/>
+            <Package name="fr.pivot.agilite.retro.phase.dto"/>
+            <Package name="fr.pivot.agilite.retro.vote"/>
+            <Package name="fr.pivot.agilite.retro.vote.dto"/>
+            <Package name="fr.pivot.agilite.retro.vote.ws"/>
+            <Package name="fr.pivot.agilite.poker.ticket"/>
+            <Package name="fr.pivot.agilite.poker.ticket.dto"/>
+            <Package name="fr.pivot.agilite.poker.vote"/>
+            <Package name="fr.pivot.agilite.poker.vote.dto"/>
+            <Package name="fr.pivot.agilite.poker.vote.ws"/>
+            <Package name="fr.pivot.agilite.wheel.ws"/>
+            <Package name="fr.pivot.agilite.retro.action"/>
+            <Package name="fr.pivot.agilite.retro.action.dto"/>
+        </Or>
+    </Match>
+
 </FindBugsFilter>

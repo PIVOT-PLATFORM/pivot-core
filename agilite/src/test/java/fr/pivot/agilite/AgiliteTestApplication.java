@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 
 /**
  * EN53.1 Vague 1 — test-scope replacement for the removed {@code PivotAgiliteApplication} boot
@@ -47,5 +48,13 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EntityScan(basePackages = {"fr.pivot.agilite", "fr.pivot.core.team"})
 @EnableJpaRepositories(basePackages = {"fr.pivot.agilite", "fr.pivot.core.team"})
 @EnableScheduling
+// EN53.1 Vague 1 — @EnableWebSocketMessageBroker porté ICI (test-scope) : il a été retiré de
+// fr.pivot.agilite.config.WebSocketConfig (un seul @Enable autorisé par contexte ; dans l'app
+// agrégée c'est celui du shell, NotificationWebSocketConfig, qui le porte). Le contexte de test
+// isolé d'agilite n'a pas le config du shell → sans ce @Enable ici, aucun bean d'infra STOMP
+// (SimpMessagingTemplate) n'existe et les services WS (PokerTicketService, RetroCardService...)
+// ne peuvent plus s'injecter. WebSocketConfig reste component-scanné comme configurer (broker,
+// endpoints, interceptors). Jamais packagé dans le JAR de prod → aucun double @Enable une fois agrégé.
+@EnableWebSocketMessageBroker
 public class AgiliteTestApplication {
 }
