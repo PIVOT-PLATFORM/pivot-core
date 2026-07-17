@@ -30,11 +30,13 @@ spring:
     # tracks version+checksum, not the classpath path, so already-applied environments are
     # unaffected). Flyway's classpath scan is RECURSIVE: "classpath:db/migration" would also
     # have picked up "classpath:db/migration/agilite" (the agilite module's own migrations,
-    # see ModuleFlywayMigrationConfig/agilite's own Flyway config) and tried to apply them to
-    # the public schema — moving the shell's own migrations to a schema-named sibling
-    # subfolder ("public", matching the schema they target) keeps the shell's location from
-    # being an ancestor directory of any module's location, eliminating that collision by
-    # construction rather than by exclusion. Same rename applied in application-test.yml.
+    # see ModuleFlywayMigrationConfig/agilite's own Flyway config) — and, as of EN53.2 Vague 2,
+    # "classpath:db/migration/collaboratif" (collaboratif's own migrations, same mechanism) —
+    # and tried to apply them to the public schema — moving the shell's own migrations to a
+    # schema-named sibling subfolder ("public", matching the schema they target) keeps the
+    # shell's location from being an ancestor directory of any module's location, eliminating
+    # that collision by construction rather than by exclusion. Same rename applied in
+    # application-test.yml.
     locations: classpath:db/migration/public
     baseline-on-migrate: true
     baseline-version: 0
@@ -274,19 +276,62 @@ pivot:
   # auto-configured Flyway bean at all — see ModuleFlywayConfigurer/ModuleFlywayMigrationConfig
   # instead), server.port/management.server.port (single embedded server now), logging.level.
   # fr.pivot (already covers fr.pivot.agilite by prefix, see below).
+  #
+  # EN53.2 Vague 2 — the pivot.collaboratif.* block below (and the shared pivot.activemq.*/
+  # pivot.share.*/pivot.whiteboard.* keys further down) is folded in the same way, from
+  # pivot-collaboratif-core's own application.yml. Same "properties NOT ported" exclusions
+  # apply, plus: server.servlet.context-path (collaboratif's standalone "/api/collaboratif" —
+  # the aggregated app uses the single shared "/api" prefix instead; collaboratif's REST
+  # controllers must be mapped with an explicit "/collaboratif" segment in the ported module,
+  # mirroring how agilite's controllers carry AgiliteApiPaths.BASE).
   activemq:
-    # STOMP relay config consumed by agilite's own WebSocketConfig (EN07.3/EN09.1, poker room +
-    # retro realtime traffic). RESOLVED (EN53.1 Vague 1, ADR-030): pivot-agilite-core ran as its
-    # OWN JVM needing an external ActiveMQ relay to fan out STOMP frames to other instances.
-    # ADR-030 makes that cross-instance bus optional in the modulith — a single pivot-core-app
-    # instance has no second JVM to relay to, and its in-process SimpleBroker
+    # STOMP relay config, SHARED verbatim by agilite's (EN07.3/EN09.1) and collaboratif's
+    # (EN07.3-equivalent) own WebSocketConfig — both read the exact same
+    # pivot.activemq.relay-enabled/relay-host/relay-port keys via @Value, so a single override
+    # here governs both modules' relay registration at once (no per-module duplication needed;
+    # verified against both modules' WebSocketConfig constructors).
+    #
+    # RESOLVED (EN53.1 Vague 1, ADR-030): pivot-agilite-core/pivot-collaboratif-core each ran as
+    # their OWN JVM needing an external ActiveMQ relay to fan out STOMP frames to other
+    # instances. ADR-030 makes that cross-instance bus optional in the modulith — a single
+    # pivot-core-app instance has no second JVM to relay to, and its in-process SimpleBroker
     # ("/queue","/topic" — see fr.pivot.config.WebSocketBrokerTopologyConfig) already covers
-    # every agilite room destination by prefix. Default flipped to false here accordingly; keep
-    # overridable via PIVOT_ACTIVEMQ_RELAY_ENABLED for a future horizontal-scaling need (multiple
-    # pivot-core-app instances requiring real cross-instance fan-out again).
+    # every agilite/collaboratif room destination by prefix. Default flipped to false here
+    # accordingly; keep overridable via PIVOT_ACTIVEMQ_RELAY_ENABLED for a future
+    # horizontal-scaling need (multiple pivot-core-app instances requiring real cross-instance
+    # fan-out again).
     relay-enabled: ${PIVOT_ACTIVEMQ_RELAY_ENABLED:false}
     relay-host: ${PIVOT_ACTIVEMQ_RELAY_HOST:activemq}
     relay-port: ${PIVOT_ACTIVEMQ_RELAY_PORT:61613}
+  # EN53.2 Vague 2 — collaboratif domain properties, ported from pivot-collaboratif-core's own
+  # application.yml. pivot.cors.allowed-origins (shell key, already above) and
+  # pivot.activemq.relay-* (shared key, just above) are reused verbatim — collaboratif's
+  # WebSocketConfig/BoardShareService/ImageCardContentValidator read exactly these keys plus
+  # the two below (verified against every @Value in that module's source).
+  share:
+    # Base URL of the Angular frontend, used by BoardShareService to compose whiteboard
+    # invitation links. No default in the @Value annotation itself (required property) — a
+    # default is supplied here instead, matching the source repo's own application.yml.
+    base-url: ${PIVOT_SHARE_BASE_URL:http://localhost:4200}
+  whiteboard:
+    card:
+      image:
+        # US08.6.4 — upper bound (bytes) on a CARD_CREATE IMAGE's decoded Base64 payload,
+        # enforced by ImageCardContentValidator before persistence.
+        max-bytes: ${PIVOT_WHITEBOARD_IMAGE_MAX_BYTES:5242880}
+  collaboratif:
+    # EN53.2 Vague 2 (ADR-030) — same reasoning as pivot.agilite.websocket.broker.self-managed
+    # below: fr.pivot.collaboratif.config.WebSocketConfig#configureMessageBroker (its full,
+    # standalone implementation) must become a no-op in the aggregated app, deferring ALL
+    # broker/application-destination-prefix registration to
+    # fr.pivot.config.WebSocketBrokerTopologyConfig — see that class's JavaDoc, "Collaboratif"
+    # section, for the full destination-prefix analysis (conclusion: no prefix addition needed,
+    # collaboratif's setApplicationDestinationPrefixes("/app") is already covered).
+    # collaboratif's own isolated test suite (its own *TestApplication, if any) never reads this
+    # file, so it keeps that class's default (true) unaffected.
+    websocket:
+      broker:
+        self-managed: ${PIVOT_COLLABORATIF_WEBSOCKET_BROKER_SELF_MANAGED:false}
   agilite:
     # EN53.1 Vague 1 (ADR-030) — see fr.pivot.agilite.config.WebSocketConfig#configureMessageBroker
     # JavaDoc and fr.pivot.config.WebSocketBrokerTopologyConfig JavaDoc for the full reasoning:

@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fr.pivot</groupId>
+        <artifactId>pivot-core</artifactId>
+        <version>0.28.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>pivot-collaboratif</artifactId>
+    <packaging>jar</packaging>
+    <name>pivot-collaboratif</name>
+    <description>
+        PIVOT Collaboratif — modulith library module imported from pivot-collaboratif-core
+        (EN53.2 Vague 2). Whiteboard collaboratif temps reel (creation/partage/roles de
+        tableaux, canvas WebSocket STOMP, templates, import Klaxoon, vote) domain code
+        (fr.pivot.collaboratif.*). Aggregated as a library dependency by pivot-core-app — NOT
+        an independently runnable Spring Boot application (no repackage/fat-jar here; see the
+        removed spring-boot-maven-plugin note below).
+    </description>
+
+    <!--
+      EN53.2 Vague 2 — this module is a thin library JAR consumed by pivot-core-app, exactly
+      like pivot-core-starter and the agilite module (EN53.1 Vague 1). No <version> here:
+      inherited from the parent reactor. spring-boot-maven-plugin/repackage is deliberately NOT
+      declared in this pom (unlike the original pivot-collaboratif-core standalone repo) —
+      declaring it at all (even with the "repackage" execution disabled) is unnecessary for a
+      module that is never built or run on its own outside the reactor; pivot-core-app is the
+      sole runnable/fat-jar artifact.
+    -->
+
+    <dependencies>
+        <!--
+          fr.pivot:pivot-core-starter — shared contract (fr.pivot.core.team.Team/TeamMember,
+          fr.pivot.core.auth, fr.pivot.core.tenant, fr.pivot.core.modules, fr.pivot.core.db).
+          Version pinned explicitly to the parent reactor's own version (0.28.0) per the fixed
+          migration contract — NOT ${project.version}/inherited-implicitly, so this keeps
+          resolving correctly even if this module is ever built in isolation against a
+          previously published starter artifact. The source repo (pivot-collaboratif-core) was
+          pinned to 0.27.1 — bumped here to 0.28.0 to match this reactor's own version, same as
+          the agilite module.
+        -->
+        <dependency>
+            <groupId>fr.pivot</groupId>
+            <artifactId>pivot-core-starter</artifactId>
+            <version>0.28.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- Bean Validation (@NotBlank/@Size/@Positive/@NotNull/@Min/@Max/@Valid) on request DTOs. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+        <!--
+          EN07.3 — required for enableStompBrokerRelay(): StompBrokerRelayMessageHandler uses
+          Reactor Netty for the TCP connection to the external STOMP broker (ActiveMQ).
+          spring-boot-starter-websocket alone does NOT pull this in. Version managed by the
+          Spring Boot BOM (spring-boot-starter-parent, inherited via the pivot-core parent).
+        -->
+        <dependency>
+            <groupId>io.projectreactor.netty</groupId>
+            <artifactId>reactor-netty</artifactId>
+        </dependency>
+        <!--
+          Spring Boot 4 moved FlywayAutoConfiguration out of spring-boot-autoconfigure into the
+          dedicated spring-boot-flyway module. Required so this module's
+          db/migration/collaboratif/** migrations actually run (see the Flyway location note in
+          application.yml).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!--
+      EN53.2 — no dependency here beyond what the agilite module (EN53.1) already declares.
+      pivot-collaboratif-core's own pom.xml additionally pinned a testcontainers-bom in
+      <dependencyManagement> and used io.micrometer/jakarta.persistence/jakarta.validation/
+      jakarta.servlet/org.hibernate/tools.jackson APIs (opengraph fetching, canvas events,
+      whiteboard import rate limiting) — all of those are already transitively provided by
+      spring-boot-starter-actuator (micrometer), spring-boot-starter-data-jpa (jakarta.persistence,
+      hibernate), spring-boot-starter-validation (jakarta.validation), spring-boot-starter-web
+      (jakarta.servlet, tools.jackson), and the reactor-root pom.xml's own testcontainers-bom
+      import (verified present there) — no new library dependency to add for this module.
+    -->
+
+    <build>
+        <plugins>
+            <!--
+              EN07.3 — surefire's default include patterns exclude *IT.java, so tests like
+              WebSocketConfigRelayIT/BoardControllerIT (Testcontainers) would silently never run
+              under `mvn test`/`verify` without this — carried over verbatim from
+              pivot-collaboratif-core's own pom.xml (same pattern used across all pivot-xxx-core
+              repos, the agilite module, and pivot-core-app). Neither the pivot-core parent pom
+              nor pivot-core-app declares a surefire include-pattern override, so this must be
+              declared here.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/*IT.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!--
+      checkstyle-maven-plugin and spotbugs-maven-plugin executions are inherited automatically
+      from the pivot-core parent pom's <build><plugins> (bound to the verify phase, configured
+      via its <pluginManagement> against the reactor-root checkstyle.xml/spotbugs-exclude.xml) —
+      intentionally not re-declared here.
+    -->
+
+    <profiles>
+        <profile>
+            <id>mutation</id>
+            <build>
+                <plugins>
+                    <!--
+                      Override the parent's pitest config (which targets fr.pivot.auth.* —
+                      lives in pivot-core-app, not here), mirroring the agilite module's own
+                      mutation profile scoped to this module's business logic.
+                    -->
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <version>1.25.5</version>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.pitest</groupId>
+                                <artifactId>pitest-junit5-plugin</artifactId>
+                                <version>1.2.3</version>
+                            </dependency>
+                        </dependencies>
+                        <configuration>
+                            <targetClasses>
+                                <param>fr.pivot.collaboratif.service.*</param>
+                                <param>fr.pivot.collaboratif.util.*</param>
+                                <param>fr.pivot.collaboratif.entity.*</param>
+                            </targetClasses>
+                            <targetTests>
+                                <param>fr.pivot.collaboratif.service.*Test</param>
+                                <param>fr.pivot.collaboratif.util.*Test</param>
+                                <param>fr.pivot.collaboratif.entity.*Test</param>
+                            </targetTests>
+                            <mutationThreshold>60</mutationThreshold>
+                            <coverageThreshold>60</coverageThreshold>
+                            <outputFormats>
+                                <outputFormat>XML</outputFormat>
+                                <outputFormat>HTML</outputFormat>
+                            </outputFormats>
+                            <timestampedReports>false</timestampedReports>
+                            <withHistory>false</withHistory>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
+    <!--
+      distributionManagement inherited from the pivot-core parent pom — this module is not
+      published independently; it ships as part of the pivot-core reactor/app image.
+    -->
+</project>

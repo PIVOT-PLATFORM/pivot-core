@@ -29,8 +29,8 @@ spring:
 
   flyway:
     enabled: true
-    # EN53.1 — see application.yml for why "db/migration" became "db/migration/public"
-    # (avoids recursively picking up "db/migration/agilite").
+    # EN53.1/EN53.2 — see application.yml for why "db/migration" became "db/migration/public"
+    # (avoids recursively picking up "db/migration/agilite" and "db/migration/collaboratif").
     locations: classpath:db/migration/public,classpath:db/seeds
     baseline-on-migrate: false
 
@@ -130,10 +130,15 @@ pivot:
     avatars:
       # Never write into the repo working directory during tests — system temp dir instead.
       base-path: ${java.io.tmpdir:/tmp}/pivot-test-avatars
-  # EN53.1 — test-profile counterparts of the agilite properties in application.yml (ported
-  # from pivot-agilite-core's own application-test.yml — same reconciliation caveat applies).
+  # EN53.1/EN53.2 — test-profile counterparts of the agilite/collaboratif properties in
+  # application.yml (ported from each module's own application-test.yml — same reconciliation
+  # caveat applies). pivot.share.base-url and pivot.whiteboard.card.image.max-bytes are NOT
+  # overridden here — collaboratif's own application-test.yml does not override them either
+  # (inherits application.yml's defaults), same pattern followed here.
   activemq:
     # An unreachable relay target is unsafe to leave enabled in tests with no real broker.
+    # Shared key — governs both agilite's and collaboratif's relay registration, see
+    # application.yml.
     relay-enabled: false
   agilite:
     # EN53.1 Vague 1 (ADR-030) — same reasoning as application.yml: keeps any full-context test
@@ -148,3 +153,11 @@ pivot:
       phase-scheduler:
         # US20.1.2a — much shorter than production so timer-expiry ITs don't need long waits.
         fixed-delay-ms: 200
+  collaboratif:
+    # EN53.2 Vague 2 (ADR-030) — same reasoning as agilite above: keeps any full-context test of
+    # the aggregated app from reintroducing the last-write-wins broker/prefix collision that
+    # fr.pivot.config.WebSocketBrokerTopologyConfig resolves — see its JavaDoc, "Collaboratif"
+    # section.
+    websocket:
+      broker:
+        self-managed: false

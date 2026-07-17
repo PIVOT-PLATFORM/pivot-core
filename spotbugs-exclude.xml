@@ -128,4 +128,75 @@
         </Or>
     </Match>
 
+    <!--
+        EN53.2 (modulith Vague 2) — module collaboratif absorbé dans pivot-core. Report des
+        exclusions EI_EXPOSE_REP/EI_EXPOSE_REP2 que portait le spotbugs-exclude.xml propre à
+        pivot-collaboratif-core (entités JPA à getters/setters mutables requis par Hibernate,
+        beans singleton constructeur-injectés, et DTO records exposant des List/Map déjà
+        considérées immuables côté appelant). Même justification centralisée que les packages
+        shell et agilite ci-dessus (ADR-022, CLAUDE.md : exclusion centralisée en config, jamais
+        de suppression inline).
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Or>
+            <!-- Module Collaboratif — Whiteboard (US08.1.x) :
+                 JPA entities (Board, BoardMember) require mutable getters/setters for Hibernate;
+                 service (BoardService) and controller (BoardController) store constructor-injected
+                 singleton beans (repositories, WhiteboardModuleCheck). -->
+            <Package name="fr.pivot.collaboratif.whiteboard.board"/>
+            <Package name="fr.pivot.collaboratif.whiteboard.board.dto"/>
+            <!-- US08.2.1 — BoardShareService/BoardShareController store constructor-injected
+                 singleton beans (repositories, StringRedisTemplate, @Value String). -->
+            <Package name="fr.pivot.collaboratif.whiteboard.share"/>
+            <Package name="fr.pivot.collaboratif.whiteboard.share.dto"/>
+            <!-- US08.2.2 — BoardJoinService/BoardJoinController/JoinRateLimitService store
+                 constructor-injected singleton beans (repositories, StringRedisTemplate). -->
+            <Package name="fr.pivot.collaboratif.whiteboard.join"/>
+            <Package name="fr.pivot.collaboratif.whiteboard.join.dto"/>
+            <!-- US08.2.3 — BoardMemberService/BoardMemberController store constructor-injected
+                 singleton beans (repositories). -->
+            <Package name="fr.pivot.collaboratif.whiteboard.member"/>
+            <Package name="fr.pivot.collaboratif.whiteboard.member.dto"/>
+            <!-- EN08.1 — WebSocket STOMP isolation: MembershipCacheService, WhiteboardChannelInterceptor,
+                 WhiteboardPresenceRegistry store constructor-injected singleton beans (repositories,
+                 StringRedisTemplate, SimpMessagingTemplate); PresencePayload is a DTO record used
+                 for STOMP broadcasting (mutable List is intentional — JSON-serialised by the broker). -->
+            <Package name="fr.pivot.collaboratif.whiteboard.ws"/>
+            <!-- US08.3.1 — Canvas WS actions: CanvasActionService, ParticipantMetaStore, ColorPaletteService,
+                 WhiteboardActionController store constructor-injected singleton beans (repository, messaging
+                 template, ObjectMapper, MeterRegistry); DTO records expose mutable Map/List for JSON transport. -->
+            <Package name="fr.pivot.collaboratif.whiteboard.canvas"/>
+            <Package name="fr.pivot.collaboratif.whiteboard.canvas.dto"/>
+            <!-- US08.6.6 — TABLE card content sanitisation: TableCardContentSanitizer stores a
+                 constructor-injected singleton bean (the shared Jackson 3 ObjectMapper), same
+                 rationale as the parent fr.pivot.collaboratif.whiteboard.canvas package above. -->
+            <Package name="fr.pivot.collaboratif.whiteboard.canvas.table"/>
+            <!-- US08.4.1 — Board-from-template: WhiteboardTemplateService/WhiteboardTemplateController
+                 store constructor-injected singleton beans (repositories, CanvasElementValidator,
+                 WhiteboardModuleCheck); WhiteboardTemplate/WhiteboardTemplateElement are JPA
+                 entities (mutable state required by Hibernate, even though read-only from the
+                 application's point of view — rows are Flyway-seeded only). -->
+            <Package name="fr.pivot.collaboratif.whiteboard.template"/>
+            <Package name="fr.pivot.collaboratif.whiteboard.template.dto"/>
+            <!-- Vote / dot-voting — VoteActionService/VoteQueryService/VoteController store
+                 constructor-injected singleton beans (repositories, SimpMessagingTemplate,
+                 ObjectMapper); VoteSession/Vote are JPA entities (mutable state required by
+                 Hibernate); VoteSessionResponse/VoteResponse are DTO records that expose mutable
+                 List for JSON transport (same rationale as the canvas.dto package above). -->
+            <Package name="fr.pivot.collaboratif.whiteboard.vote"/>
+            <Package name="fr.pivot.collaboratif.whiteboard.vote.dto"/>
+            <!-- US08.13.1 — Klaxoon import + undo: WhiteboardImportService/WhiteboardImportController/
+                 ImportRateLimitService/ImportBodySizeLimitFilter store constructor-injected singleton
+                 beans (repositories, StringRedisTemplate, SimpMessagingTemplate via WhiteboardBroadcastService,
+                 ObjectMapper); DTO records (request/response/broadcast payloads) expose mutable List
+                 for JSON transport (same rationale as the canvas.dto package above). -->
+            <Package name="fr.pivot.collaboratif.whiteboard.importer"/>
+            <Package name="fr.pivot.collaboratif.whiteboard.importer.dto"/>
+            <Package name="fr.pivot.collaboratif.context"/>
+            <Package name="fr.pivot.collaboratif.config"/>
+            <Package name="fr.pivot.collaboratif.exception"/>
+        </Or>
+    </Match>
+
 </FindBugsFilter>

@@ -1,0 +1,109 @@
+# EN53.2 Vague 2 — adapted from pivot-collaboratif-core's standalone application-test.yml.
+# Relocated from src/main/resources (standalone repo) to src/test/resources (library module —
+# a "test" profile file has no business shipping inside the production library JAR aggregated
+# by pivot-core-app).
+#
+# Scope: this file exists ONLY to let this module's own test suite (BoardControllerIT,
+# WhiteboardCanvasIT, WebSocketConfigRelayIT, ... — the vast majority use plain @SpringBootTest
+# with no explicit `classes=`, i.e. a full context) boot in isolation when this module is tested
+# on its own within the reactor. It is NOT loaded by pivot-core-app (test resources are never
+# packaged into the consumed jar), so nothing here needs to be "handed off" to the app agent as
+# production config — see application.yml (main resources) for the properties that DO need an
+# app-side production equivalent.
+#
+# spring.datasource is intentionally absent: every IT here goes through
+# AbstractCollaboratifIntegrationTest (module-wide singleton Postgres/Redis containers, see
+# CollaboratifTestContainers) and injects the real coordinates via @DynamicPropertySource,
+# overriding whatever host/port/schema is written below.
+#
+# server.servlet.context-path — EN53.2 Vague 2 — set to the aggregated app's own global "/api"
+# (matching pivot-core-app's real application.yml and the agilite module's own Vague 1 fix),
+# NOT "/api/collaboratif" as this file previously had it.
+#
+# *** ROUTING COLLISION RISK — RESOLVED (EN53.2 Vague 2 security/routing pass) ***
+# Mirroring agilite's own Vague 1 fix: every one of this module's 9 REST controllers now composes
+# its class-level @RequestMapping as `CollaboratifApiPaths.BASE + "/<resource>"` (BASE =
+# "/collaboratif"), so under the aggregated app's global "/api" context-path they resolve to
+# `/api/collaboratif/whiteboard/boards`, `/api/collaboratif/whiteboard/join`,
+# `/api/collaboratif/whiteboard/me`, `/api/collaboratif/whiteboard/templates`, etc. — restoring
+# the exact contract `pivot-collaboratif-ui` already expects, this time without depending on any
+# per-module deployment-time context-path. See fr.pivot.collaboratif.web.CollaboratifApiPaths's
+# class JavaDoc for the full rationale.
+#
+# MockMvc-based tests (webAppContextSetup) bypass context-path entirely, per their own comments —
+# this module's own IT suite asserts directly against the "/collaboratif/whiteboard/..." paths now
+# baked into the controllers' own @RequestMapping (updated alongside the controllers in this same
+# pass).
+#
+# The WebSocket endpoint (CollaboratifWebSocketConfig#registerStompEndpoints) is registered at
+# CollaboratifApiPaths.BASE + "/ws/whiteboard" for the same reason, so it resolves to
+# "/api/collaboratif/ws/whiteboard" — unchanged from the standalone app's contract.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: collaboratif
+
+  flyway:
+    enabled: true
+    # EN53.2 — relocated from classpath:db/migration (collided with the other modules'
+    # V1__schema_init.sql at the shared classpath root) to the collaboratif-scoped subfolder.
+    locations: classpath:db/migration/collaboratif
+    baseline-on-migrate: false
+    schemas: collaboratif
+    default-schema: collaboratif
+
+  data:
+    redis:
+      # host/port injected by @DynamicPropertySource (Testcontainers) — defaults below unused
+      # in practice.
+      host: localhost
+      port: 6379
+
+server:
+  port: ${SERVER_PORT:8083}
+  servlet:
+    context-path: /api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+
+logging:
+  level:
+    fr.pivot: DEBUG
+    org.springframework.web: DEBUG
+    org.flywaydb: INFO
+
+pivot:
+  cors:
+    allowed-origins: http://localhost:4200
+  share:
+    base-url: http://localhost:4200
+  activemq:
+    # EN07.3 — the relay is entirely disabled in the "test" profile. Empirically, merely
+    # registering a StompBrokerRelay whose target is unreachable — regardless of whether the
+    # target is a hostname or a closed numeric port — cascades into ConnectionLostException/
+    # "Connection closed" failures on the whiteboard's own SimpleBroker WebSocket sessions in
+    # WhiteboardWebSocketIT/WhiteboardCanvasIT/WhiteboardPresenceIT (verified: switching the
+    # target from "activemq" to "127.0.0.1" alone did not fix it — the two broker registrations
+    # are not as runtime-isolated as the MessageBrokerRegistry API suggests once one of them is
+    # actually failing to connect). Disabling registration entirely for every test that doesn't
+    # care about EN07.3 restores byte-for-byte pre-EN07.3 behavior. See WebSocketConfig's class
+    # JavaDoc. WebSocketConfigRelayIT (the one test that DOES care) overrides relay-enabled back
+    # to true via @DynamicPropertySource, against a real Testcontainers broker.
+    relay-enabled: false
+    relay-host: 127.0.0.1
+    relay-port: 61613
+  whiteboard:
+    card:
+      image:
+        max-bytes: 5242880

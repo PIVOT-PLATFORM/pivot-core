@@ -1,0 +1,80 @@
+# EN53.2 Vague 2 — adapted from pivot-collaboratif-core's standalone application.yml.
+#
+# REMOVED (standalone-app boot config now owned by pivot-core-app; do NOT re-add here):
+#   - spring.application.name           (single app identity, owned by app)
+#   - spring.datasource.*               (single shared datasource, owned by app)
+#   - spring.jpa.*                      (global JPA/Hibernate settings, owned by app — the
+#                                        source repo's hibernate.default_schema: collaboratif
+#                                        must be folded into the app's aggregate JPA config,
+#                                        together with agilite's own default_schema need)
+#   - spring.flyway.*                   (global Flyway bootstrap; app's aggregate `locations`
+#                                        list MUST include classpath:db/migration/collaboratif
+#                                        in addition to this module's own
+#                                        db/migration/collaboratif/V1__schema_init.sql..V6__..sql —
+#                                        schema "collaboratif", baseline-on-migrate: true,
+#                                        baseline-version: 0, same as before)
+#   - spring.data.redis.*               (single shared Redis connection, owned by app)
+#   - server.port / server.servlet.context-path / server.tomcat.remoteip.*  (single app
+#                                        listener, owned by app)
+#   - management.*                      (single actuator surface, owned by app)
+#   - logging.level.*                   (global logging config, owned by app)
+#
+# NOT CARRIED OVER: application-prod.yml (EN07.2 Docker-secrets configtree import). The
+# aggregated app owns a single production secrets surface — see agilite's own application.yml,
+# which never had a module-level application-prod.yml either. The app integrator must ensure
+# `secret.datasource-password` (or whatever key backs the shared datasource password) is
+# resolvable at the app level; this module never reads it directly.
+#
+# KEPT — genuinely domain-owned defaults consumed directly by fr.pivot.collaboratif.* code:
+#   - pivot.share.base-url                                (BoardShareService — invitation links)
+#   - pivot.whiteboard.card.image.max-bytes               (ImageCardContentValidator)
+#
+# CARRIED OVER FOR MODULE-LEVEL TEST SELF-SUFFICIENCY ONLY (pivot.activemq.*, pivot.cors.*):
+#   WebSocketConfig's constructor binds `pivot.activemq.relay-host`, `pivot.activemq.relay-port`
+#   and `pivot.cors.allowed-origins` via @Value with NO inline default — Spring context
+#   creation fails outright if they are unresolved. They are kept here so this module's own
+#   test suite (`mvn test` run against just this module in the reactor) can boot in isolation —
+#   same rationale as the agilite module's own application.yml (EN53.1 Vague 1).
+#
+#   RISK — DO NOT ASSUME THIS FILE MERGES WITH pivot-core-app's application.yml AT RUNTIME:
+#   when this module's jar and pivot-core-app's own classes/resources are both on the runtime
+#   classpath, Spring Boot loads config from the classpath by *name* (application.yml,
+#   application-{profile}.yml) — if two JARs on the classpath each ship a file with the exact
+#   same name at the classpath root, only ONE is loaded (first match, classloader-order
+#   dependent, NOT a deep merge of both). This file must therefore NOT be relied upon to
+#   supply pivot.activemq.*/pivot.cors.*/pivot.share.*/pivot.whiteboard.* in the aggregated app.
+#   The app integrator MUST ensure all of the following are defined in pivot-core-app's own
+#   application.yml:
+#     - pivot.activemq.relay-host / pivot.activemq.relay-port / pivot.activemq.relay-enabled
+#       (agilite's own application.yml already documents this same requirement — a single
+#       shared ActiveMQ relay config satisfies both modules)
+#     - pivot.cors.allowed-origins (already exists there today with an identical default)
+#     - pivot.share.base-url (new key — did not exist anywhere in pivot-core-app before;
+#       required or BoardShareService's invitation-link composition fails)
+#     - pivot.whiteboard.card.image.max-bytes (new key — required or ImageCardContentValidator
+#       falls back to whatever inline default it may or may not have; verify against the
+#       current source before assuming a safe default exists)
+pivot:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+  share:
+    # Base URL of the Angular frontend — used to compose invitation links.
+    # Override in production via PIVOT_SHARE_BASE_URL.
+    base-url: ${PIVOT_SHARE_BASE_URL:http://localhost:4200}
+  activemq:
+    # EN07.3 — shared ActiveMQ broker (KahaDB persistence, built in pivot-core), STOMP relay
+    # for the collaboratif-domain cross-module bus (/topic/collaboratif.*). Defaults match the
+    # Docker Compose service name/port defined in pivot-core (dev + prod). relay-enabled is
+    # overridden to false in this module's own src/test/resources/application-test.yml — see
+    # WebSocketConfig's class JavaDoc.
+    relay-enabled: ${PIVOT_ACTIVEMQ_RELAY_ENABLED:true}
+    relay-host: ${PIVOT_ACTIVEMQ_RELAY_HOST:activemq}
+    relay-port: ${PIVOT_ACTIVEMQ_RELAY_PORT:61613}
+  whiteboard:
+    card:
+      image:
+        # US08.6.4 — upper bound (bytes) on a CARD_CREATE IMAGE's decoded Base64 payload,
+        # enforced by ImageCardContentValidator before persistence. 5 MiB comfortably fits a
+        # dimensioned-down screenshot/photo (the client already caps display size to 700x600px
+        # before sending) while bounding worst-case `card` row size.
+        max-bytes: ${PIVOT_WHITEBOARD_IMAGE_MAX_BYTES:5242880}

@@ -1,0 +1,2126 @@
+package fr.pivot.collaboratif.whiteboard.canvas;
+
+import fr.pivot.collaboratif.whiteboard.board.BoardMemberRepository;
+import fr.pivot.collaboratif.whiteboard.board.BoardRole;
+import fr.pivot.collaboratif.whiteboard.canvas.dto.BoardFieldDto;
+import fr.pivot.collaboratif.whiteboard.canvas.dto.BroadcastCanvasMessage;
+import fr.pivot.collaboratif.whiteboard.canvas.dto.CanvasActionMessage;
+import fr.pivot.collaboratif.whiteboard.canvas.dto.CardConnectionDto;
+import fr.pivot.collaboratif.whiteboard.canvas.dto.CardDto;
+import fr.pivot.collaboratif.whiteboard.canvas.dto.FieldValueDto;
+import fr.pivot.collaboratif.whiteboard.canvas.dto.FrameDto;
+import fr.pivot.collaboratif.whiteboard.canvas.dto.ParticipantInfo;
+import fr.pivot.collaboratif.whiteboard.canvas.opengraph.CardContentEnrichmentRequestedEvent;
+import fr.pivot.collaboratif.whiteboard.canvas.table.TableCardContentSanitizer;
+import fr.pivot.collaboratif.whiteboard.ws.ErrorPayload;
+import fr.pivot.collaboratif.whiteboard.ws.StompPrincipal;
+import fr.pivot.collaboratif.whiteboard.ws.WhiteboardPresenceRegistry;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
+
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalLong;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * Business logic for whiteboard canvas STOMP actions (US08.3.1).
+ *
+ * <p>Dispatches incoming canvas action messages after type validation, enforces role
+ * constraints (VIEWER cannot send UNDO), persists DRAW events in the database, and
+ * broadcasts results to the appropriate STOMP topics.
+ *
+ * <p>Broadcast destinations:
+ * <ul>
+ *   <li>{@code /topic/whiteboard/{boardId}} — all canvas actions (JOIN, LEAVE, DRAW,
+ *       CURSOR_MOVE, UNDO, CARD_*) enriched with server-side fields (colour for JOIN), plus
+ *       the {@code board:state} reply on JOIN (below).</li>
+ *   <li>{@code /topic/whiteboard/{boardId}/presence} — PARTICIPANTS_UPDATE with the
+ *       full list of connected participants, emitted on every JOIN and LEAVE.</li>
+ * </ul>
+ *
+ * <p><strong>Sender exclusion for {@code card:moved}/{@code card:resized} (fix/EN08.4).</strong>
+ * Every broadcast still goes to the whole room — the simple broker has no built-in
+ * "send to all but one" primitive on a shared topic, and building a per-subscriber targeted
+ * fanout server-side would be disproportionate for this Socle. Instead, {@link #handleCardMove}
+ * and {@link #handleCardResize} alone echo back a client-supplied {@code senderSessionId} field
+ * (an opaque, client-generated correlation id — not the server's STOMP {@code sessionId}; see
+ * {@link #handleCardMove}'s Javadoc for why) when the incoming action carries one; the frontend
+ * filters client-side, ignoring the echo when {@code senderSessionId} matches its own value
+ * (avoids the visual jitter of re-applying a move/resize it already applied optimistically).
+ * {@code card:recolored}/{@code card:deleted} are deliberately left unchanged — broadcast to the
+ * whole room including the sender, same as before this fix. {@code card:updated} is unaffected
+ * by sender exclusion too, but its payload shape did change in this same fix — see
+ * {@link #handleCardUpdate}'s Javadoc.
+ *
+ * <p><strong>Wire naming</strong> is resolved via {@link CanvasEventType#fromWire} (incoming)
+ * and {@link CanvasEventType#wireOut()} (outgoing) — see that class's Javadoc for why these
+ * differ from the bare Java enum name (EN08.4 recette finding, #68).
+ *
+ * <p><strong>{@code board:state} on JOIN</strong> is broadcast to the whole room on the main
+ * topic (not a per-user queue) — the frontend's {@code StompBoardTransport} subscribes to a
+ * single topic and has no per-user queue subscription, so a targeted
+ * {@code convertAndSendToUser} reply would never reach it. Every already-connected client
+ * harmlessly re-applies the same (idempotent) state; {@code role} is deliberately omitted
+ * from this payload since it is per-recipient and this is a room-wide broadcast — role stays
+ * authoritative via the REST board GET.
+ *
+ * <p>Conflict strategy: Last-Write-Wins — the most recently received DRAW event wins.
+ * No OT/CRDT resolution is implemented in the Socle.
+ *
+ * <p><strong>Transactions (W4)</strong> are scoped per action rather than by a blanket
+ * class-level {@code @Transactional}: {@link #handle} routes each event to the mode its DB
+ * footprint needs via a {@link TransactionTemplate}. High-frequency no-DB events (cursor, undo,
+ * draw — persisted off-thread since the DRAW async writer —, timer, card-editing, leave) never
+ * open a database transaction, so a burst of cursor moves no longer pins a pooled JDBC
+ * connection; JOIN's {@code board:state} snapshot runs read-only; every mutation runs in a
+ * single read-write transaction so multi-statement handlers ({@link #handleCardUpdate},
+ * {@link #handleConnectionCreate}, {@link #handleBoardReset}, …) stay atomic. Broadcasts still
+ * happen inside the write transaction (the broker is the in-memory {@code SimpleBroker}, so the
+ * cost is negligible) — moving them strictly after commit is deliberately left as a follow-up.
+ */
+@Service
+public class CanvasActionService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(CanvasActionService.class);
+
+    private static final String BOARD_TOPIC_PREFIX = "/topic/whiteboard/";
+
+    /** Micrometer counter name for throttled canvas messages (declared in US08.3.1). */
+    static final String THROTTLED_COUNTER = "messages.throttled.total";
+
+    /**
+     * Finite, whitelisted set of connector line shapes accepted by
+     * {@link #handleConnectionUpdate} and {@link #handleConnectionCreate} — English wire values
+     * matching {@link CardConnection}'s own creation-time default ({@code curved}, US08.7.1). A
+     * {@code shape} outside this set is rejected for that field alone (US08.7.2, AC5).
+     */
+    static final Set<String> ALLOWED_CONNECTION_SHAPES = Set.of("straight", "curved", "orthogonal");
+
+    /**
+     * Finite, whitelisted set of connector arrowhead styles accepted by
+     * {@link #handleConnectionUpdate} and {@link #handleConnectionCreate} — English wire values
+     * matching {@link CardConnection}'s own creation-time default ({@code none}, US08.7.1). An
+     * {@code arrow} outside this set is rejected for that field alone (US08.7.2, AC5).
+     */
+    static final Set<String> ALLOWED_CONNECTION_ARROWS = Set.of("none", "start", "end", "both");
+
+    /**
+     * Finite, whitelisted set of connector line styles accepted by
+     * {@link #handleConnectionUpdate} and {@link #handleConnectionCreate} — mirrors the frontend's
+     * {@code ConnLineStyle} (US08.7.2, V6). Supersedes the boolean {@code dashed}, which has no
+     * room for a third style. A value outside this set is rejected for that field alone.
+     */
+    static final Set<String> ALLOWED_LINE_STYLES = Set.of("solid", "dashed", "dotted");
+
+    /**
+     * Finite, whitelisted set of connector end shapes accepted by {@link #handleConnectionUpdate}
+     * and {@link #handleConnectionCreate} — mirrors the frontend's {@code ConnCap} (US08.7.2, V6).
+     * Applies to both {@code startCap} and {@code endCap}, which together supersede {@code arrow}
+     * (one value for both ends at once). A value outside this set is rejected for that field alone.
+     */
+    static final Set<String> ALLOWED_CONNECTION_CAPS = Set.of("none", "arrow", "triangle", "circle", "diamond");
+
+    /**
+     * Events whose handler performs no synchronous JPA work — pure broadcast, Redis store, or the
+     * off-thread async DRAW writer — and therefore must not open a database transaction (W4). Every
+     * other event runs in a transaction (JOIN read-only, all mutations read-write); see
+     * {@link #handle}. {@code RESET} is inbound-dropped (server-emitted only) so it does no DB work
+     * either.
+     */
+    private static final Set<CanvasEventType> NO_TX_EVENTS = Set.of(
+            CanvasEventType.LEAVE, CanvasEventType.DRAW, CanvasEventType.CURSOR_MOVE,
+            CanvasEventType.UNDO, CanvasEventType.CARD_EDITING, CanvasEventType.TIMER_START,
+            CanvasEventType.TIMER_STOP, CanvasEventType.RESET);
+
+    private final SimpMessagingTemplate messagingTemplate;
+    /** Read-write transaction runner for mutation handlers (W4). */
+    private final TransactionTemplate writeTx;
+    /** Read-only transaction runner for the JOIN {@code board:state} snapshot (W4). */
+    private final TransactionTemplate readOnlyTx;
+    private final CanvasEventWriter canvasEventWriter;
+    private final CardRepository cardRepository;
+    private final CardConnectionRepository cardConnectionRepository;
+    private final FrameRepository frameRepository;
+    private final BoardFieldRepository boardFieldRepository;
+    private final CardFieldValueRepository cardFieldValueRepository;
+    private final ColorPaletteService colorPaletteService;
+    private final ParticipantMetaStore participantMetaStore;
+    private final BoardMemberRepository boardMemberRepository;
+    private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
+    private final WhiteboardPresenceRegistry presenceRegistry;
+    private final ParticipantsBroadcastService participantsBroadcastService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final ShapeStyleSanitizer shapeStyleSanitizer;
+    private final ImageCardContentValidator imageCardContentValidator;
+    private final TableCardContentSanitizer tableCardContentSanitizer;
+    private final BoardTimerStore boardTimerStore;
+
+    /**
+     * Creates the service.
+     *
+     * @param messagingTemplate            STOMP broadcast template
+     * @param canvasEventWriter            off-thread async writer for DRAW event persistence
+     * @param cardRepository               JPA repository for durable {@link Card} state (EN08.4)
+     * @param cardConnectionRepository     JPA repository for durable {@link CardConnection}
+     *                                     state (US08.7.1)
+     * @param frameRepository              JPA repository for durable {@link Frame} state (EN08, Frames)
+     * @param boardFieldRepository         JPA repository for durable {@link BoardField} state (US08.10.1)
+     * @param cardFieldValueRepository     JPA repository for durable {@link CardFieldValue} state (US08.10.2)
+     * @param colorPaletteService          deterministic colour assignment
+     * @param participantMetaStore         Redis store for participant metadata
+     * @param boardMemberRepository        JPA repository for role lookups
+     * @param objectMapper                 Jackson 3 mapper for payload serialisation
+     * @param meterRegistry                Micrometer registry for operational metrics
+     * @param presenceRegistry             session-liveness registry, updated on JOIN/LEAVE so
+     *                                     that a later WebSocket disconnect can tell whether it
+     *                                     was the user's last active session on the board
+     *                                     (resolution of #32)
+     * @param participantsBroadcastService shared PARTICIPANTS_UPDATE broadcaster, also used by
+     *                                     {@link WhiteboardPresenceRegistry} on disconnect
+     *                                     cleanup — single source of truth for this topic
+     * @param eventPublisher                Spring event bus — used to request an asynchronous
+     *                                       OpenGraph enrichment pass after a LINK/TEXT/LABEL
+     *                                       card is created or updated (US08.6.5); see {@link
+     *                                       CardContentEnrichmentRequestedEvent}
+     * @param shapeStyleSanitizer            sanitises {@link CardType#SHAPE} style content
+     *                                       ({@code kind}/{@code stroke}/{@code fill}/
+     *                                       {@code opacity}/{@code rotation}, pipe-delimited)
+     *                                       before persistence (US08.6.3, correctif §6.4)
+     * @param imageCardContentValidator      server-side MIME/size validation for
+     *                                       {@link CardType#IMAGE} content (US08.6.4)
+     * @param tableCardContentSanitizer      defence-in-depth sanitizer applied to every
+     *                                       CARD_CREATE/CARD_UPDATE content string — a no-op
+     *                                       for any content that is not TABLE-shaped (US08.6.6)
+     * @param boardTimerStore                ephemeral Redis store for the shared facilitation
+     *                                       timer ({@code timer:start}/{@code timer:stop})
+     * @param transactionManager             backs the per-action {@link TransactionTemplate}s (W4)
+     *                                       used to scope each event's transaction — see the class
+     *                                       Javadoc and {@link #handle}
+     */
+    public CanvasActionService(
+            final SimpMessagingTemplate messagingTemplate,
+            final CanvasEventWriter canvasEventWriter,
+            final CardRepository cardRepository,
+            final CardConnectionRepository cardConnectionRepository,
+            final FrameRepository frameRepository,
+            final BoardFieldRepository boardFieldRepository,
+            final CardFieldValueRepository cardFieldValueRepository,
+            final ColorPaletteService colorPaletteService,
+            final ParticipantMetaStore participantMetaStore,
+            final BoardMemberRepository boardMemberRepository,
+            final ObjectMapper objectMapper,
+            final MeterRegistry meterRegistry,
+            final WhiteboardPresenceRegistry presenceRegistry,
+            final ParticipantsBroadcastService participantsBroadcastService,
+            final ApplicationEventPublisher eventPublisher,
+            final ShapeStyleSanitizer shapeStyleSanitizer,
+            final ImageCardContentValidator imageCardContentValidator,
+            final TableCardContentSanitizer tableCardContentSanitizer,
+            final BoardTimerStore boardTimerStore,
+            final PlatformTransactionManager transactionManager) {
+        this.messagingTemplate = messagingTemplate;
+        this.writeTx = new TransactionTemplate(transactionManager);
+        TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
+        readOnly.setReadOnly(true);
+        this.readOnlyTx = readOnly;
+        this.canvasEventWriter = canvasEventWriter;
+        this.cardRepository = cardRepository;
+        this.cardConnectionRepository = cardConnectionRepository;
+        this.frameRepository = frameRepository;
+        this.boardFieldRepository = boardFieldRepository;
+        this.cardFieldValueRepository = cardFieldValueRepository;
+        this.colorPaletteService = colorPaletteService;
+        this.participantMetaStore = participantMetaStore;
+        this.boardMemberRepository = boardMemberRepository;
+        this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
+        this.presenceRegistry = presenceRegistry;
+        this.participantsBroadcastService = participantsBroadcastService;
+        this.eventPublisher = eventPublisher;
+        this.shapeStyleSanitizer = shapeStyleSanitizer;
+        this.imageCardContentValidator = imageCardContentValidator;
+        this.tableCardContentSanitizer = tableCardContentSanitizer;
+        this.boardTimerStore = boardTimerStore;
+    }
+
+    /**
+     * Handles an incoming canvas action from an authenticated STOMP session.
+     *
+     * <p>Validates the message type against the whitelist, enforces role constraints
+     * for UNDO (VIEWER blocked), and dispatches to the appropriate handler.
+     *
+     * @param boardId   the target board UUID (from the STOMP destination path variable)
+     * @param message   the incoming canvas action
+     * @param principal the authenticated STOMP session principal
+     * @param sessionId the STOMP session ID of the sender (used for the presence liveness
+     *                  registry on JOIN/LEAVE, resolution of #32)
+     */
+    public void handle(
+            final UUID boardId,
+            final CanvasActionMessage message,
+            final StompPrincipal principal,
+            final String sessionId) {
+        if (message.type() == null) {
+            LOG.warn("Received canvas message with null type — board={} user={}", boardId, principal.userId());
+            return;
+        }
+        CanvasEventType eventType = CanvasEventType.fromWire(message.type());
+        if (eventType == null) {
+            LOG.warn("Unknown canvas action type '{}' — dropped board={} user={}",
+                    message.type(), boardId, principal.userId());
+            return;
+        }
+        if (eventType == CanvasEventType.UNDO && isViewer(boardId, principal.userId())) {
+            LOG.warn("UNDO rejected: VIEWER role cannot undo — user={} board={}", principal.userId(), boardId);
+            messagingTemplate.convertAndSendToUser(
+                    principal.getName(), "/queue/errors",
+                    new ErrorPayload("VIEWER role cannot send UNDO"));
+            return;
+        }
+        if (eventType == CanvasEventType.BOARD_RESET && !isOwner(boardId, principal.userId())) {
+            // The whole-board wipe is the most destructive board action — OWNER only, mirroring
+            // the reference whiteboard. Silent refusal (no error frame), same posture as the
+            // card/connection mutation refusals below.
+            LOG.warn("board:reset rejected: OWNER role required — user={} board={}",
+                    principal.userId(), boardId);
+            return;
+        }
+        if (requiresCanWrite(eventType) && isViewer(boardId, principal.userId())) {
+            // Deliberately no dedicated error frame here, unlike UNDO above — a silent refusal
+            // matches the reference whiteboard's behaviour for every card:*/connection:*
+            // mutation (§3.12/§3.6 of the parity spec), whereas UNDO's targeted error is a
+            // pre-existing, unrelated behaviour of this repo that EN08.4/US08.7.1 do not extend
+            // to card/connection mutations (Gate 1 decision, see EN08.4's backlog file).
+            LOG.warn("Mutation rejected: VIEWER role cannot write — type={} user={} board={}",
+                    eventType, principal.userId(), boardId);
+            return;
+        }
+        // W4 — run each handler in the transaction mode its DB footprint needs (see class Javadoc):
+        // no-DB events open no transaction, JOIN's snapshot runs read-only, and every mutation runs
+        // in a single read-write transaction so multi-statement handlers stay atomic.
+        if (NO_TX_EVENTS.contains(eventType)) {
+            dispatchAction(eventType, boardId, message, principal, sessionId);
+        } else if (eventType == CanvasEventType.JOIN) {
+            readOnlyTx.executeWithoutResult(status ->
+                    dispatchAction(eventType, boardId, message, principal, sessionId));
+        } else {
+            writeTx.executeWithoutResult(status ->
+                    dispatchAction(eventType, boardId, message, principal, sessionId));
+        }
+    }
+
+    /**
+     * Dispatches a validated, authorised action to its handler. Extracted from {@link #handle} so
+     * the caller can wrap it in the transaction mode the event needs (see {@link #handle}'s routing
+     * and {@link #NO_TX_EVENTS}); this method is itself transaction-agnostic.
+     *
+     * @param eventType the resolved, authorised event type
+     * @param boardId   the target board UUID
+     * @param message   the incoming canvas action
+     * @param principal the authenticated STOMP session principal
+     * @param sessionId the sender's STOMP session id (JOIN/LEAVE presence tracking)
+     */
+    private void dispatchAction(
+            final CanvasEventType eventType,
+            final UUID boardId,
+            final CanvasActionMessage message,
+            final StompPrincipal principal,
+            final String sessionId) {
+        switch (eventType) {
+            case JOIN -> handleJoin(boardId, message, principal, sessionId);
+            case LEAVE -> handleLeave(boardId, principal, sessionId);
+            case DRAW -> handleDraw(boardId, message, principal);
+            case CURSOR_MOVE -> handleCursorMove(boardId, message, principal);
+            case UNDO -> handleUndo(boardId, message, principal);
+            case CARD_CREATE -> handleCardCreate(boardId, message, principal);
+            case CARD_MOVE -> handleCardMove(boardId, message, principal);
+            case CARD_RESIZE -> handleCardResize(boardId, message, principal);
+            case CARD_UPDATE -> handleCardUpdate(boardId, message, principal);
+            case CARD_RECOLOR -> handleCardRecolor(boardId, message, principal);
+            case CARD_DELETE -> handleCardDelete(boardId, message, principal);
+            case CARD_LAYER -> handleCardLayer(boardId, message, principal);
+            case CARD_LOCK -> handleCardLock(boardId, message, principal);
+            case CARDS_GROUP -> handleCardsGroup(boardId, message, principal);
+            case CARDS_UNGROUP -> handleCardsUngroup(boardId, message, principal);
+            case CARDS_GROUP_COLOR -> handleCardsGroupColor(boardId, message, principal);
+            case CARD_EDITING -> handleCardEditing(boardId, message, principal);
+            case CONNECTION_CREATE -> handleConnectionCreate(boardId, message, principal);
+            case CONNECTION_DELETE -> handleConnectionDelete(boardId, message, principal);
+            case CONNECTION_UPDATE -> handleConnectionUpdate(boardId, message, principal);
+            case FRAME_CREATE -> handleFrameCreate(boardId, message, principal);
+            case FRAME_MOVE -> handleFrameMove(boardId, message, principal);
+            case FRAME_RESIZE -> handleFrameResize(boardId, message, principal);
+            case FRAME_UPDATE -> handleFrameUpdate(boardId, message, principal);
+            case FRAME_DELETE -> handleFrameDelete(boardId, message, principal);
+            case FRAME_LAYER -> handleFrameLayer(boardId, message, principal);
+            case TIMER_START -> handleTimerStart(boardId, message, principal);
+            case TIMER_STOP -> handleTimerStop(boardId, principal);
+            case BOARD_RESET -> handleBoardReset(boardId, principal);
+            case BOARDFIELD_CREATE -> handleBoardFieldCreate(boardId, message, principal);
+            case BOARDFIELD_UPDATE -> handleBoardFieldUpdate(boardId, message, principal);
+            case BOARDFIELD_DELETE -> handleBoardFieldDelete(boardId, message, principal);
+            case CARDFIELD_SET -> handleCardFieldSet(boardId, message, principal);
+            case CARDFIELD_CLEAR -> handleCardFieldClear(boardId, message, principal);
+            // RESET is server-emitted only (US08.2.4, via the REST reset endpoint) — a client
+            // must never be able to trigger a canvas reset over STOMP, so an inbound RESET
+            // frame is silently dropped here (same policy as an unknown type).
+            case RESET -> LOG.warn(
+                    "Inbound RESET dropped — RESET is server-emitted only, board={} user={}",
+                    boardId, principal.userId());
+        }
+    }
+
+    /**
+     * Returns whether the given event type mutates a durable board-state table ({@link Card},
+     * {@link CardConnection}, {@link Frame} or {@link BoardField}) and therefore requires
+     * {@code canWrite} (OWNER or EDITOR) — every {@code CARD_*}, {@code CONNECTION_*},
+     * {@code FRAME_*} and {@code BOARDFIELD_*} type (there is no read-only
+     * card/connection/frame/field action over STOMP, board-state on JOIN being the read path),
+     * plus the shared facilitation timer controls ({@code timer:start}/{@code timer:stop}) — a
+     * VIEWER can watch the timer but not drive it. {@code BOARD_RESET} is deliberately excluded
+     * here: it needs the stricter OWNER-only guard applied separately in {@link #handle} (EDITOR
+     * is enough to write cards but not to wipe the whole board).
+     *
+     * @param eventType the event type to check
+     * @return {@code true} for any {@code CARD_*}/{@code CONNECTION_*}/{@code FRAME_*}/{@code TIMER_*} type
+     */
+    private boolean requiresCanWrite(final CanvasEventType eventType) {
+        return switch (eventType) {
+            case CARD_CREATE, CARD_MOVE, CARD_RESIZE, CARD_UPDATE, CARD_RECOLOR, CARD_DELETE, CARD_LAYER,
+                    CARD_LOCK, CARDS_GROUP, CARDS_UNGROUP, CARDS_GROUP_COLOR,
+                    CONNECTION_CREATE, CONNECTION_DELETE, CONNECTION_UPDATE,
+                    FRAME_CREATE, FRAME_MOVE, FRAME_RESIZE, FRAME_UPDATE, FRAME_DELETE, FRAME_LAYER,
+                    BOARDFIELD_CREATE, BOARDFIELD_UPDATE, BOARDFIELD_DELETE,
+                    CARDFIELD_SET, CARDFIELD_CLEAR,
+                    TIMER_START, TIMER_STOP -> true;
+            // CARD_EDITING is an ephemeral presence signal (like CURSOR_MOVE), not a board-state
+            // mutation — deliberately not gated as a write.
+            default -> false;
+        };
+    }
+
+    // -------------------------------------------------------------------------
+    // Private handlers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Handles a JOIN action: assigns colour, stores participant metadata, registers the
+     * session in the presence liveness registry, broadcasts the JOIN event, emits
+     * PARTICIPANTS_UPDATE, and broadcasts a {@code board:state} snapshot of the board's
+     * current cards to the whole room (see the class-level Javadoc for why this is a room
+     * broadcast rather than a targeted per-user reply).
+     *
+     * <p>Colour assignment is deterministic by {@code userId} ({@link ColorPaletteService}),
+     * so a reconnection or a duplicate JOIN from another tab of the same user keeps the same
+     * colour. {@link ParticipantMetaStore#put} overwrites any existing entry for the same
+     * {@code userId}, so a duplicate JOIN (multi-tab) results in a single participant entry
+     * reflecting the most recent JOIN's metadata — "last active connection wins".
+     */
+    private void handleJoin(
+            final UUID boardId,
+            final CanvasActionMessage message,
+            final StompPrincipal principal,
+            final String sessionId) {
+        Map<String, Object> data = asMap(message.data());
+        String displayName = (String) data.getOrDefault("displayName", "Anonymous");
+        String avatarUrl = (String) data.get("avatarUrl");
+        String color = colorPaletteService.colorForUser(principal.userId());
+        String role = resolveRoleName(boardId, principal.userId());
+
+        ParticipantInfo info = new ParticipantInfo(
+                principal.userId().toString(), displayName, avatarUrl, color, role);
+        participantMetaStore.put(principal.tenantId(), boardId, info);
+        presenceRegistry.registerSession(principal.tenantId(), boardId, principal.userId(), sessionId);
+
+        Map<String, Object> broadcastData = new HashMap<>();
+        broadcastData.put("displayName", displayName);
+        broadcastData.put("avatarUrl", avatarUrl);
+        broadcastData.put("color", color);
+        broadcastData.put("role", role);
+
+        broadcast(boardId, principal, CanvasEventType.JOIN, broadcastData);
+        participantsBroadcastService.broadcast(principal.tenantId(), boardId);
+
+        List<CardDto> cards = cardRepository
+                .findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, principal.tenantId())
+                .stream()
+                .map(this::toDto)
+                .toList();
+        List<CardConnectionDto> connections = cardConnectionRepository
+                .findAllByBoardIdAndTenantId(boardId, principal.tenantId())
+                .stream()
+                .map(this::toDto)
+                .toList();
+        List<FrameDto> frames = frameRepository
+                .findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, principal.tenantId())
+                .stream()
+                .map(this::toDto)
+                .toList();
+        List<BoardFieldDto> fields = boardFieldRepository
+                .findAllByBoardIdOrderByOrderAscCreatedAtAsc(boardId)
+                .stream()
+                .map(BoardFieldDto::of)
+                .toList();
+        Map<String, Object> stateData = new HashMap<>();
+        stateData.put("cards", cards);
+        stateData.put("connections", connections);
+        stateData.put("frames", frames);
+        stateData.put("fields", fields);
+        broadcast(boardId, principal, "board:state", stateData);
+
+        // Resynchronise a joiner with any running facilitation timer. The frontend's
+        // `board:state` handler ({@code board.store.ts}) does not carry a timer field, so a
+        // separate `timer:started` is (re-)broadcast room-wide — idempotent for clients already
+        // showing it (same {@code endsAt}), same room-wide rationale as {@code board:state} above.
+        broadcastActiveTimer(boardId, principal);
+
+        LOG.info("Canvas JOIN: board={} user={} displayName={}", boardId, principal.userId(), displayName);
+    }
+
+    /**
+     * Handles a LEAVE action: removes participant metadata, unregisters the session from the
+     * presence liveness registry, broadcasts LEAVE and emits PARTICIPANTS_UPDATE.
+     *
+     * <p>An explicit LEAVE always clears the participant's presence unconditionally — it does
+     * not wait for every session/tab of the user to have left. This mirrors the pre-#32
+     * behaviour and is intentionally different from a WebSocket disconnect without a prior
+     * LEAVE, which only clears presence when it was the user's last active session
+     * ({@link WhiteboardPresenceRegistry#handleDisconnect}).
+     */
+    private void handleLeave(final UUID boardId, final StompPrincipal principal, final String sessionId) {
+        participantMetaStore.remove(principal.tenantId(), boardId, principal.userId());
+        presenceRegistry.unregisterSession(principal.tenantId(), boardId, principal.userId(), sessionId);
+        broadcast(boardId, principal, CanvasEventType.LEAVE, Map.of());
+        participantsBroadcastService.broadcast(principal.tenantId(), boardId);
+        LOG.info("Canvas LEAVE: board={} user={}", boardId, principal.userId());
+    }
+
+    /**
+     * Handles a DRAW action: broadcasts the event, and persists it asynchronously off the STOMP
+     * thread ({@link CanvasEventWriter}). Persistence implements Last-Write-Wins (Socle strategy):
+     * the event's creation timestamp is stamped here, at receive time, so the async write cannot
+     * reorder it. Broadcasting first (then persisting off-thread) keeps the client round-trip free
+     * of the DB write — the durable board state lives in the {@link Card}/{@link Frame} tables and
+     * the live broadcast, not in this append-only log (which no production path replays today).
+     */
+    private void handleDraw(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        String payloadJson = serialise(data);
+
+        CanvasEvent event = new CanvasEvent(
+                UUID.randomUUID(), boardId, principal.tenantId(), principal.userId(),
+                CanvasEventType.DRAW, payloadJson, OffsetDateTime.now());
+
+        broadcast(boardId, principal, CanvasEventType.DRAW, data);
+        canvasEventWriter.persist(event);
+        LOG.debug("Canvas DRAW broadcast; async persist queued: eventId={} board={} user={}",
+                event.getId(), boardId, principal.userId());
+    }
+
+    /**
+     * Handles a CURSOR_MOVE action ({@code board:cursor} inbound): broadcasts only, no
+     * persistence (high-frequency ephemeral data not worth storing).
+     *
+     * <p>Rebroadcast as {@code board:cursors} carrying a <strong>one-element batch array</strong>
+     * {@code [{userId, name, avatar, x, y}]} — the frontend ({@code board.store.ts}) listens for
+     * {@code board:cursors} with a {@code [{userId, name, avatar, x, y}]} payload and merges each
+     * entry into its cursor map by {@code userId}; a single-element batch is valid (it fuses one
+     * cursor at a time). The entry is enriched server-side with the mover's identity: {@code userId}
+     * from the authenticated principal (never trusted from the client) and {@code name}/{@code avatar}
+     * from the presence store, falling back to the userId string when the mover has no presence
+     * entry yet.
+     */
+    private void handleCursorMove(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        Optional<ParticipantInfo> info = participantMetaStore.get(principal.tenantId(), boardId, principal.userId());
+        String userId = principal.userId().toString();
+        String name = info.map(ParticipantInfo::displayName).orElse(userId);
+        String avatar = info.map(ParticipantInfo::avatarUrl).orElse(null);
+
+        Map<String, Object> entry = new HashMap<>();
+        entry.put("userId", userId);
+        entry.put("name", name);
+        entry.put("avatar", avatar);
+        entry.put("x", data.get("x"));
+        entry.put("y", data.get("y"));
+        broadcast(boardId, principal, CanvasEventType.CURSOR_MOVE, List.of(entry));
+    }
+
+    /**
+     * Handles an UNDO action: broadcasts for visual synchronisation; stack logic is
+     * delegated to US08.3.3.
+     */
+    private void handleUndo(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        broadcast(boardId, principal, CanvasEventType.UNDO, data);
+        LOG.debug("Canvas UNDO broadcast: board={} user={}", boardId, principal.userId());
+    }
+
+    /**
+     * Handles a CARD_CREATE action: persists a new {@link Card} and broadcasts it.
+     *
+     * <p>{@code type} is parsed tolerantly — an unknown or missing value falls back to
+     * {@link CardType#TEXT}, never an exception (parity spec §3.4). {@code clientTag}, if
+     * present, is echoed back in the broadcast but never persisted (lets the sending client
+     * reconcile its own optimistic local object with the server-assigned id). For
+     * {@link CardType#SHAPE} exactly (never for a mistyped value that fell back to
+     * {@link CardType#TEXT}), the incoming {@code content} — the pipe-delimited style string
+     * ({@code kind|stroke|fill|opacity|rotation}) — is sanitised by
+     * {@link ShapeStyleSanitizer} before persistence (US08.6.3, correctif §6.4).
+     *
+     * <p><strong>{@code type == IMAGE}</strong> (US08.6.4): {@code content} is passed through
+     * {@link ImageCardContentValidator#sanitize} before persistence — real MIME sniffing and a
+     * size bound, a hardening over the reference whiteboard's unvalidated {@code coverImage}
+     * (parity spec §2.7/§6.12, flagged explicitly in this US's Security AC). An invalid image
+     * (malformed data URL, oversized, or unrecognised signature) silently drops the whole
+     * {@code CARD_CREATE} — no card persisted, no broadcast — consistent with every other
+     * {@code card:*} refusal path in this Socle.
+     *
+     * <p>Before any type-specific handling, {@code content} first passes through
+     * {@link TableCardContentSanitizer} — a defence-in-depth pass that is a no-op for any
+     * content that is not TABLE-shaped (US08.6.6), so it never interferes with the
+     * SHAPE/IMAGE-specific sanitisation that follows.
+     */
+    private void handleCardCreate(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        CardType type = parseCardType(data.get("type"));
+        String content = tableCardContentSanitizer.sanitize((String) data.getOrDefault("content", ""));
+        if (type == CardType.SHAPE) {
+            content = shapeStyleSanitizer.sanitize(content);
+        }
+        double posX = toDouble(data.get("posX"), 0);
+        double posY = toDouble(data.get("posY"), 0);
+
+        if (type == CardType.IMAGE) {
+            Optional<String> sanitizedContent = imageCardContentValidator.sanitize(content);
+            if (sanitizedContent.isEmpty()) {
+                LOG.warn("Card create refused: invalid IMAGE content — board={} user={}",
+                        boardId, principal.userId());
+                return;
+            }
+            content = sanitizedContent.get();
+        }
+
+        Card card = new Card(boardId, principal.tenantId(), type, content, posX, posY, Instant.now());
+        if (data.get("color") instanceof String c) {
+            card.setColor(c);
+        }
+        if (data.get("width") != null) {
+            card.setWidth(toDouble(data.get("width"), card.getWidth()));
+        }
+        if (data.get("height") != null) {
+            card.setHeight(toDouble(data.get("height"), card.getHeight()));
+        }
+        if (data.get("layer") != null) {
+            card.setLayer((int) toDouble(data.get("layer"), card.getLayer()));
+        }
+        cardRepository.save(card);
+
+        // Flat card fields at the top level of `data` (+ optional echoed clientTag), matching the
+        // frontend's `this.on<Card & { clientTag? }>('card:created', ({ clientTag, ...card }) => …)`
+        // — same flat shape as card:updated/card:moved/card:recolored, not a nested { card } object.
+        Map<String, Object> broadcastData = toFlatMap(toDto(card));
+        if (data.get("clientTag") != null) {
+            broadcastData.put("clientTag", data.get("clientTag"));
+        }
+        broadcast(boardId, principal, CanvasEventType.CARD_CREATE, broadcastData);
+        // US08.6.5 hand-off: request an async OpenGraph enrichment pass. CardUrlExtractor
+        // decides internally whether `type`/`content` are eligible (LINK, or TEXT/LABEL with a
+        // detected URL) — a no-op for every other card type.
+        eventPublisher.publishEvent(
+                new CardContentEnrichmentRequestedEvent(card.getId(), boardId, principal.tenantId(), type, content));
+        LOG.debug("Card created: id={} board={} type={}", card.getId(), boardId, type);
+    }
+
+    /**
+     * Handles a CARD_MOVE action: moves a card if it exists, belongs to this board, and is
+     * not locked; refused silently otherwise (no broadcast, no error frame).
+     *
+     * <p>If the incoming action carries a client-supplied {@code senderSessionId} (an opaque,
+     * client-generated correlation id — one per {@code StompBoardTransport} connection, not the
+     * server's STOMP session id), it is echoed back verbatim in the broadcast payload, same
+     * idiom as {@code clientTag} on {@link #handleCardCreate}: never persisted, only round-
+     * tripped so the sending client can recognise and ignore its own echo (it already applied
+     * the move optimistically) while every other session in the room still applies it normally.
+     *
+     * <p><strong>Why not the server's own STOMP session id.</strong> An earlier version of this
+     * fix threaded the real {@code simpSessionId} through and tried to hand it back to the
+     * client via a stamped header on the STOMP {@code CONNECTED} frame (a
+     * {@code clientOutboundChannel} interceptor). That does not work with this repo's
+     * {@code SimpleBroker}: {@code StompSubProtocolHandler#convertConnectAcktoStompConnected}
+     * unconditionally rebuilds the CONNECTED frame's headers from scratch, copying only
+     * {@code version}/{@code heartbeat} — any other native header added upstream is silently
+     * discarded before the frame reaches the wire (verified empirically, reproduced against a
+     * real STOMP client in a Testcontainers IT). Round-tripping a client-generated id sidesteps
+     * this Spring limitation entirely and needed no other change to this repo's WebSocket
+     * config.
+     *
+     * <p>This is a client-side filter, not a server-side targeted fanout: the simple broker
+     * still sends this broadcast to the whole room (see {@link #broadcast}), same as every
+     * other {@code CARD_*} event — only the payload optionally gains this one extra field
+     * (fix/EN08.4, sender exclusion for {@code card:moved}/{@code card:resized} only).
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CARD_MOVE action
+     * @param principal the emitting principal
+     */
+    private void handleCardMove(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        double posX = toDouble(data.get("posX"), 0);
+        double posY = toDouble(data.get("posY"), 0);
+        int updated = cardRepository.moveIfUnlocked(id, boardId, posX, posY);
+        if (updated == 0) {
+            LOG.debug("Card move refused (locked, missing, or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        Map<String, Object> broadcastData = new HashMap<>();
+        broadcastData.put("id", id.toString());
+        broadcastData.put("posX", posX);
+        broadcastData.put("posY", posY);
+        if (data.get("senderSessionId") != null) {
+            broadcastData.put("senderSessionId", data.get("senderSessionId"));
+        }
+        broadcast(boardId, principal, CanvasEventType.CARD_MOVE, broadcastData);
+    }
+
+    /**
+     * Handles a CARD_RESIZE action: resizes a card if it exists, belongs to this board, and
+     * is not locked; refused silently otherwise.
+     *
+     * <p>Echoes back a client-supplied {@code senderSessionId} for the same sender-exclusion
+     * reason as {@link #handleCardMove} — see that method's Javadoc for the full rationale,
+     * including why this is a client-generated correlation id and not the server's STOMP
+     * session id.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CARD_RESIZE action
+     * @param principal the emitting principal
+     */
+    private void handleCardResize(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        double width = toDouble(data.get("width"), 192);
+        double height = toDouble(data.get("height"), 128);
+        int updated = cardRepository.resizeIfUnlocked(id, boardId, width, height);
+        if (updated == 0) {
+            LOG.debug("Card resize refused (locked, missing, or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        Map<String, Object> broadcastData = new HashMap<>();
+        broadcastData.put("id", id.toString());
+        broadcastData.put("width", width);
+        broadcastData.put("height", height);
+        if (data.get("senderSessionId") != null) {
+            broadcastData.put("senderSessionId", data.get("senderSessionId"));
+        }
+        broadcast(boardId, principal, CanvasEventType.CARD_RESIZE, broadcastData);
+    }
+
+    /**
+     * Handles a CARD_UPDATE action: updates a card's content if it exists, belongs to this
+     * board, and is not locked; refused silently otherwise. Before any type-specific handling,
+     * {@code content} first passes through {@link TableCardContentSanitizer} — a
+     * defence-in-depth pass that is a no-op for any content that is not TABLE-shaped
+     * (US08.6.6). The card's persisted type is then looked up once before the atomic guarded
+     * write, and used to dispatch further type-specific content handling:
+     * <ul>
+     *   <li>{@link CardType#SHAPE}: {@code content} is sanitised by
+     *       {@link ShapeStyleSanitizer}, same as at creation (US08.6.3, correctif §6.4).</li>
+     *   <li>{@link CardType#IMAGE} (US08.6.4 Gate 4 hardening): {@code content} is passed
+     *       through {@link ImageCardContentValidator#sanitize} — otherwise a raw STOMP client
+     *       could bypass the UI's upload flow entirely and persist an unvalidated value
+     *       (including an external URL) directly onto an existing IMAGE card, which is later
+     *       rendered as an image {@code src}. Mirrors the guard already applied in
+     *       {@link #handleCardCreate}. An invalid image content refuses the whole update.</li>
+     * </ul>
+     * This pre-read does not weaken the atomic {@code locked}/board-ownership guard on the
+     * mutation query itself ({@link CardRepository#updateContentIfUnlocked}).
+     *
+     * <p>Broadcasts the full updated {@link CardDto} (re-read after the update), not just
+     * {@code {id, content}} — matching {@code card:created}/{@code card:moved}/
+     * {@code card:resized}/{@code card:recolored}, all of which broadcast a complete object,
+     * and the parity contract the six Sprint 12 card-type US all specify identically for
+     * {@code card:updated} (gap found independently by the US08.6.1 TEXT agent, PR core#77 —
+     * flagged there without fixing, folded into the Socle foundation fix instead).
+     */
+    private void handleCardUpdate(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        String content = tableCardContentSanitizer.sanitize((String) data.getOrDefault("content", ""));
+        CardType type = cardRepository.findTypeByIdAndBoardId(id, boardId).orElse(null);
+        if (type == CardType.SHAPE) {
+            content = shapeStyleSanitizer.sanitize(content);
+        } else if (type == CardType.IMAGE) {
+            Optional<String> sanitizedContent = imageCardContentValidator.sanitize(content);
+            if (sanitizedContent.isEmpty()) {
+                LOG.warn("Card update refused: invalid IMAGE content — id={} board={} user={}",
+                        id, boardId, principal.userId());
+                return;
+            }
+            content = sanitizedContent.get();
+        }
+        int updated = cardRepository.updateContentIfUnlocked(id, boardId, content);
+        if (updated == 0) {
+            LOG.debug("Card update refused (locked, missing, or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        Card card = cardRepository.findById(id).orElse(null);
+        if (card == null) {
+            // Extremely unlikely race (deleted concurrently between the UPDATE above and this
+            // read) — nothing meaningful left to broadcast; the client that deleted it already
+            // gets its own card:deleted broadcast.
+            LOG.debug("Card update broadcast skipped: card vanished after update, id={} board={}", id, boardId);
+            return;
+        }
+        broadcast(boardId, principal, CanvasEventType.CARD_UPDATE, toFlatMap(toDto(card)));
+        // US08.6.5 hand-off (see handleCardCreate) — content just changed, so re-run enrichment:
+        // either a new/changed URL gets (re-)fetched, or its removal clears a previous preview.
+        // Reuses the `card` just re-read above rather than a second lookup.
+        eventPublisher.publishEvent(
+                new CardContentEnrichmentRequestedEvent(
+                        id, boardId, principal.tenantId(), card.getType(), content));
+    }
+
+    /**
+     * Handles a CARD_RECOLOR action: recolors a card if it exists, belongs to this board, and
+     * is not locked; refused silently otherwise.
+     */
+    private void handleCardRecolor(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        String color = (String) data.getOrDefault("color", "#FFEB3B");
+        int updated = cardRepository.recolorIfUnlocked(id, boardId, color);
+        if (updated == 0) {
+            LOG.debug("Card recolor refused (locked, missing, or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        broadcast(boardId, principal, CanvasEventType.CARD_RECOLOR,
+                Map.of("id", id.toString(), "color", color));
+    }
+
+    /**
+     * Handles a CARD_DELETE action: deletes a card scoped by board, guarded by an explicit
+     * {@code locked} read performed <em>before</em> the delete itself (fix/EN08.4 — the six
+     * Sprint 12 card-type US all specify this guard identically: a locked card refuses
+     * {@code card:delete} silently, same posture as move/resize/update/recolor). Unlike those
+     * four, this guard cannot live in the {@code WHERE} clause of a single
+     * {@code UPDATE}/{@code DELETE} statement, since there is nothing left to condition on once
+     * the row is gone — hence the separate read here rather than a query-level change to
+     * {@link CardRepository#deleteByIdAndBoardId}.
+     *
+     * <p>Idempotent — deleting an id that does not exist (already deleted, wrong board, or
+     * never existed) is a silent no-op, never an exception: a missing card skips the lock
+     * check entirely (nothing to refuse) and falls through to
+     * {@link CardRepository#deleteByIdAndBoardId}, which itself resolves to {@code 0} rows
+     * affected.
+     */
+    private void handleCardDelete(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        Optional<Card> existing = cardRepository.findById(id);
+        if (existing.isPresent() && (existing.get().isLocked() || !existing.get().getBoardId().equals(boardId))) {
+            LOG.debug("Card delete refused (locked or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        long deleted = cardRepository.deleteByIdAndBoardId(id, boardId);
+        if (deleted == 0) {
+            LOG.debug("Card delete no-op (already deleted or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        // Bare id string as `data`, matching the frontend's `this.on<string>('card:deleted', …)`
+        // — not a { id } object.
+        broadcast(boardId, principal, CanvasEventType.CARD_DELETE, id.toString());
+    }
+
+    /**
+     * Handles a CARD_LAYER action: changes a card's Z-order layer. Deliberately not guarded
+     * by {@code locked} — the sole mutation the parity spec does not protect with the lock
+     * (§4.6).
+     */
+    private void handleCardLayer(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        int layer = (int) toDouble(data.get("layer"), 1);
+        int updated = cardRepository.updateLayer(id, boardId, layer);
+        if (updated == 0) {
+            LOG.debug("Card layer change no-op (missing or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        broadcast(boardId, principal, CanvasEventType.CARD_LAYER,
+                Map.of("id", id.toString(), "layer", layer));
+    }
+
+    /**
+     * Handles a CARD_LOCK action ({@code card:lock} inbound): locks or unlocks a set of cards
+     * scoped by board, then echoes {@code cards:locked} carrying {@code {ids, locked}} to the
+     * whole room — matching the frontend's {@code this.on<{ ids, locked }>('cards:locked', …)},
+     * which flips the {@code locked} flag on every card whose id is in {@code ids}. Reuses the
+     * pre-existing {@code locked} column (no new table). Ids that are unparsable, absent, or on
+     * another board are silently dropped; an empty resulting set is a no-op (no broadcast).
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CARD_LOCK action
+     * @param principal the emitting principal
+     */
+    private void handleCardLock(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        List<UUID> ids = parseCardIds(data.get("ids"));
+        if (ids.isEmpty()) {
+            return;
+        }
+        boolean locked = data.get("locked") instanceof Boolean b && b;
+        cardRepository.lockCards(ids, boardId, locked);
+        List<String> idStrings = ids.stream().map(UUID::toString).toList();
+        broadcast(boardId, principal, CanvasEventType.CARD_LOCK,
+                Map.of("ids", idStrings, "locked", locked));
+        LOG.debug("Cards locked={} count={} board={}", locked, ids.size(), boardId);
+    }
+
+    /**
+     * Handles a CARDS_GROUP action ({@code cards:group} inbound): assigns a fresh
+     * <strong>server-generated</strong> {@code groupId} to the targeted cards (reusing the
+     * existing {@code group_id} column — no new table) and echoes {@code cards:grouped} carrying
+     * {@code {cardIds, groupId}}, matching the frontend's
+     * {@code this.on<{ cardIds, groupId }>('cards:grouped', …)} (which also consumes the id via
+     * its pending-group history so an optimistic local group can adopt the authoritative id).
+     * A group needs at least two real cards of this board — fewer parseable/on-board ids is a
+     * silent no-op.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CARDS_GROUP action
+     * @param principal the emitting principal
+     */
+    private void handleCardsGroup(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        List<UUID> ids = parseCardIds(data.get("cardIds"));
+        if (ids.size() < 2) {
+            return;
+        }
+        UUID groupId = UUID.randomUUID();
+        int updated = cardRepository.groupCards(ids, boardId, groupId);
+        if (updated < 2) {
+            LOG.debug("Cards group no-op (fewer than 2 real cards on board): board={}", boardId);
+            return;
+        }
+        List<String> cardIdStrings = ids.stream().map(UUID::toString).toList();
+        broadcast(boardId, principal, CanvasEventType.CARDS_GROUP,
+                Map.of("cardIds", cardIdStrings, "groupId", groupId.toString()));
+        LOG.debug("Cards grouped: groupId={} count={} board={}", groupId, updated, boardId);
+    }
+
+    /**
+     * Handles a CARDS_UNGROUP action ({@code cards:ungroup} inbound): clears the group assignment
+     * ({@code group_id}/{@code group_color}) of every card of this board in the given group, then
+     * echoes {@code cards:ungrouped} carrying the <strong>bare {@code groupId} string</strong> —
+     * matching the frontend's {@code this.on<string>('cards:ungrouped', groupId => …)}. An
+     * unparsable id, or a group with no cards on this board, is a silent no-op.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CARDS_UNGROUP action
+     * @param principal the emitting principal
+     */
+    private void handleCardsUngroup(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID groupId = parseCardId(data.get("groupId"));
+        if (groupId == null) {
+            return;
+        }
+        int updated = cardRepository.ungroupByGroupId(groupId, boardId);
+        if (updated == 0) {
+            LOG.debug("Cards ungroup no-op (empty or cross-board group): groupId={} board={}", groupId, boardId);
+            return;
+        }
+        broadcast(boardId, principal, CanvasEventType.CARDS_UNGROUP, groupId.toString());
+        LOG.debug("Cards ungrouped: groupId={} count={} board={}", groupId, updated, boardId);
+    }
+
+    /**
+     * Handles a CARDS_GROUP_COLOR action ({@code cards:group-color} inbound): recolors a group's
+     * outline ({@code group_color}) and echoes {@code cards:group-colored} carrying
+     * {@code {groupId, color}}, matching the frontend's
+     * {@code this.on<{ groupId, color }>('cards:group-colored', …)}. A {@code null} colour is
+     * accepted and clears the outline (the frontend's undo path re-emits the previous colour,
+     * which may itself be {@code null}). An unparsable {@code groupId}, or a group with no cards
+     * on this board, is a silent no-op.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CARDS_GROUP_COLOR action
+     * @param principal the emitting principal
+     */
+    private void handleCardsGroupColor(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID groupId = parseCardId(data.get("groupId"));
+        if (groupId == null) {
+            return;
+        }
+        String color = data.get("color") instanceof String s ? s : null;
+        int updated = cardRepository.recolorGroup(groupId, boardId, color);
+        if (updated == 0) {
+            LOG.debug("Cards group-color no-op (empty or cross-board group): groupId={} board={}", groupId, boardId);
+            return;
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("groupId", groupId.toString());
+        payload.put("color", color);
+        broadcast(boardId, principal, CanvasEventType.CARDS_GROUP_COLOR, payload);
+        LOG.debug("Cards group recolored: groupId={} color={} board={}", groupId, color, boardId);
+    }
+
+    /**
+     * Handles a CARD_EDITING action ({@code card:editing} inbound): an ephemeral concurrent-editing
+     * signal, never persisted (like {@code CURSOR_MOVE}). Rebroadcasts {@code card:editing} carrying
+     * {@code {cardId, userId, name, editing}} enriched with the emitter's server-side identity
+     * ({@code userId} from the authenticated principal, {@code name} from the presence store,
+     * falling back to the userId string) — matching the frontend's
+     * {@code this.on<{ cardId, userId, name?, editing }>('card:editing', …)}, which shows/hides a
+     * "someone is editing" indicator keyed by {@code cardId}. An unparsable {@code cardId} is a
+     * silent no-op.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CARD_EDITING action
+     * @param principal the emitting principal
+     */
+    private void handleCardEditing(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID cardId = parseCardId(data.get("cardId"));
+        if (cardId == null) {
+            return;
+        }
+        boolean editing = data.get("editing") instanceof Boolean b && b;
+        Optional<ParticipantInfo> info = participantMetaStore.get(principal.tenantId(), boardId, principal.userId());
+        String userId = principal.userId().toString();
+        String name = info.map(ParticipantInfo::displayName).orElse(userId);
+        broadcast(boardId, principal, CanvasEventType.CARD_EDITING,
+                Map.of("cardId", cardId.toString(), "userId", userId, "name", name, "editing", editing));
+    }
+
+    /**
+     * Handles a CONNECTION_CREATE action: persists a new {@link CardConnection} linking two
+     * cards of this board and broadcasts it to the whole room, emitter included (US08.7.1).
+     *
+     * <p>Every refusal below is silent — no broadcast, no exception, no dedicated STOMP error
+     * frame — consistent with the reference whiteboard's behaviour for this mutation (parity
+     * spec §3.6):
+     * <ul>
+     *   <li>{@code fromId}/{@code toId} missing or unparsable.</li>
+     *   <li>Self-link ({@code fromId.equals(toId)}) — checked before any database access.</li>
+     *   <li>{@code fromId} or {@code toId} does not reference an existing card of this board —
+     *       validated with a single {@link CardRepository#countByIdInAndBoardId} call before
+     *       insert (correctif §6.5: unlike the reference whiteboard, which lets Prisma throw an
+     *       uncaught FK error here, this repo never lets that exception reach the handler).</li>
+     *   <li>A connector already links this exact pair in either direction — bidirectional
+     *       anti-duplicate ({@link CardConnectionRepository#existsBetween}).</li>
+     * </ul>
+     */
+    private void handleConnectionCreate(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID fromId = parseCardId(data.get("fromId"));
+        UUID toId = parseCardId(data.get("toId"));
+        if (fromId == null || toId == null) {
+            return;
+        }
+        if (fromId.equals(toId)) {
+            LOG.debug("Connection create refused (self-link): board={} cardId={}", boardId, fromId);
+            return;
+        }
+        if (cardRepository.countByIdInAndBoardId(List.of(fromId, toId), boardId) != 2) {
+            LOG.debug("Connection create refused (missing/foreign card ref): board={} from={} to={}",
+                    boardId, fromId, toId);
+            return;
+        }
+        if (cardConnectionRepository.existsBetween(boardId, fromId, toId)) {
+            LOG.debug("Connection create refused (bidirectional duplicate): board={} from={} to={}",
+                    boardId, fromId, toId);
+            return;
+        }
+        CardConnection connection = new CardConnection(boardId, principal.tenantId(), fromId, toId, Instant.now());
+        // Style chosen before the connector was drawn (arrow, dashed…) applies at creation time, so
+        // it reaches every participant in the single `connection:created` broadcast below. The board
+        // is server-authoritative with no optimistic rendering: styling through a follow-up
+        // `connection:update` instead would show everyone a default-styled connector first, then
+        // visibly correct it. Same patch helper as the update path — the field whitelists and the
+        // reject-that-field-alone semantics (US08.7.2 AC5) are shared, never duplicated. Fields
+        // absent from `data` keep the entity's own defaults, so a client that sends no style at all
+        // behaves exactly as before.
+        applyConnectionPatch(connection, data);
+        cardConnectionRepository.save(connection);
+
+        // Flat connector fields at the top level of `data`, matching the frontend's
+        // `this.on<Connection>('connection:created', …)` — not a nested { connection } object.
+        broadcast(boardId, principal, CanvasEventType.CONNECTION_CREATE, toFlatMap(toDto(connection)));
+        LOG.debug("Connection created: id={} board={} from={} to={}", connection.getId(), boardId, fromId, toId);
+    }
+
+    /**
+     * Handles a CONNECTION_DELETE action: deletes a connector scoped by board. Idempotent —
+     * deleting an id that does not exist (already deleted, already cascaded away by one of its
+     * endpoint cards being deleted, wrong board, or never existed) is a silent no-op, never an
+     * exception (US08.7.1).
+     */
+    private void handleConnectionDelete(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        long deleted = cardConnectionRepository.deleteByIdAndBoardId(id, boardId);
+        if (deleted == 0) {
+            LOG.debug("Connection delete no-op (already deleted or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        // Bare id string as `data`, matching the frontend's `this.on<string>('connection:deleted', …)`.
+        broadcast(boardId, principal, CanvasEventType.CONNECTION_DELETE, id.toString());
+    }
+
+    /**
+     * Handles a CONNECTION_UPDATE action: applies a partial style patch to an existing
+     * {@link CardConnection} and broadcasts the full updated connector to the whole room,
+     * emitter included (US08.7.2).
+     *
+     * <p><strong>Presence vs. absence.</strong> Only the style keys actually present in the
+     * incoming {@code data} map are considered — tested with {@link Map#containsKey}, never a
+     * null-check on the retrieved value — so an absent key preserves the currently persisted
+     * value while a present key carrying an explicit {@code null} clears it (parity spec
+     * §1.8/§3.6). Only meaningful for {@code label}/{@code color} — the two nullable columns on
+     * {@link CardConnection}; {@code shape}/{@code arrow}/{@code dashed}/{@code width} are all
+     * {@code NOT NULL} columns, so an explicit {@code null} for one of those simply fails its
+     * own type/whitelist check below and is skipped like any other invalid value, never
+     * persisted as {@code null}.
+     *
+     * <p><strong>Field-level validation, not whole-patch rejection.</strong> {@code shape} and
+     * {@code arrow} are checked against the finite applicative whitelists
+     * {@link #ALLOWED_CONNECTION_SHAPES}/{@link #ALLOWED_CONNECTION_ARROWS} (English wire values
+     * matching {@link CardConnection}'s own creation-time defaults, US08.7.1); {@code label}/
+     * {@code color}/{@code dashed}/{@code width} are checked against their expected JSON type.
+     * A present key whose value fails its check is simply skipped — the offending field is left
+     * at its previous value — rather than aborting the whole patch or throwing, consistent with
+     * every other tolerant {@code CARD_*}/{@code CONNECTION_*} handler in this class.
+     *
+     * <p><strong>No-op cases</strong> (silent — no database write, no broadcast, no exception,
+     * no dedicated STOMP error frame):
+     * <ul>
+     *   <li>{@code id} missing or unparsable.</li>
+     *   <li>{@code id} does not resolve to a connector of this board — unknown, already deleted,
+     *       already cascaded away by an endpoint card's deletion, or belonging to another board
+     *       (guessed or leaked cross-tenant id): {@link CardConnectionRepository#findByIdAndBoardId}
+     *       scopes the lookup by {@code (id, boardId)}, so none of these leak whether the id
+     *       exists elsewhere.</li>
+     *   <li>No style key present in {@code data} beyond {@code id}/{@code boardId}, or every
+     *       present style key was rejected by validation — nothing left to persist or
+     *       broadcast.</li>
+     * </ul>
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CONNECTION_UPDATE action
+     * @param principal the emitting principal
+     */
+    private void handleConnectionUpdate(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        Optional<CardConnection> existing = cardConnectionRepository.findByIdAndBoardId(id, boardId);
+        if (existing.isEmpty()) {
+            LOG.debug("Connection update no-op (missing or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        CardConnection connection = existing.get();
+        boolean mutated = applyConnectionPatch(connection, data);
+        if (!mutated) {
+            LOG.debug("Connection update no-op (empty or fully-rejected patch): id={} board={}", id, boardId);
+            return;
+        }
+        cardConnectionRepository.save(connection);
+        // Flat connector fields, matching the frontend's `this.on<Connection>('connection:updated', …)`.
+        broadcast(boardId, principal, CanvasEventType.CONNECTION_UPDATE, toFlatMap(toDto(connection)));
+        LOG.debug("Connection updated: id={} board={}", id, boardId);
+    }
+
+    /**
+     * Applies the style keys present in {@code data} onto {@code connection}, field by field —
+     * see {@link #handleConnectionUpdate}'s Javadoc for the presence/absence and field-level
+     * validation rules this implements.
+     *
+     * @param connection the connector to mutate in place (not yet persisted by this method)
+     * @param data       the incoming action's field-accessible payload
+     * @return {@code true} if at least one field was actually applied
+     */
+    private boolean applyConnectionPatch(final CardConnection connection, final Map<String, Object> data) {
+        boolean mutated = false;
+        if (data.containsKey("label")) {
+            Object value = data.get("label");
+            if (value == null || value instanceof String) {
+                connection.setLabel((String) value);
+                mutated = true;
+            }
+        }
+        if (data.containsKey("color")) {
+            Object value = data.get("color");
+            if (value == null || value instanceof String) {
+                connection.setColor((String) value);
+                mutated = true;
+            }
+        }
+        if (data.containsKey("shape")) {
+            Object value = data.get("shape");
+            if (value instanceof String s && ALLOWED_CONNECTION_SHAPES.contains(s)) {
+                connection.setShape(s);
+                mutated = true;
+            } else {
+                LOG.debug("Connection update: shape value rejected — connectionId={} value={}",
+                        connection.getId(), value);
+            }
+        }
+        if (data.containsKey("arrow")) {
+            Object value = data.get("arrow");
+            if (value instanceof String s && ALLOWED_CONNECTION_ARROWS.contains(s)) {
+                connection.setArrow(s);
+                mutated = true;
+            } else {
+                LOG.debug("Connection update: arrow value rejected — connectionId={} value={}",
+                        connection.getId(), value);
+            }
+        }
+        if (data.containsKey("dashed")) {
+            Object value = data.get("dashed");
+            if (value instanceof Boolean b) {
+                connection.setDashed(b);
+                mutated = true;
+            }
+        }
+        if (data.containsKey("width")) {
+            Object value = data.get("width");
+            if (value instanceof Number n) {
+                connection.setWidth(n.intValue());
+                mutated = true;
+            }
+        }
+        mutated |= applyWhitelisted(data, "lineStyle", ALLOWED_LINE_STYLES, connection::setLineStyle, connection);
+        mutated |= applyWhitelisted(data, "startCap", ALLOWED_CONNECTION_CAPS, connection::setStartCap, connection);
+        mutated |= applyWhitelisted(data, "endCap", ALLOWED_CONNECTION_CAPS, connection::setEndCap, connection);
+        return mutated;
+    }
+
+    /**
+     * Applies one closed-set string field of a connector patch, rejecting anything outside its
+     * whitelist for that field alone (US08.7.2, AC5) — the same semantics the {@code shape} and
+     * {@code arrow} branches above implement by hand, factored out rather than copied a third,
+     * fourth and fifth time.
+     *
+     * @param data      the raw patch
+     * @param field     the field name on the wire
+     * @param allowed   the finite set of accepted values
+     * @param setter    applies an accepted value to the connector
+     * @param connection the connector being patched, for logging only
+     * @return {@code true} if the field was present and accepted
+     */
+    private boolean applyWhitelisted(
+            final Map<String, Object> data,
+            final String field,
+            final Set<String> allowed,
+            final java.util.function.Consumer<String> setter,
+            final CardConnection connection) {
+        if (!data.containsKey(field)) {
+            return false;
+        }
+        Object value = data.get(field);
+        if (value instanceof String s && allowed.contains(s)) {
+            setter.accept(s);
+            return true;
+        }
+        LOG.debug("Connection patch: {} value rejected — connectionId={} value={}",
+                field, connection.getId(), value);
+        return false;
+    }
+
+    /**
+     * Handles a {@code timer:start} action: computes the timer's end instant, stores it
+     * ephemerally in Redis with a matching TTL ({@link BoardTimerStore}), and broadcasts
+     * {@code timer:started {endsAt, serverNow}} to the whole room (emitter included).
+     *
+     * <p>The incoming {@code duration} is a number of <strong>seconds</strong> (the frontend and
+     * PouetPouet reference contract, {@code endsAt = now + duration * 1000}); a {@code durationMs}
+     * key, if present, is honoured directly in milliseconds. A missing, non-numeric, or
+     * non-positive duration is a silent no-op — no timer stored, no broadcast — consistent with
+     * every other tolerant handler here. {@code serverNow} lets the client rebase {@code endsAt}
+     * onto its own clock, cancelling out any client/server clock skew.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming {@code timer:start} action
+     * @param principal the emitting principal
+     */
+    private void handleTimerStart(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        long durationMs = resolveDurationMs(data);
+        if (durationMs <= 0) {
+            LOG.debug("Timer start refused (missing/invalid duration): board={} user={}", boardId, principal.userId());
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long endsAt = now + durationMs;
+        boardTimerStore.start(boardId, endsAt);
+        broadcast(boardId, principal, CanvasEventType.TIMER_START, Map.of("endsAt", endsAt, "serverNow", now));
+        LOG.debug("Timer started: board={} endsAt={} user={}", boardId, endsAt, principal.userId());
+    }
+
+    /**
+     * Handles a {@code timer:stop} action: clears the board's ephemeral timer and broadcasts
+     * {@code timer:stopped} to the whole room (emitter included). Idempotent — stopping when no
+     * timer is running still broadcasts, harmlessly clearing every client's (already absent)
+     * countdown.
+     *
+     * @param boardId   the board UUID
+     * @param principal the emitting principal
+     */
+    private void handleTimerStop(final UUID boardId, final StompPrincipal principal) {
+        boardTimerStore.stop(boardId);
+        broadcast(boardId, principal, CanvasEventType.TIMER_STOP, Map.of());
+        LOG.debug("Timer stopped: board={} user={}", boardId, principal.userId());
+    }
+
+    /**
+     * Handles a {@code board:reset} action (OWNER-only, enforced in {@link #handle}): atomically
+     * deletes every connector and card of the board, then broadcasts {@code board:resetted} to
+     * the whole room (emitter included). Connectors are deleted before cards so no card is removed
+     * while a connector still references it. Board metadata (title, members, favorites) is
+     * untouched — the same invariant the REST reset preserves. This is a stronger reset than the
+     * REST {@code POST .../reset} (which clears only the legacy DRAW {@code canvas_event} rows):
+     * it wipes the durable {@link Card}/{@link CardConnection} board state, mirroring the reference
+     * whiteboard's socket reset.
+     *
+     * @param boardId   the board UUID
+     * @param principal the emitting principal (already verified OWNER)
+     */
+    private void handleBoardReset(final UUID boardId, final StompPrincipal principal) {
+        cardConnectionRepository.deleteAllByBoardIdAndTenantId(boardId, principal.tenantId());
+        cardRepository.deleteAllByBoardIdAndTenantId(boardId, principal.tenantId());
+        broadcast(boardId, principal, CanvasEventType.BOARD_RESET, Map.of());
+        LOG.info("Board reset over STOMP: board={} user={}", boardId, principal.userId());
+    }
+
+    /**
+     * (Re-)broadcasts {@code timer:started} to the room if the board currently has a running
+     * timer — used on JOIN so a late joiner catches up with an already-running countdown.
+     * {@code serverNow} is taken at broadcast time so the joiner rebases {@code endsAt} correctly.
+     *
+     * @param boardId   the board UUID
+     * @param principal the joining principal (drives the broadcast envelope)
+     */
+    private void broadcastActiveTimer(final UUID boardId, final StompPrincipal principal) {
+        OptionalLong endsAt = boardTimerStore.getActiveEndsAt(boardId);
+        if (endsAt.isPresent()) {
+            broadcast(boardId, principal, CanvasEventType.TIMER_START,
+                    Map.of("endsAt", endsAt.getAsLong(), "serverNow", System.currentTimeMillis()));
+        }
+    }
+
+    /**
+     * Resolves the requested timer duration to milliseconds from the incoming payload:
+     * {@code durationMs} (milliseconds) takes precedence, else {@code duration} (seconds) is
+     * multiplied by 1000. Returns {@code 0} for a missing or non-numeric value so the caller
+     * treats it as an invalid (dropped) request.
+     *
+     * @param data the incoming action's field-accessible payload
+     * @return the duration in milliseconds, or {@code 0} if none is resolvable
+     */
+    private long resolveDurationMs(final Map<String, Object> data) {
+        if (data.get("durationMs") instanceof Number ms) {
+            return ms.longValue();
+        }
+        if (data.get("duration") instanceof Number seconds) {
+            return seconds.longValue() * 1000L;
+        }
+        return 0L;
+    }
+
+    // -------------------------------------------------------------------------
+    // Frame handlers (EN08, Frames)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Handles a FRAME_CREATE action ({@code frame:create} inbound): persists a new {@link Frame}
+     * and broadcasts it as a flat frame object ({@code frame:created}) to the whole room, emitter
+     * included.
+     *
+     * <p>The frontend's basic create sends only {@code {boardId, posX, posY}} and adopts whatever
+     * the server echoes back; an optional {@code title}/{@code color}/{@code width}/{@code height}
+     * (sent by the duplicate-frame path) is applied when present, otherwise the server-authoritative
+     * defaults ({@link Frame}) stand. No {@code clientTag} is round-tripped — unlike cards, the
+     * frontend does not send one for frames.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming FRAME_CREATE action
+     * @param principal the emitting principal
+     */
+    private void handleFrameCreate(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        double posX = toDouble(data.get("posX"), 0);
+        double posY = toDouble(data.get("posY"), 0);
+
+        Frame frame = new Frame(boardId, principal.tenantId(), posX, posY, Instant.now());
+        if (data.get("title") instanceof String t) {
+            frame.setTitle(t);
+        }
+        if (data.get("color") instanceof String c) {
+            frame.setColor(c);
+        }
+        if (data.get("width") != null) {
+            frame.setWidth(toDouble(data.get("width"), frame.getWidth()));
+        }
+        if (data.get("height") != null) {
+            frame.setHeight(toDouble(data.get("height"), frame.getHeight()));
+        }
+        if (data.get("layer") != null) {
+            frame.setLayer((int) toDouble(data.get("layer"), frame.getLayer()));
+        }
+        frameRepository.save(frame);
+
+        broadcast(boardId, principal, CanvasEventType.FRAME_CREATE, toFlatMap(toDto(frame)));
+        LOG.debug("Frame created: id={} board={}", frame.getId(), boardId);
+    }
+
+    /**
+     * Handles a FRAME_MOVE action ({@code frame:move} inbound): moves a frame if it exists and
+     * belongs to this board, then broadcasts the full updated flat frame ({@code frame:moved}) —
+     * the frontend spreads it over its local frame ({@code {...f, ...frame}}) and matches by id.
+     * Refused silently (no broadcast) if the id is missing/unparsable or on another board.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming FRAME_MOVE action
+     * @param principal the emitting principal
+     */
+    private void handleFrameMove(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        double posX = toDouble(data.get("posX"), 0);
+        double posY = toDouble(data.get("posY"), 0);
+        if (frameRepository.move(id, boardId, posX, posY) == 0) {
+            LOG.debug("Frame move no-op (missing or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        broadcastFrame(boardId, principal, CanvasEventType.FRAME_MOVE, id);
+    }
+
+    /**
+     * Handles a FRAME_RESIZE action ({@code frame:resize} inbound): resizes a frame (width/height)
+     * if it exists and belongs to this board, optionally moving it too when the payload also carries
+     * {@code posX}/{@code posY}, then broadcasts the full updated flat frame ({@code frame:resized}).
+     * Refused silently if the id is missing/unparsable or on another board.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming FRAME_RESIZE action
+     * @param principal the emitting principal
+     */
+    private void handleFrameResize(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        double width = toDouble(data.get("width"), 400);
+        double height = toDouble(data.get("height"), 300);
+        if (frameRepository.resize(id, boardId, width, height) == 0) {
+            LOG.debug("Frame resize no-op (missing or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        // The frontend's commitResizeFrame path may also carry posX/posY (top-left anchor moves) —
+        // apply them in the same action so the broadcast frame reflects the final geometry.
+        if (data.get("posX") != null && data.get("posY") != null) {
+            frameRepository.move(id, boardId, toDouble(data.get("posX"), 0), toDouble(data.get("posY"), 0));
+        }
+        broadcastFrame(boardId, principal, CanvasEventType.FRAME_RESIZE, id);
+    }
+
+    /**
+     * Handles a FRAME_UPDATE action ({@code frame:update} inbound): applies a partial patch to a
+     * frame's {@code title}/{@code active}/{@code color} — only the keys actually present in the
+     * payload are mutated (the frontend sends {@code title} alone, or {@code active} alone) — then
+     * broadcasts the full updated flat frame ({@code frame:updated}). Refused silently if the id is
+     * missing/unparsable, on another board, or no recognised field was present.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming FRAME_UPDATE action
+     * @param principal the emitting principal
+     */
+    private void handleFrameUpdate(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        Optional<Frame> existing = frameRepository.findByIdAndBoardId(id, boardId);
+        if (existing.isEmpty()) {
+            LOG.debug("Frame update no-op (missing or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        Frame frame = existing.get();
+        boolean mutated = false;
+        if (data.get("title") instanceof String t) {
+            frame.setTitle(t);
+            mutated = true;
+        }
+        if (data.get("active") instanceof Boolean b) {
+            frame.setActive(b);
+            mutated = true;
+        }
+        if (data.get("color") instanceof String c) {
+            frame.setColor(c);
+            mutated = true;
+        }
+        if (!mutated) {
+            LOG.debug("Frame update no-op (empty patch): id={} board={}", id, boardId);
+            return;
+        }
+        frameRepository.save(frame);
+        broadcast(boardId, principal, CanvasEventType.FRAME_UPDATE, toFlatMap(toDto(frame)));
+        LOG.debug("Frame updated: id={} board={}", id, boardId);
+    }
+
+    /**
+     * Handles a FRAME_DELETE action ({@code frame:delete} inbound): deletes a frame scoped by
+     * board, then broadcasts {@code frame:deleted} carrying the <em>bare id string</em> —
+     * mirroring {@code card:deleted}/{@code connection:deleted} under the post-{@code #84} wire
+     * envelope (see {@link #handleCardDelete}). Idempotent: deleting an id that does not exist
+     * (already deleted, on another board, or never existed) is a silent no-op, never an exception.
+     *
+     * <p><strong>Wire-contract note.</strong> The frontend ({@code board.store.ts}) subscribes
+     * with {@code this.on<string>('frame:deleted', id => …)} — i.e. it expects a bare id string,
+     * not an {@code {id}} object. Since {@code #84} (the wire-envelope PR) merged, every
+     * {@code *:deleted} broadcast emits the bare string id; this handler follows suit.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming FRAME_DELETE action
+     * @param principal the emitting principal
+     */
+    private void handleFrameDelete(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        if (frameRepository.deleteByIdAndBoardId(id, boardId) == 0) {
+            LOG.debug("Frame delete no-op (already deleted or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        broadcast(boardId, principal, CanvasEventType.FRAME_DELETE, id.toString());
+    }
+
+    /**
+     * Handles a FRAME_LAYER action ({@code frame:layer} inbound): changes a frame's Z-order layer,
+     * then echoes {@code {id, layer}} ({@code frame:layered}) — matching the frontend's
+     * {@code this.on<{ id, layer }>('frame:layered', …)} (a lighter payload than the full frame,
+     * same idiom as {@code card:layered}). Refused silently if the id is missing/unparsable or on
+     * another board.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming FRAME_LAYER action
+     * @param principal the emitting principal
+     */
+    private void handleFrameLayer(final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        int layer = (int) toDouble(data.get("layer"), 0);
+        if (frameRepository.updateLayer(id, boardId, layer) == 0) {
+            LOG.debug("Frame layer no-op (missing or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        broadcast(boardId, principal, CanvasEventType.FRAME_LAYER,
+                Map.of("id", id.toString(), "layer", layer));
+    }
+
+    /**
+     * Re-reads a frame after a mutation and broadcasts its full flattened {@link FrameDto} under
+     * the given event type ({@code frame:moved}/{@code frame:resized}). Skips the broadcast in the
+     * extremely unlikely race where the frame vanished (concurrent delete) between the guarded
+     * update and this read.
+     *
+     * @param boardId   the board UUID
+     * @param principal the emitting principal
+     * @param type      the outgoing event type
+     * @param id        the mutated frame's id
+     */
+    private void broadcastFrame(
+            final UUID boardId, final StompPrincipal principal, final CanvasEventType type, final UUID id) {
+        Frame frame = frameRepository.findByIdAndBoardId(id, boardId).orElse(null);
+        if (frame == null) {
+            LOG.debug("Frame broadcast skipped: frame vanished after mutation, id={} board={}", id, boardId);
+            return;
+        }
+        broadcast(boardId, principal, type, toFlatMap(toDto(frame)));
+    }
+
+    // -------------------------------------------------------------------------
+    // Board field handlers (US08.10.1)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Handles a BOARDFIELD_CREATE action ({@code boardfield:create} inbound): persists a new
+     * {@link BoardField} on the board and broadcasts it as a flat field object
+     * ({@code boardfield:created}) to the whole room, emitter included.
+     *
+     * <p><strong>§6.6 fix.</strong> The incoming {@code type} is validated up front via
+     * {@link FieldType#fromWire}: an unknown or missing value is a silent no-op — no field
+     * persisted, no broadcast, and crucially <em>no exception</em> — rather than being persisted
+     * with an invalid discriminant or crashing the STOMP session. {@code boardId}/{@code tenantId}
+     * come from the resolved principal and the destination path, never the payload (tenant
+     * isolation). {@code options} is serialised to a JSON array when present (a SELECT field's
+     * choices); {@code order} defaults to 0.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming BOARDFIELD_CREATE action
+     * @param principal the emitting principal
+     */
+    private void handleBoardFieldCreate(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        FieldType type = FieldType.fromWire(data.get("type") instanceof String s ? s : null);
+        if (type == null) {
+            // §6.6 fix: validate before persist — an invalid/missing type is dropped silently.
+            LOG.warn("Board field create refused (invalid type '{}'): board={} user={}",
+                    data.get("type"), boardId, principal.userId());
+            return;
+        }
+        String name = data.get("name") instanceof String s ? s : "";
+        String emoji = data.get("emoji") instanceof String e ? e : null;
+        String options = serialiseOptions(data.get("options"));
+        int order = (int) toDouble(data.get("order"), 0);
+
+        BoardField field = new BoardField(
+                boardId, principal.tenantId(), name, emoji, type, options, order, Instant.now());
+        boardFieldRepository.save(field);
+
+        broadcast(boardId, principal, CanvasEventType.BOARDFIELD_CREATE, toFlatMap(BoardFieldDto.of(field)));
+        LOG.debug("Board field created: id={} board={} type={}", field.getId(), boardId, type);
+    }
+
+    /**
+     * Handles a BOARDFIELD_UPDATE action ({@code boardfield:update} inbound): rewrites an existing
+     * field's {@code name} and (when present) {@code emoji}/{@code options}, guarded by board
+     * ownership, then broadcasts the full updated flat field ({@code boardfield:updated}). The
+     * field's {@code type} is never changed (fixed for the field's lifetime, acceptance criterion).
+     * Refused silently — no broadcast — if the id is missing/unparsable or resolves to no field of
+     * this board (unknown, already deleted, or cross-board).
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming BOARDFIELD_UPDATE action
+     * @param principal the emitting principal
+     */
+    private void handleBoardFieldUpdate(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        Optional<BoardField> existing = boardFieldRepository.findByIdAndBoardId(id, boardId);
+        if (existing.isEmpty()) {
+            LOG.debug("Board field update no-op (missing or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        BoardField field = existing.get();
+        String name = data.get("name") instanceof String s ? s : field.getName();
+        String emoji = data.containsKey("emoji")
+                ? (data.get("emoji") instanceof String e ? e : null) : field.getEmoji();
+        String options = data.containsKey("options")
+                ? serialiseOptions(data.get("options")) : field.getOptions();
+        boardFieldRepository.updateNameEmojiOptions(id, boardId, name, emoji, options);
+
+        BoardField updated = boardFieldRepository.findByIdAndBoardId(id, boardId).orElse(null);
+        if (updated == null) {
+            LOG.debug("Board field update broadcast skipped: field vanished after update, id={} board={}",
+                    id, boardId);
+            return;
+        }
+        broadcast(boardId, principal, CanvasEventType.BOARDFIELD_UPDATE, toFlatMap(BoardFieldDto.of(updated)));
+        LOG.debug("Board field updated: id={} board={}", id, boardId);
+    }
+
+    /**
+     * Handles a BOARDFIELD_DELETE action ({@code boardfield:delete} inbound): deletes a field
+     * scoped by board, then broadcasts {@code boardfield:deleted} carrying the <em>bare id
+     * string</em> — mirroring {@code card:deleted}/{@code frame:deleted} (see
+     * {@link #handleCardDelete}). The database FK cascade removes the field's
+     * {@link CardFieldValue} rows. Idempotent: deleting an id that does not exist (already deleted,
+     * on another board, or never existed) is a silent no-op — no broadcast — never an exception.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming BOARDFIELD_DELETE action
+     * @param principal the emitting principal
+     */
+    private void handleBoardFieldDelete(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID id = parseCardId(data.get("id"));
+        if (id == null) {
+            return;
+        }
+        if (boardFieldRepository.deleteByIdAndBoardId(id, boardId) == 0) {
+            LOG.debug("Board field delete no-op (already deleted or cross-board): id={} board={}", id, boardId);
+            return;
+        }
+        broadcast(boardId, principal, CanvasEventType.BOARDFIELD_DELETE, id.toString());
+        LOG.debug("Board field deleted: id={} board={}", id, boardId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Card field value handlers (US08.10.2)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Handles a CARDFIELD_SET action ({@code cardfield:set} inbound, {@code {cardId, fieldId,
+     * value}}): upserts a {@link CardFieldValue} on the {@code (cardId, fieldId)} pair — updating
+     * the existing row's value if one is present, else inserting a new one — then broadcasts the
+     * full flat value ({@code cardfield:updated}) carrying {@code {id, cardId, fieldId, value}} to
+     * the whole room, emitter included. The broadcast carries the DB-assigned {@code id} so the
+     * frontend can upsert it into the card's {@code fieldValues} list.
+     *
+     * <p>{@code value} is always a string on the wire; a {@code null}/absent or non-string value is
+     * coerced to an empty string (the {@code value} column is {@code NOT NULL}), read defensively
+     * like every other handler here. {@code cardId}/{@code fieldId} come from the payload (parsed
+     * tolerantly via {@link #parseCardId} — a missing/garbled id is a silent no-op, never an
+     * exception); {@code boardId} comes from the destination path, never the payload.
+     *
+     * <p><strong>§3.9 — silent FK tolerance.</strong> The card or field may have been deleted
+     * concurrently (another session's {@code card:delete}/{@code boardfield:delete} between this
+     * frame arriving and the write). The {@code NOT NULL} FK to {@code card}/{@code board_field}
+     * then rejects the insert with a {@link DataIntegrityViolationException} — caught, logged at
+     * debug, and swallowed <em>without broadcasting and without rethrowing</em>, so a forged or
+     * racing frame can never crash the STOMP session. {@code saveAndFlush} forces the INSERT to hit
+     * the database inside the {@code try} (rather than deferring to transaction commit outside it),
+     * exactly the pattern {@code VoteActionService#handleStart} uses for the same reason. On success
+     * the persisted row (its DB-assigned {@code id} now populated) is broadcast.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CARDFIELD_SET action
+     * @param principal the emitting principal
+     */
+    private void handleCardFieldSet(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID cardId = parseCardId(data.get("cardId"));
+        UUID fieldId = parseCardId(data.get("fieldId"));
+        if (cardId == null || fieldId == null) {
+            return;
+        }
+        String value = data.get("value") instanceof String s ? s : "";
+        CardFieldValue entity = cardFieldValueRepository.findByCardIdAndFieldId(cardId, fieldId)
+                .orElse(null);
+        if (entity != null) {
+            entity.setValue(value);
+        } else {
+            entity = new CardFieldValue(cardId, fieldId, value);
+        }
+        CardFieldValue saved;
+        try {
+            saved = cardFieldValueRepository.saveAndFlush(entity);
+        } catch (DataIntegrityViolationException e) {
+            // §3.9: the card or field was deleted concurrently — the FK rejects the write. Tolerate
+            // silently (no broadcast, no rethrow) so a racing/forged frame never crashes the session.
+            LOG.debug("Card field set tolerated FK violation (card/field concurrently removed): "
+                    + "card={} field={} board={}", cardId, fieldId, boardId);
+            return;
+        }
+        broadcast(boardId, principal, CanvasEventType.CARDFIELD_SET, toFlatMap(FieldValueDto.of(saved)));
+        LOG.debug("Card field value set: id={} card={} field={} board={}",
+                saved.getId(), cardId, fieldId, boardId);
+    }
+
+    /**
+     * Handles a CARDFIELD_CLEAR action ({@code cardfield:clear} inbound, {@code {cardId, fieldId}}):
+     * clears any {@link CardFieldValue} on the {@code (cardId, fieldId)} pair, then broadcasts
+     * {@code cardfield:cleared} carrying {@code {cardId, fieldId}} (a small map — the frontend does
+     * {@code this.on<{cardId, fieldId}>('cardfield:cleared', …)}) to the whole room, emitter
+     * included.
+     *
+     * <p><strong>Unconditional broadcast (§3.9).</strong> Unlike the {@code *:delete} handlers, this
+     * broadcasts <em>even when 0 rows were deleted</em> (the pair carried no value, or the card/field
+     * is already gone): the frontend clear is idempotent and the broadcast harmlessly clears an
+     * already-absent value on every client, keeping the room convergent. A missing/garbled
+     * {@code cardId}/{@code fieldId} is the only silent no-op. {@code boardId} comes from the
+     * destination path, never the payload.
+     *
+     * @param boardId   the board UUID
+     * @param message   the incoming CARDFIELD_CLEAR action
+     * @param principal the emitting principal
+     */
+    private void handleCardFieldClear(
+            final UUID boardId, final CanvasActionMessage message, final StompPrincipal principal) {
+        Map<String, Object> data = asMap(message.data());
+        UUID cardId = parseCardId(data.get("cardId"));
+        UUID fieldId = parseCardId(data.get("fieldId"));
+        if (cardId == null || fieldId == null) {
+            return;
+        }
+        long deleted = cardFieldValueRepository.deleteByCardIdAndFieldId(cardId, fieldId);
+        broadcast(boardId, principal, CanvasEventType.CARDFIELD_CLEAR,
+                Map.of("cardId", cardId.toString(), "fieldId", fieldId.toString()));
+        LOG.debug("Card field value cleared: card={} field={} board={} rows={}",
+                cardId, fieldId, boardId, deleted);
+    }
+
+    /**
+     * Serialises an incoming {@code options} value (expected: a JSON array of strings) to its JSON
+     * string form for the {@link BoardField#getOptions()} JSONB column. Returns {@code null} — the
+     * "no options" state — for a non-list value or on any serialisation failure, never throwing so
+     * a garbled payload cannot crash the STOMP session.
+     *
+     * @param rawOptions the raw value from the incoming action's {@code data} map
+     * @return the JSON array string, or {@code null}
+     */
+    private String serialiseOptions(final Object rawOptions) {
+        if (!(rawOptions instanceof List<?> list)) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(list);
+        } catch (RuntimeException e) {
+            LOG.warn("Could not serialise board field options: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Broadcasts a canvas event to all subscribers of the board's main topic, under
+     * {@code type}'s outgoing wire name ({@link CanvasEventType#wireOut()} — distinct from
+     * the incoming name for {@code CARD_*} mutations, see that class's Javadoc).
+     *
+     * @param boardId   the board UUID
+     * @param principal the emitting principal
+     * @param type      the event type
+     * @param data      the type-specific payload
+     */
+    private void broadcast(
+            final UUID boardId,
+            final StompPrincipal principal,
+            final CanvasEventType type,
+            final Object data) {
+        broadcast(boardId, principal, type.wireOut(), data);
+    }
+
+    /**
+     * Broadcasts a server-originated message with no corresponding inbound
+     * {@link CanvasEventType} (e.g. {@code board:state}, the JOIN reply) under a raw wire
+     * type string.
+     *
+     * <p>{@code data} is {@link Object}, not {@code Map}, so a handler can broadcast exactly the
+     * shape its frontend consumer subscribes to — a flat object, a bare string
+     * ({@code card:deleted}/{@code connection:deleted}/{@code cards:ungrouped}), or an array
+     * ({@code board:cursors}). See {@link BroadcastCanvasMessage}.
+     *
+     * @param boardId   the board UUID
+     * @param principal the principal that triggered this broadcast
+     * @param wireType  the raw outgoing wire type string
+     * @param data      the type-specific payload (object, string, or array)
+     */
+    private void broadcast(
+            final UUID boardId,
+            final StompPrincipal principal,
+            final String wireType,
+            final Object data) {
+        String destination = BOARD_TOPIC_PREFIX + boardId;
+        BroadcastCanvasMessage msg = new BroadcastCanvasMessage(
+                wireType, boardId.toString(), principal.userId().toString(), data);
+        messagingTemplate.convertAndSend(destination, msg);
+    }
+
+    /**
+     * Safely coerces an incoming action's polymorphic {@code data} to a field-accessible map,
+     * for handlers that read named fields off it. {@code data} is a bare string (the board id)
+     * for {@code board:join}/{@code board:leave} — those handlers don't need any field off it
+     * (the board id already comes from the destination path variable), so falling back to an
+     * empty map for a non-{@link Map} value is correct, not a data-loss workaround.
+     *
+     * @param rawData the raw {@link CanvasActionMessage#data()} value — a {@link Map},
+     *                a {@link String}, or {@code null}
+     * @return a string-keyed map, or an empty map if {@code rawData} isn't one
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(final Object rawData) {
+        return rawData instanceof Map<?, ?> ? (Map<String, Object>) rawData : Map.of();
+    }
+
+    /**
+     * Resolves the role name string for a user on a board, defaulting to {@code "VIEWER"}
+     * when the membership record is not found.
+     *
+     * @param boardId the board UUID
+     * @param userId  the user's {@code public.users.id}
+     * @return the role name (e.g. {@code "OWNER"}, {@code "EDITOR"}, {@code "VIEWER"})
+     */
+    private String resolveRoleName(final UUID boardId, final Long userId) {
+        return boardMemberRepository.findByIdBoardIdAndIdUserId(boardId, userId)
+                .map(m -> m.getRole().name())
+                .orElse(BoardRole.VIEWER.name());
+    }
+
+    /**
+     * Checks whether the given user has the VIEWER role on the board.
+     *
+     * @param boardId the board UUID
+     * @param userId  the user's {@code public.users.id}
+     * @return {@code true} if the user is a VIEWER (or membership not found)
+     */
+    private boolean isViewer(final UUID boardId, final Long userId) {
+        return boardMemberRepository.findByIdBoardIdAndIdUserId(boardId, userId)
+                .map(m -> m.getRole() == BoardRole.VIEWER)
+                .orElse(true);
+    }
+
+    /**
+     * Checks whether the given user is the OWNER of the board. A board's creator is always
+     * persisted with an {@code OWNER} {@link BoardRole} membership row (see
+     * {@code BoardService#create}), so the membership lookup is authoritative here; a missing
+     * row (never a member) is treated as not-owner.
+     *
+     * @param boardId the board UUID
+     * @param userId  the user's {@code public.users.id}
+     * @return {@code true} only if the user is the board's OWNER
+     */
+    private boolean isOwner(final UUID boardId, final Long userId) {
+        return boardMemberRepository.findByIdBoardIdAndIdUserId(boardId, userId)
+                .map(m -> m.getRole() == BoardRole.OWNER)
+                .orElse(false);
+    }
+
+    /**
+     * Serialises a map to a JSON string using the auto-configured ObjectMapper.
+     * Returns {@code "{}"} on serialisation failure (safeguard — should not occur
+     * with a simple string/number map).
+     *
+     * @param data the data to serialise
+     * @return JSON string
+     */
+    private String serialise(final Map<String, Object> data) {
+        try {
+            return objectMapper.writeValueAsString(data);
+        } catch (Exception e) {
+            LOG.warn("Could not serialise canvas payload: {}", e.getMessage());
+            return "{}";
+        }
+    }
+
+    /**
+     * Parses a raw {@code type} value against {@link CardType}, falling back to
+     * {@link CardType#TEXT} for {@code null}, blank, or unrecognised values — never throws
+     * (parity spec §3.4: an unknown card type is dropped and the card falls back to TEXT,
+     * not rejected with an error).
+     *
+     * @param rawType the raw value from the incoming message's {@code data} map
+     * @return the parsed {@link CardType}, or {@link CardType#TEXT} as a fallback
+     */
+    private CardType parseCardType(final Object rawType) {
+        if (!(rawType instanceof String s) || s.isBlank()) {
+            return CardType.TEXT;
+        }
+        try {
+            return CardType.valueOf(s.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return CardType.TEXT;
+        }
+    }
+
+    /**
+     * Parses a raw card {@code id} value into a {@link UUID}, returning {@code null} (rather
+     * than throwing) for a missing or malformed value so the caller can silently drop the
+     * action — a forged/garbled id must never crash the STOMP session.
+     *
+     * @param rawId the raw value from the incoming message's {@code data} map
+     * @return the parsed UUID, or {@code null} if missing/malformed
+     */
+    private UUID parseCardId(final Object rawId) {
+        if (!(rawId instanceof String s)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(s);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Parses a raw JSON array of card {@code id} strings (as deserialised into a {@link List})
+     * into a distinct, order-preserving list of {@link UUID}s, dropping any element that is not a
+     * parseable UUID string — a forged or garbled id in a batch (lock/group) must never crash the
+     * STOMP session, and a non-array value yields an empty list.
+     *
+     * @param rawIds the raw value from the incoming message's {@code data} map (expected: a list
+     *               of id strings)
+     * @return the parsed, de-duplicated ids in input order; empty if {@code rawIds} is not a list
+     *     or contained no parseable id
+     */
+    private List<UUID> parseCardIds(final Object rawIds) {
+        if (!(rawIds instanceof List<?> list)) {
+            return List.of();
+        }
+        List<UUID> result = new ArrayList<>();
+        for (Object element : list) {
+            UUID id = parseCardId(element);
+            if (id != null && !result.contains(id)) {
+                result.add(id);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Coerces a JSON-deserialised numeric value (typically {@link Integer}, {@link Long}, or
+     * {@link Double} depending on how Jackson represented the literal) to a {@code double},
+     * without risking a {@link ClassCastException} from assuming one specific boxed type.
+     *
+     * @param rawValue     the raw value from the incoming message's {@code data} map
+     * @param defaultValue the value to return if {@code rawValue} is not a {@link Number}
+     * @return the numeric value as a {@code double}, or {@code defaultValue}
+     */
+    private double toDouble(final Object rawValue, final double defaultValue) {
+        return rawValue instanceof Number n ? n.doubleValue() : defaultValue;
+    }
+
+    /**
+     * Maps a persisted {@link Card} to its wire {@link CardDto}, parsing the opaque {@code meta}
+     * JSONB column (if present) into a generic map and loading the card's custom field values
+     * (US08.10.2) so every {@code card:*}/{@code board:state} shape carries the card's
+     * {@code fieldValues} — otherwise a value set in one session would vanish for a late joiner
+     * (whose {@code board:state} would omit it).
+     *
+     * <p>The values are loaded with one {@link CardFieldValueRepository#findByCardId} query per
+     * card. On JOIN's {@code board:state} — the only place {@code toDto} maps a whole list — this is
+     * a per-card query (an N+1 over the board's cards); accepted for this Socle, consistent with the
+     * per-card {@code meta} JSON parse already done here, and cheap given the small card counts and
+     * the {@code idx_card_field_value_field} / PK-backed lookups. A single broadcast (card:created
+     * just-inserted → empty list, card:updated → its values) is a single extra query.
+     *
+     * @param card the persisted card
+     * @return the corresponding {@link CardDto}
+     */
+    @SuppressWarnings("unchecked")
+    private CardDto toDto(final Card card) {
+        Map<String, Object> meta = null;
+        if (card.getMeta() != null) {
+            try {
+                meta = objectMapper.readValue(card.getMeta(), Map.class);
+            } catch (Exception e) {
+                LOG.warn("Could not parse card meta JSON: cardId={} error={}", card.getId(), e.getMessage());
+            }
+        }
+        List<FieldValueDto> fieldValues = cardFieldValueRepository.findByCardId(card.getId())
+                .stream()
+                .map(FieldValueDto::of)
+                .toList();
+        return CardDto.of(
+                card.getId(), card.getType().name(), card.getContent(), meta,
+                card.getPosX(), card.getPosY(), card.getWidth(), card.getHeight(), card.getColor(),
+                card.getGroupId(), card.getGroupColor(), card.isLocked(), card.getLayer(), fieldValues);
+    }
+
+    /**
+     * Flattens a DTO ({@link CardDto} or {@link CardConnectionDto}) into a field-named {@link Map},
+     * for broadcasts that put the object's fields directly at the top level of {@code data} — the
+     * shape every {@code card:*}/{@code connection:*} object broadcast now uses ({@code card:created},
+     * {@code card:updated}, {@code card:moved}, {@code connection:created}, {@code connection:updated}…),
+     * matching the frontend's {@code this.on<Card>(…)}/{@code this.on<Connection>(…)} handlers which
+     * read the fields off {@code data} directly rather than from a nested {@code { card }}/
+     * {@code { connection }} envelope. The returned {@link Map} is mutable, so a caller may add an
+     * extra echoed key (e.g. {@code clientTag} on {@code card:created}).
+     *
+     * @param dto the DTO to flatten
+     * @return a mutable map of the DTO's fields, keyed by field name
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> toFlatMap(final Object dto) {
+        return objectMapper.convertValue(dto, Map.class);
+    }
+
+    /**
+     * Maps a persisted {@link CardConnection} to its wire {@link CardConnectionDto}.
+     *
+     * @param connection the persisted connector
+     * @return the corresponding {@link CardConnectionDto}
+     */
+    private CardConnectionDto toDto(final CardConnection connection) {
+        return CardConnectionDto.of(
+                connection.getId(), connection.getFromId(), connection.getToId(),
+                connection.getLabel(), connection.getColor(), connection.getShape(),
+                connection.getArrow(), connection.isDashed(), connection.getWidth(),
+                connection.getLineStyle(), connection.getStartCap(), connection.getEndCap());
+    }
+
+    /**
+     * Maps a persisted {@link Frame} to its wire {@link FrameDto} (EN08, Frames).
+     *
+     * @param frame the persisted frame
+     * @return the corresponding {@link FrameDto}
+     */
+    private FrameDto toDto(final Frame frame) {
+        return FrameDto.of(
+                frame.getId(), frame.getBoardId(), frame.getTitle(),
+                frame.getPosX(), frame.getPosY(), frame.getWidth(), frame.getHeight(),
+                frame.getColor(), frame.isActive(), frame.getLayer());
+    }
+
+    /**
+     * Flattens a {@link FrameDto} into a field-named {@link Map}, for the {@code frame:created}/
+     * {@code frame:moved}/{@code frame:resized}/{@code frame:updated} broadcasts that put the
+     * frame's fields directly at the top level of {@code data} — matching the frontend's
+     * {@code this.on<Frame>('frame:created', …)} handlers, which read the fields off {@code data}
+     * directly (EN08, Frames).
+     *
+     * @param dto the frame DTO to flatten
+     * @return a map of the DTO's fields, keyed by field name
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> toFlatMap(final FrameDto dto) {
+        return objectMapper.convertValue(dto, Map.class);
+    }
+}
