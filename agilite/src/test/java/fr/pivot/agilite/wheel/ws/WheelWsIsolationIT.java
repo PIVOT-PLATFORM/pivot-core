@@ -1,5 +1,6 @@
 package fr.pivot.agilite.wheel.ws;
 
+import fr.pivot.agilite.AbstractAgiliteIntegrationTest;
 import fr.pivot.agilite.testsupport.PlatformAuthTestSupport;
 import fr.pivot.agilite.testsupport.PlatformAuthTestSupport.AuthFixture;
 import org.junit.jupiter.api.AfterEach;
@@ -13,9 +14,6 @@ import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -23,10 +21,6 @@ import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -69,37 +63,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * </ol>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers
-@ActiveProfiles("test")
-class WheelWsIsolationIT {
+class WheelWsIsolationIT extends AbstractAgiliteIntegrationTest {
 
     private static final String BASE_PATH = "/agilite/wheels";
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18");
-
-    @Container
-    @SuppressWarnings("resource")
-    static GenericContainer<?> redis =
-            new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
-
-    /**
-     * Supplies Testcontainer-derived connection properties to the Spring context, and seeds the
-     * {@code public} schema (owned by {@code pivot-core}) before Flyway runs — see {@code
-     * PokerRoomIsolationIT}/{@code WheelSpinControllerIT} for the identical rationale.
-     *
-     * @param registry the dynamic property registry
-     */
-    @DynamicPropertySource
-    static void overrideProperties(final DynamicPropertyRegistry registry) throws Exception {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("spring.data.redis.host", redis::getHost);
-        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-        PlatformAuthTestSupport.createPublicSchema(
-                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-    }
 
     @LocalServerPort
     private int port;

@@ -1,14 +1,12 @@
 package fr.pivot.agilite.retro.ws;
 
+import fr.pivot.agilite.AgiliteTestContainers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -20,14 +18,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration test proving {@link RetroAccessGrantService} against a real Redis instance — grant/
  * resolve/revoke round trip, participant identity round-trip encoding, and TTL-driven expiry
  * (US20.1.2a, mirrors {@code RoomAccessGrantServiceIT}, EN09.1).
+ *
+ * <p>EN53.1 — references the module-wide {@link AgiliteTestContainers#REDIS} singleton directly
+ * (no {@code @SpringBootTest}, see {@code RoomAccessGrantServiceIT}'s Javadoc for the rationale).
  */
-@Testcontainers
 class RetroAccessGrantServiceIT {
 
-    @Container
-    @SuppressWarnings("resource")
-    static final GenericContainer<?> redis =
-            new GenericContainer<>(DockerImageName.parse("redis:7-alpine")).withExposedPorts(6379);
+    private static final GenericContainer<?> redis = AgiliteTestContainers.REDIS;
 
     private LettuceConnectionFactory connectionFactory;
     private RetroAccessGrantService grantService;

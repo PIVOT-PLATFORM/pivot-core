@@ -1,5 +1,6 @@
 package fr.pivot.agilite.poker.ws;
 
+import fr.pivot.agilite.AgiliteTestContainers;
 import fr.pivot.agilite.poker.exception.PokerFacilitatorOnlyException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -7,9 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
 import java.util.UUID;
@@ -25,14 +23,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>Instantiates the service directly against a real {@link StringRedisTemplate} rather than
  * loading the full Spring context: this class has exactly one collaborator and no Spring-managed
  * state worth bootstrapping a context for.
+ *
+ * <p>EN53.1 — deliberately does <strong>not</strong> extend {@code
+ * AbstractAgiliteIntegrationTest}: that base is {@code @SpringBootTest}, and forcing a full
+ * application context onto this single-collaborator test purely to reach a shared Redis
+ * container would defeat the whole point documented above. Instead this class references the
+ * module-wide {@link AgiliteTestContainers#REDIS} singleton directly — same running container as
+ * every other IT in this module, zero Spring context, zero container of its own.
  */
-@Testcontainers
 class RoomAccessGrantServiceIT {
 
-    @Container
-    @SuppressWarnings("resource")
-    static final GenericContainer<?> redis =
-            new GenericContainer<>(DockerImageName.parse("redis:7-alpine")).withExposedPorts(6379);
+    private static final GenericContainer<?> redis = AgiliteTestContainers.REDIS;
 
     private LettuceConnectionFactory connectionFactory;
     private RoomAccessGrantService grantService;

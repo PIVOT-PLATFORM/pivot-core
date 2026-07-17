@@ -1,5 +1,6 @@
 package fr.pivot.agilite.retro.session;
 
+import fr.pivot.agilite.AbstractAgiliteIntegrationTest;
 import fr.pivot.agilite.retro.session.dto.CreateRetroSessionRequest;
 import fr.pivot.agilite.retro.session.dto.RetroSessionResponse;
 import fr.pivot.agilite.testsupport.PlatformAuthTestSupport;
@@ -7,13 +8,6 @@ import fr.pivot.agilite.testsupport.PlatformAuthTestSupport.AuthFixture;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,36 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * AC — concurrency test).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@Testcontainers
-@ActiveProfiles("test")
-class RetroSessionConcurrencyIT {
+class RetroSessionConcurrencyIT extends AbstractAgiliteIntegrationTest {
 
     private static final int CONCURRENT_CREATIONS = 64;
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18");
-
-    @Container
-    @SuppressWarnings("resource")
-    static GenericContainer<?> redis =
-            new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
-
-    /**
-     * Supplies container-derived connection properties and seeds the {@code public} schema
-     * before the Spring context and its Flyway run start.
-     *
-     * @param registry the dynamic property registry
-     */
-    @DynamicPropertySource
-    static void overrideProperties(final DynamicPropertyRegistry registry) throws Exception {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("spring.data.redis.host", redis::getHost);
-        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-        PlatformAuthTestSupport.createPublicSchema(
-                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-    }
 
     @Autowired
     private RetroSessionService sessionService;

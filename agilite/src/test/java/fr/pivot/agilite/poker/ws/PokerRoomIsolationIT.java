@@ -1,5 +1,6 @@
 package fr.pivot.agilite.poker.ws;
 
+import fr.pivot.agilite.AbstractAgiliteIntegrationTest;
 import fr.pivot.agilite.testsupport.PlatformAuthTestSupport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -12,16 +13,9 @@ import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.lang.reflect.Type;
 import java.time.Duration;
@@ -65,39 +59,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
  * {@code PokerRateLimitEnforcementIT}.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers
-@ActiveProfiles("test")
-class PokerRoomIsolationIT {
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:18");
-
-    @Container
-    @SuppressWarnings("resource")
-    static GenericContainer<?> redis =
-            new GenericContainer<>("redis:7-alpine").withExposedPorts(6379);
-
-    /**
-     * Supplies Testcontainer-derived connection properties to the Spring context, and seeds the
-     * {@code public} schema (owned by {@code pivot-core}, not by this repo's own Flyway) before
-     * Flyway runs — required since US20.1.1 added FK references from
-     * {@code agilite.retro_sessions} into {@code public.tenants}/{@code public.teams}/
-     * {@code public.users}, which now makes the {@code agilite} migration fail on any fresh
-     * Testcontainers Postgres that doesn't already have those tables (this class's own poker/ws
-     * feature never touches them directly, but the shared migration file does).
-     *
-     * @param registry the dynamic property registry
-     */
-    @DynamicPropertySource
-    static void overrideProperties(final DynamicPropertyRegistry registry) throws Exception {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("spring.data.redis.host", redis::getHost);
-        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-        PlatformAuthTestSupport.createPublicSchema(
-                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-    }
+class PokerRoomIsolationIT extends AbstractAgiliteIntegrationTest {
 
     @LocalServerPort
     private int port;
