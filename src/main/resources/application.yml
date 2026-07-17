@@ -25,7 +25,17 @@ spring:
 
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    # EN53.1 — relocated from "classpath:db/migration" to "classpath:db/migration/public"
+    # (single-line change, migration content/history untouched — Flyway's schema_history
+    # tracks version+checksum, not the classpath path, so already-applied environments are
+    # unaffected). Flyway's classpath scan is RECURSIVE: "classpath:db/migration" would also
+    # have picked up "classpath:db/migration/agilite" (the agilite module's own migrations,
+    # see ModuleFlywayMigrationConfig/agilite's own Flyway config) and tried to apply them to
+    # the public schema — moving the shell's own migrations to a schema-named sibling
+    # subfolder ("public", matching the schema they target) keeps the shell's location from
+    # being an ancestor directory of any module's location, eliminating that collision by
+    # construction rather than by exclusion. Same rename applied in application-test.yml.
+    locations: classpath:db/migration/public
     baseline-on-migrate: true
     baseline-version: 0
 
@@ -252,6 +262,43 @@ pivot:
     # be deactivated via PATCH /api/superadmin/tenants/{id}/status — configurable rather than
     # a hardcoded id so a self-hosted deployment can rename/re-provision it.
     system-tenant-slug: ${PIVOT_SYSTEM_TENANT_SLUG:pivot-saas}
+  # EN53.1 — folded in from the former standalone pivot-agilite-core's application.yml
+  # (src/main/resources/application.yml there). Ported directly from that source file since
+  # agilite/'s own application.yml (with its handoff header comment) did not exist yet in this
+  # worktree at the time this config was written — reconcile against the actual handoff
+  # comment once the agilite/ module lands, in case naming/defaults changed during the port.
+  # Properties NOT ported here because they no longer apply to a module folded into a shared
+  # JVM/DataSource/dispatcher: spring.datasource.*, spring.jpa.* (single shared DataSource —
+  # agilite's own entities already use explicit @Table(schema = "agilite")/"public", see that
+  # repo's application.yml comment on US20.1.1), spring.flyway.* (agilite no longer uses Boot's
+  # auto-configured Flyway bean at all — see ModuleFlywayConfigurer/ModuleFlywayMigrationConfig
+  # instead), server.port/management.server.port (single embedded server now), logging.level.
+  # fr.pivot (already covers fr.pivot.agilite by prefix, see below).
+  activemq:
+    # STOMP relay config consumed by agilite's own WebSocketConfig (EN07.3/EN09.1, poker room +
+    # retro realtime traffic). RISK — flagged for CI/coordination, not resolved here: this
+    # property existed because pivot-agilite-core ran as its OWN JVM needing an external
+    # ActiveMQ relay to fan out STOMP frames to other instances/modules. Now that agilite runs
+    # in-process with the rest of the modulith, whether an external relay is still needed
+    # (vs. a single in-JVM SimpleBroker) depends on horizontal-scaling requirements of
+    # pivot-core-app as a whole, not on agilite alone — out of scope for this Vague 1 wiring
+    # task (agilite/'s own WebSocketConfig is owned by the parallel EN53.1 agent). Defaults
+    # below are ported as-is from pivot-agilite-core so the property keys resolve if that
+    # config class is carried over unchanged; verify in CI whether they are still read.
+    relay-enabled: ${PIVOT_ACTIVEMQ_RELAY_ENABLED:true}
+    relay-host: ${PIVOT_ACTIVEMQ_RELAY_HOST:activemq}
+    relay-port: ${PIVOT_ACTIVEMQ_RELAY_PORT:61613}
+  agilite:
+    poker:
+      room:
+        # US09.1.1 — default room lifetime when the caller omits `expirationHours` in
+        # POST /api/agilite/poker/rooms (ADR-026 §2).
+        default-expiration-hours: ${PIVOT_POKER_ROOM_DEFAULT_EXPIRATION_HOURS:24}
+    retro:
+      phase-scheduler:
+        # US20.1.2a — poll interval for RetroPhaseScheduler's CONTRIBUTION timer-expiry check.
+        # Overridden to a much shorter value in application-test.yml for faster IT feedback.
+        fixed-delay-ms: ${PIVOT_RETRO_PHASE_SCHEDULER_FIXED_DELAY_MS:2000}
 
 modules:
   cache:
