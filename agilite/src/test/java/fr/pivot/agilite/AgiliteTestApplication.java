@@ -1,10 +1,14 @@
 package fr.pivot.agilite;
 
 import org.springframework.boot.SpringBootConfiguration;
+import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.context.TypeExcludeFilter;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.ComponentScan.Filter;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
@@ -31,7 +35,25 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
  * <p>Deliberately {@code @EnableAutoConfiguration} + {@code @ComponentScan} spelled out
  * explicitly (rather than {@code @SpringBootApplication}) purely so the class-level Javadoc can
  * document each piece; behaviourally equivalent to the original {@code
- * @SpringBootApplication(scanBasePackages = "fr.pivot.agilite")}.
+ * @SpringBootApplication(scanBasePackages = "fr.pivot.agilite")} — <strong>including its default
+ * {@code excludeFilters}</strong> ({@link TypeExcludeFilter}, {@link
+ * AutoConfigurationExcludeFilter}), reproduced explicitly below. Omitting these two is not
+ * cosmetic: without {@link TypeExcludeFilter}, this module's own {@code @ComponentScan(
+ * "fr.pivot.agilite")} is not just broader than {@code @SpringBootApplication}'s — it actively
+ * sweeps up test-only nested configuration classes that are supposed to stay opt-in. {@code
+ * WebSocketConfigIT}'s nested {@code BrokerAvailabilityCaptureConfig} (package {@code
+ * fr.pivot.agilite.config}, {@code @TestConfiguration}) supplies {@code
+ * mock(PokerChannelInterceptor.class)}/{@code RetroChannelInterceptor}/{@code
+ * WheelChannelInterceptor} beans for its own narrow {@code @SpringBootTest(classes = ...)} slice
+ * — but {@code target/test-classes} sits on the classpath for every test in this module, so a
+ * scan with no {@link TypeExcludeFilter} finds that {@code .class} file too. An unstubbed
+ * Mockito mock's {@code preSend(...)} returns {@code null} unconditionally for every STOMP
+ * frame, CONNECT included; since {@code PokerChannelInterceptor} is registered first in {@code
+ * WebSocketConfig#configureClientInboundChannel}'s interceptor chain, a leaked mock silently
+ * vetoes every inbound frame for every domain (Poker/Retro/Wheel alike) — the exact failure
+ * mode diagnosed for the STOMP CONNECT hang across this module's WebSocket integration tests
+ * (EN53.1 Vague 1 regression fix). {@link TypeExcludeFilter} is precisely the hook {@code
+ * @TestConfiguration} relies on to stay excluded from an unrelated scan like this one.
  *
  * <p>{@link EntityScan}/{@link EnableJpaRepositories} extend scanning to {@code
  * fr.pivot.core.team} (the same rationale as the original boot class: {@code
@@ -43,7 +65,12 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
  */
 @SpringBootConfiguration
 @EnableAutoConfiguration
-@ComponentScan("fr.pivot.agilite")
+@ComponentScan(
+        basePackages = "fr.pivot.agilite",
+        excludeFilters = {
+            @Filter(type = FilterType.CUSTOM, classes = TypeExcludeFilter.class),
+            @Filter(type = FilterType.CUSTOM, classes = AutoConfigurationExcludeFilter.class)
+        })
 @ConfigurationPropertiesScan("fr.pivot.agilite")
 @EntityScan(basePackages = {"fr.pivot.agilite", "fr.pivot.core.team"})
 @EnableJpaRepositories(basePackages = {"fr.pivot.agilite", "fr.pivot.core.team"})

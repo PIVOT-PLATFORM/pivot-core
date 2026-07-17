@@ -261,7 +261,7 @@ class PokerVoteSubmissionIT extends AbstractAgiliteIntegrationTest {
     private String fetchInviteCode(final String roomId, final String bearerToken) throws Exception {
         MvcResult result = mockMvc.perform(
                         org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                                .get("/poker/rooms/" + roomId)
+                                .get("/agilite/poker/rooms/" + roomId)
                                 .header("Authorization", "Bearer " + bearerToken))
                 .andExpect(status().isOk())
                 .andReturn();

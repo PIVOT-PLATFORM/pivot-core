@@ -8,9 +8,9 @@ import fr.pivot.agilite.ws.WsSessionTrackingHandlerDecoratorFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.broker.BrokerAvailabilityEvent;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -90,8 +90,27 @@ class WebSocketConfigIT {
      * plus this configuration) can satisfy {@link WebSocketConfig}'s constructor without pulling
      * in the full poker room-isolation stack (Redis, grant store) — irrelevant to what this test
      * proves (the ActiveMQ relay connects).
+     *
+     * <p><strong>EN53.1 hardening — {@code @TestConfiguration}, not plain {@code
+     * @Configuration}.</strong> This nested class lives in package {@code fr.pivot.agilite.config}
+     * — inside this module's own {@code @ComponentScan("fr.pivot.agilite")} base package — and its
+     * {@code .class} file (compiled to {@code WebSocketConfigIT$BrokerAvailabilityCaptureConfig})
+     * sits on the classpath for every other test in this module too, since {@code
+     * target/test-classes} is on the classpath alongside {@code target/classes} for the whole
+     * module test run. A plain {@code @Configuration} here is a classic Spring Boot test-scan
+     * collision risk (documented in the Spring Boot testing reference): any other test in this
+     * module using a broad component scan with no protection against it would pick up this
+     * class's {@code @Bean} methods too, silently substituting Mockito mocks — whose unstubbed
+     * {@code preSend(...)} returns {@code null} unconditionally, for <em>every</em> STOMP frame
+     * including CONNECT — for the real {@code @Component}-scanned {@code PokerChannelInterceptor}/
+     * {@code RetroChannelInterceptor}/{@code WheelChannelInterceptor} beans everywhere else in the
+     * module. {@code @TestConfiguration} is Spring Boot's documented fix: it is recognised and
+     * actively excluded by the {@code TypeExcludeFilter} that {@code @SpringBootApplication}
+     * (and, after the EN53.1 hardening, {@link fr.pivot.agilite.AgiliteTestApplication}) registers
+     * by default — while still fully usable here via this class's own explicit {@code
+     * @SpringBootTest(classes = ...)} reference above, unaffected by this annotation swap.
      */
-    @Configuration
+    @TestConfiguration
     static class BrokerAvailabilityCaptureConfig {
 
         /**
