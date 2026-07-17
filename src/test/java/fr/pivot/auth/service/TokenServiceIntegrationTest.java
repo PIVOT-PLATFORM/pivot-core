@@ -152,9 +152,15 @@ class TokenServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void revokeByRawToken_isNoOp_forNull() {
-        // Must not throw and leave DB untouched
+        // Must not throw and leave the DB untouched. Asserted count-relative (before == after)
+        // rather than count()==0 : le conteneur Postgres est un singleton partagé entre classes
+        // d'IT (AbstractIntegrationTest.POSTGRES) et l'@AfterEach ne purge que les tokens du test
+        // user — d'autres classes peuvent laisser des tokens d'autres users. Un count global == 0
+        // dépendait de l'ordre d'exécution (vert en local, rouge en CI après l'absorption modulith
+        // qui a décalé cet ordre). La propriété réellement testée est « no-op », i.e. count inchangé.
+        final long before = tokenRepo.count();
         tokenService.revokeByRawToken(null);
-        assertThat(tokenRepo.count()).isZero();
+        assertThat(tokenRepo.count()).isEqualTo(before);
     }
 
     // ----------------------------------------------------------------
