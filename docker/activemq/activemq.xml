@@ -4,18 +4,18 @@
     Based on the image's own default conf/activemq.xml (apache/activemq-classic), trimmed to
     only the transports PIVOT actually uses (openwire for ops/admin tooling, stomp for each
     module-core's Spring enableStompBrokerRelay()) and extended with a destinationPolicy entry
-    per domain for a fixed, shared Dead Letter Queue name (DLQ.pilotage / DLQ.agilite /
-    DLQ.collaboratif — pivot-docs EN07.3 AC).
+    per domain for a fixed, shared Dead Letter Queue name (DLQ.agilite / DLQ.collaboratif —
+    pivot-docs EN07.3 AC).
 
     pivot-core itself never connects to this broker — no WS/STOMP relay in the shell (its only
     STOMP code, fr.pivot.notification.config.NotificationWebSocketConfig, is an in-process
     Spring SimpleBroker for in-app browser notifications, unrelated and untouched by this
-    Enabler). Only pivot-pilotage-core, pivot-agilite-core and pivot-collaboratif-core connect,
-    each via its own enableStompBrokerRelay() wired to this broker's STOMP port (61613).
+    Enabler). Only pivot-agilite-core and pivot-collaboratif-core connect, each via its own
+    enableStompBrokerRelay() wired to this broker's STOMP port (61613).
 
-    Destination naming convention: the backlog AC describes topics as "/topic/pilotage/**"
+    Destination naming convention: the backlog AC describes topics as "/topic/agilite/**"
     (prose, not a literal STOMP path). Real destinations use DOT hierarchy after the STOMP
-    "/topic/" prefix — e.g. "/topic/pilotage.roadmap-updated" — because ActiveMQ's wildcard
+    "/topic/" prefix — e.g. "/topic/agilite.capacity-updated" — because ActiveMQ's wildcard
     destination matching (the ">" used below, required for per-domain DLQ routing) only
     operates on dot-separated segments. A slash-based destination (e.g. "/topic/foo/bar")
     becomes ONE opaque physical segment to ActiveMQ and never matches a dot-based wildcard —
@@ -49,24 +49,11 @@
         <destinationPolicy>
             <policyMap>
               <policyEntries>
-                <!-- Fallback for any topic outside the three known domains. -->
+                <!-- Fallback for any topic outside the two known domains. -->
                 <policyEntry topic=">">
                   <pendingMessageLimitStrategy>
                     <constantPendingMessageLimitStrategy limit="1000"/>
                   </pendingMessageLimitStrategy>
-                </policyEntry>
-
-                <policyEntry topic="pilotage.>">
-                  <pendingMessageLimitStrategy>
-                    <constantPendingMessageLimitStrategy limit="1000"/>
-                  </pendingMessageLimitStrategy>
-                  <deadLetterStrategy>
-                    <sharedDeadLetterStrategy processExpired="true" processNonPersistent="false">
-                      <deadLetterQueue>
-                        <queue physicalName="DLQ.pilotage"/>
-                      </deadLetterQueue>
-                    </sharedDeadLetterStrategy>
-                  </deadLetterStrategy>
                 </policyEntry>
 
                 <policyEntry topic="agilite.>">

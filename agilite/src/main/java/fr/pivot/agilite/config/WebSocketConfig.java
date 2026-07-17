@@ -52,7 +52,7 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
  * forwarded by this JVM's relay handler (see {@code
  * org.springframework.messaging.simp.AbstractBrokerMessageHandler#checkDestinationPrefix}).
  * Scoping this module to {@code /topic/agilite.} (trailing dot) means this application can
- * never relay another domain's traffic (pilotage, collaboratif), even by accident — this is
+ * never relay another domain's traffic (whiteboard, collaboratif), even by accident — this is
  * the enforced isolation boundary for this Enabler's AC, applied independently in each
  * module-core. Broker-side ACL (rejecting a connection that tries to (re)subscribe to another
  * domain's topic at the transport level) is a documented, accepted follow-up gap, not built

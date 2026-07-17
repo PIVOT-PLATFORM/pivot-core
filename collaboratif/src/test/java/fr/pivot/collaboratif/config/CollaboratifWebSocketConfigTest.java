@@ -22,7 +22,7 @@ class CollaboratifWebSocketConfigTest {
      * then it is exactly {@code /topic/collaboratif.} — dot-terminated (never slash, never a
      * bare {@code /topic/collaboratif} that could accidentally prefix-match a future domain
      * such as {@code collaboratifx}), and scoped to this module's own domain only (never
-     * {@code /topic/pilotage.} or {@code /topic/agilite.}).
+     * {@code /topic/whiteboard.} or {@code /topic/agilite.}).
      */
     @Test
     void domainRelayPrefixIsExactlyTheCollaboratifDomainWithTrailingDot() {
@@ -33,7 +33,7 @@ class CollaboratifWebSocketConfigTest {
                 .isNotEqualTo("/topic/collaboratif");
         assertThat(CollaboratifWebSocketConfig.DOMAIN_RELAY_PREFIX)
                 .as("must not be another module's domain prefix")
-                .isNotEqualTo("/topic/pilotage.")
+                .isNotEqualTo("/topic/whiteboard.")
                 .isNotEqualTo("/topic/agilite.");
     }
 }

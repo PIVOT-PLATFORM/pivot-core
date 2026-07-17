@@ -40,7 +40,7 @@ class PivotCoreStarterAutoConfigurationIntegrationTest {
     @Test
     void starterBootsCleanly_withAModuleFlywayConfigurerRegistered() {
         runner.withBean(ModuleFlywayConfigurer.class,
-                        () -> new ModuleFlywayConfigurer("pilotage", "classpath:db/pilotage"))
+                        () -> new ModuleFlywayConfigurer("agilite", "classpath:db/agilite"))
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(PivotCoreAutoConfiguration.ModuleFlywayRegistrationLogger.class);

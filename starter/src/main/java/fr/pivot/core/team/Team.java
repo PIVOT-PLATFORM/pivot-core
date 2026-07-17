@@ -19,7 +19,7 @@ import java.util.Locale;
  * <p>Entité fondatrice EN17.1 (volet team, {@code pivot-core#171}) : chaque
  * {@code pivot-xxx-core} référence {@code public.teams(id)} par FK cross-schéma (convention déjà
  * documentée par EN17.4) pour rattacher ses propres entités métier (ex. l'entité
- * {@code pilotage.applications} à venir, voir {@code en-schema-flyway-pilotage.md}) à une équipe
+ * {@code agilite.poker_rooms}, voir {@code en-schema-flyway-agilite.md}) à une équipe
  * PIVOT — jamais de duplication locale de la notion d'équipe dans un schéma module.
  *
  * <p>Exportée par {@code fr.pivot:pivot-core-starter} — consommée par tous les repos modules.

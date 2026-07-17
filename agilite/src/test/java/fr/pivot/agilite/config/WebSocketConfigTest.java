@@ -35,7 +35,7 @@ class WebSocketConfigTest {
      */
     @Test
     void otherDomainDestinationsNeverMatchThisModulePrefix() {
-        assertThat("/topic/pilotage.roadmap-updated").doesNotStartWith(WebSocketConfig.DOMAIN_TOPIC_PREFIX);
+        assertThat("/topic/whiteboard.card-updated").doesNotStartWith(WebSocketConfig.DOMAIN_TOPIC_PREFIX);
         assertThat("/topic/collaboratif.board-updated").doesNotStartWith(WebSocketConfig.DOMAIN_TOPIC_PREFIX);
         assertThat("/topic/agilitex.other").doesNotStartWith(WebSocketConfig.DOMAIN_TOPIC_PREFIX);
     }

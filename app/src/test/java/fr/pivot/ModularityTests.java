@@ -83,7 +83,7 @@ import org.springframework.modulith.core.ApplicationModules;
  * universe) the absence of illegitimate cross-module reach-through between {@code agilite} and
  * {@code collaboratif} themselves — the meaningful new-module-boundary check available given
  * neither the shell nor the starter were modularised with Spring Modulith annotations yet. As
- * further business modules (pilotage) are folded into this modulith in later EN53 vagues, and/or
+ * further business modules are folded into this modulith in later EN53 vagues, and/or
  * the shell packages and {@code fr.pivot.core} are retrofitted with {@code @ApplicationModule}/
  * {@code @NamedInterface} declarations (keeping them in the graph, with {@code fr.pivot.core}'s
  * actual exported packages formally published instead of blanket-excluded), this exclusion list

@@ -7,7 +7,7 @@ import fr.pivot.core.tenant.TenantContext;
  *
  * <p>Chaque module déclare son identifiant, son nom et sa version, et expose sa
  * visibilité selon le contexte tenant courant. Les repos modules externes
- * ({@code pivot-pilotage-core}, {@code pivot-agilite-core}, {@code pivot-collaboratif-core})
+ * ({@code pivot-agilite-core}, {@code pivot-collaboratif-core})
  * implémentent cette interface et exposent leur implémentation comme bean Spring
  * ({@code @Bean} ou {@code @Component}) — le {@link ModuleRegistry} la découvre
  * automatiquement, sans modification de pivot-core.

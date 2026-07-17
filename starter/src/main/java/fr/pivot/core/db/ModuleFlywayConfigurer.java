@@ -15,14 +15,14 @@ import javax.sql.DataSource;
  *
  * <h2>Usage in a module repo</h2>
  * <pre>{@code
- * // pivot-pilotage-core — PilotageFlywayConfig.java
+ * // pivot-agilite-core — AgiliteFlywayConfig.java
  * @Configuration
- * public class PilotageFlywayConfig {
+ * public class AgiliteFlywayConfig {
  *
  *     @Bean
  *     @DependsOn("entityManagerFactory")
- *     public Flyway pilotageFlywayMigrator(DataSource dataSource) {
- *         return new ModuleFlywayConfigurer("pilotage", "classpath:db/pilotage")
+ *     public Flyway agiliteFlywayMigrator(DataSource dataSource) {
+ *         return new ModuleFlywayConfigurer("agilite", "classpath:db/agilite")
  *                 .createFlyway(dataSource);
  *     }
  * }
@@ -36,9 +36,9 @@ import javax.sql.DataSource;
  *   <li>Module schemas must <strong>never</strong> write to the {@code public} schema.</li>
  * </ul>
  *
- * @param schema         PostgreSQL schema name for this module (e.g. {@code "pilotage"}).
+ * @param schema         PostgreSQL schema name for this module (e.g. {@code "agilite"}).
  * @param migrationsPath Flyway location of migration scripts for this module
- *                       (e.g. {@code "classpath:db/pilotage"}).
+ *                       (e.g. {@code "classpath:db/agilite"}).
  */
 public record ModuleFlywayConfigurer(String schema, String migrationsPath) {
 

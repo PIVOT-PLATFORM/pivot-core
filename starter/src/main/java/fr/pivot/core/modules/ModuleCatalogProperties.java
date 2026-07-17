@@ -9,7 +9,7 @@ import java.util.List;
  *
  * <p>Complète l'auto-découverte de beans {@link PivotModule} (utile pour des modules qui
  * tourneraient réellement dans le même process que pivot-core, ex. en test) : un module métier
- * PIVOT ({@code pivot-collaboratif-core}, {@code pivot-pilotage-core}, ...) tourne comme un
+ * PIVOT ({@code pivot-collaboratif-core}, {@code pivot-agilite-core}, ...) tourne comme un
  * service Spring Boot **séparé** (process, port dédiés) et ne peut donc jamais s'enregistrer
  * comme bean dans le contexte Spring de pivot-core lui-même — l'auto-découverte seule laisse
  * {@link ModuleRegistry} vide en toutes circonstances réelles.
