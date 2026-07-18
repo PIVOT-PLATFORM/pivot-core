@@ -25,17 +25,22 @@
 	<!--
 	  EN17.1 — Multi-module structure.
 	  pivot-core-starter : published library artifact consumed by all pivot-xxx-core repos.
-	  pivot-agilite       : EN53.1 — Agilité domain module (Maven artifactId pivot-agilite,
-	                         package fr.pivot.agilite), folded into the modulith from the
-	                         former standalone pivot-agilite-core repo. Listed after starter
-	                         (depends on it) and before app (aggregates everything).
+	  pivot-agilite       : EN53.1 Vague 1 — Agilité domain module (Maven artifactId
+	                         pivot-agilite, package fr.pivot.agilite), folded into the modulith
+	                         from the former standalone pivot-agilite-core repo.
+	  pivot-collaboratif  : EN53.2 Vague 2 — Collaboratif domain module (Maven artifactId
+	                         pivot-collaboratif, package fr.pivot.collaboratif), folded into the
+	                         modulith from the former standalone pivot-collaboratif-core repo —
+	                         same pattern as pivot-agilite above.
 	  pivot-core-app     : runnable Spring Boot application shell (Docker / deploy).
-	  Modules are listed in build order: starter must be installed before agilite/app depend
-	  on it; agilite before app (app depends on agilite as a runtime module dependency).
+	  Modules are listed in build order: starter must be installed before agilite/collaboratif/
+	  app depend on it; agilite and collaboratif before app (app depends on both as runtime
+	  module dependencies).
 	-->
 	<modules>
 		<module>starter</module>
 		<module>agilite</module>
+		<module>collaboratif</module>
 		<module>app</module>
 	</modules>
 

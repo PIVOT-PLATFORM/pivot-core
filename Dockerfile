@@ -6,6 +6,7 @@ COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 COPY starter/pom.xml starter/
 COPY agilite/pom.xml agilite/
+COPY collaboratif/pom.xml collaboratif/
 COPY app/pom.xml app/
 RUN chmod +x mvnw
 # sharing=locked : le dev compose (pivot-core/compose.yml) build ce service EN PARALLÈLE des
@@ -17,6 +18,7 @@ RUN --mount=type=cache,target=/root/.m2,sharing=locked ./mvnw dependency:go-offl
 COPY src/ src/
 COPY starter/src/ starter/src/
 COPY agilite/src/ agilite/src/
+COPY collaboratif/src/ collaboratif/src/
 # app/ (artifactId pivot-core-app) has no src/ of its own — sources are at root src/ (configured via <sourceDirectory>)
 # EN04.2 — git-commit-id-maven-plugin (pom.xml) needs an actual .git directory at build time
 # to populate git.properties (real commit SHA in /actuator/info) — without it the plugin

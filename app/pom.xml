@@ -122,6 +122,18 @@
         </dependency>
 
         <!--
+          EN53.2 — Collaboratif domain module (Vague 2). Same convention as pivot-agilite
+          above: version pinned to the parent's own version, never an independently-guessed
+          coordinate — both modules are built/released together from this same multi-module
+          reactor.
+        -->
+        <dependency>
+            <groupId>fr.pivot</groupId>
+            <artifactId>pivot-collaboratif</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!--
           EN53.1 — Spring Modulith. Version resolved via the spring-modulith-bom import in
           the parent POM (see its <properties>/<dependencyManagement> for the exact version
           and the compatibility-risk note) — no version repeated here, single source of truth.
