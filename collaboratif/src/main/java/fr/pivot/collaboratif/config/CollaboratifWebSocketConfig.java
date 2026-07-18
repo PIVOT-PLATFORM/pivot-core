@@ -180,8 +180,8 @@ public class CollaboratifWebSocketConfig implements WebSocketMessageBrokerConfig
      * this one. Spring's {@code AbstractBrokerMessageHandler} only relays destinations that
      * start with a registered prefix — this is the actual, enforced isolation boundary for
      * this module's cross-domain bus traffic (broker-side ACL is a documented, accepted
-     * follow-up gap, not implemented here — same posture taken in pivot-pilotage-core and
-     * pivot-agilite-core's equivalent EN07.3 changes).
+     * follow-up gap, not implemented here — same posture taken in pivot-agilite-core's
+     * equivalent EN07.3 changes).
      */
     static final String DOMAIN_RELAY_PREFIX = "/topic/collaboratif.";
 

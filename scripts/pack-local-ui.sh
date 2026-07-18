@@ -42,7 +42,6 @@ pack_lib () {
 # design-system : lib packagée par ng-packagr (dist/), pas de cible architect `ng build`.
 pack_lib pivot-design-system   design-system   pivot-platform-design-system.tgz   ng-packagr .
 pack_lib pivot-collaboratif-ui collaboratif-ui pivot-platform-collaboratif-ui.tgz
-pack_lib pivot-pilotage-ui     pilotage-ui     pivot-platform-pilotage-ui.tgz
 pack_lib pivot-agilite-ui      agilite-ui      pivot-platform-agilite-ui.tgz
 
 echo "✓ local UI packages ready in $DEST"

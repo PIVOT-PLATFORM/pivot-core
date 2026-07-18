@@ -70,7 +70,7 @@ Chaque module est activable individuellement par les administrateurs tenant.
 ## Développement local — lancer tout l'écosystème
 
 `compose.yml` (ce repo) est l'**orchestrateur** de la plateforme complète en local : il build et
-démarre le backend + les trois module-cores + le frontend, plus toute l'infra. PIVOT est un
+démarre le backend + les deux module-cores + le frontend, plus toute l'infra. PIVOT est un
 multi-repo : les repos siblings doivent être **clonés côte à côte** (mêmes parents), car le compose
 les build depuis `../` :
 
@@ -78,7 +78,6 @@ les build depuis `../` :
 un-dossier-parent/
 ├── pivot-core/                 # ← ce repo (backend shell + compose.yml orchestrateur)
 ├── pivot-ui/                   # frontend Angular (service `frontend`, nginx :80)
-├── pivot-pilotage-core/        # module-core Pilotage  (:8081 interne, /api/pilotage)
 ├── pivot-agilite-core/         # module-core Agilité   (:8082 interne, /api/agilite)
 └── pivot-collaboratif-core/    # module-core Collaboratif (:8083 interne, /api/collaboratif)
 ```
@@ -134,12 +133,12 @@ docker compose up -d --build
 ### Lancer sans GitHub — UI buildées depuis les sources locales
 
 Pour **ne rien tirer de GitHub Packages côté npm** (itérer sur les `-ui` sans package publié, ou
-travailler hors-ligne), les trois libs `@pivot-platform/{collaboratif,pilotage,agilite}-ui` sont
+travailler hors-ligne), les deux libs `@pivot-platform/{collaboratif,agilite}-ui` sont
 buildées depuis les repos siblings et injectées dans le shell en dépendances `file:` :
 
 ```bash
 cd pivot-core
-bash scripts/pack-local-ui.sh                                   # build + npm pack les 3 libs
+bash scripts/pack-local-ui.sh                                   # build + npm pack les 2 libs
 docker compose -f compose.yml -f compose.local.yml up -d --build
 ```
 
@@ -160,7 +159,7 @@ requis (sauf artefact déjà en cache `.m2`).
 |---------|-----|
 | UI (SPA + gateway API nginx) | http://localhost/ |
 | API pivot-core (via nginx) | http://localhost/api/… |
-| API modules (via nginx) | http://localhost/api/{pilotage,agilite,collaboratif}/… |
+| API modules (via nginx) | http://localhost/api/{agilite,collaboratif}/… |
 | Health backend (port management EN04.2, hors context-path) | http://localhost:8081/actuator/health · groupes `/liveness`, `/readiness` |
 | Métriques Prometheus backend | http://localhost:8081/actuator/prometheus |
 | Mailpit (emails dev) | http://localhost:8025/ |
@@ -187,7 +186,7 @@ docker exec -i pivot-postgres psql -U pivot -d pivot_dev \
 # 2. Activer les modules pour le tenant pivot-saas (id=1)
 docker exec pivot-postgres psql -U pivot -d pivot_dev -c \
  "INSERT INTO public.module_activations (tenant_id, module_id, enabled)
-  SELECT 1, m.id, true FROM (VALUES ('whiteboard'),('pilotage'),('agilite')) AS m(id)
+  SELECT 1, m.id, true FROM (VALUES ('whiteboard'),('agilite')) AS m(id)
   ON CONFLICT (tenant_id, module_id) DO UPDATE SET enabled = true;"
 ```
 
@@ -200,7 +199,7 @@ Comptes créés (tenant `pivot-saas`, mot de passe `Pivot@Test123!`) :
 | `user@pivot.test` | USER |
 
 Login sur http://localhost/ → la home affiche les modules activés, chacun lazy-loadé sous
-`/whiteboard`, `/pilotage`, `/agilite`. Le statut d'activation est caché côté Redis (TTL 60 s) :
+`/whiteboard`, `/agilite`. Le statut d'activation est caché côté Redis (TTL 60 s) :
 après un changement, patienter jusqu'à 1 min (ou vider la clé `module*`).
 
 ### Config runtime (`.env`, optionnel)

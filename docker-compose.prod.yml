@@ -3,15 +3,14 @@
 # EN07.1 (pivot-docs/docs/backlog/EPIC-infrastructure/ENABLERS/en-docker-compose-prod.md).
 #
 # Scope note (Gate 1, confirmed against the current org — see PR description for detail):
-# the enabler's original AC also lists pivot-pilotage-core / pivot-agilite-core /
-# pivot-collaboratif-core, and an activemq + pgbouncer layer. Still only partially true as of
-# this PR (chore/en07-collaboratif-core-compose-service):
+# the enabler's original AC also lists pivot-agilite-core / pivot-collaboratif-core, and an
+# activemq + pgbouncer layer. Still only partially true as of this PR
+# (chore/en07-collaboratif-core-compose-service):
 #   - pivot-collaboratif-core now publishes a real image (release.yml pushes to
 #     ghcr.io/pivot-platform/pivot-collaboratif-core on every merge to main) and is wired
-#     below as a real service block. pivot-pilotage-core / pivot-agilite-core are still real
-#     bootstrap repos with no published image yet — no service block for them here; see the
-#     commented module-core template below (kept for those two only) for the env vars each
-#     expects once it IS wired.
+#     below as a real service block. pivot-agilite-core is still a real bootstrap repo with no
+#     published image yet — no service block for it here; see the commented module-core
+#     template below (kept for that one only) for the env vars it expects once it IS wired.
 #   - pivot-core itself still has zero ActiveMQ/JMS/STOMP-relay dependency — verified again for
 #     this PR (grep for activemq|jms|stomp.*relay across pom.xml, application*.yml, src/
 #     returns nothing beyond the pre-existing in-process notification SimpleBroker, which
@@ -265,32 +264,31 @@ services:
       retries: 3
       start_period: 30s
 
-  # --- Module-core services — NOT wired yet (pivot-pilotage-core / pivot-agilite-core) ------
-  # pivot-pilotage-core, pivot-agilite-core don't exist as repos yet ("à créer avec le repo" —
-  # pivot-platform/CLAUDE.md). EN17.7 added nginx routing for their URL prefixes
-  # (/api/pilotage/, /api/agilite/, /ws/{module}/) using Docker's resolver (127.0.0.11) with
-  # per-request hostname resolution — nginx starts fine without these services and returns 503
-  # for their prefixes until they exist.
+  # --- Module-core services — NOT wired yet (pivot-agilite-core) ---------------------------
+  # pivot-agilite-core doesn't exist as a repo yet ("à créer avec le repo" —
+  # pivot-platform/CLAUDE.md). EN17.7 added nginx routing for its URL prefix
+  # (/api/agilite/, /ws/agilite/) using Docker's resolver (127.0.0.11) with per-request
+  # hostname resolution — nginx starts fine without this service and returns 503 for its
+  # prefix until it exists.
   #
   # Port convention (matches nginx.conf upstreams in pivot-ui, agreed in EN17.7):
-  #   pivot-pilotage-core    → 8081  (Spring management port: 9081)
   #   pivot-agilite-core     → 8082  (Spring management port: 9082)
   #
   # pivot-collaboratif-core (:8083, management :9083 per the convention table) is wired above
   # as a real service now that its repo publishes an image; this template is kept only for the
-  # two repos that still don't exist.
+  # repo that still doesn't exist.
   #
-  # Once a repo exists and publishes ghcr.io/pivot-platform/<repo>:<tag>, add a service block:
+  # Once the repo exists and publishes ghcr.io/pivot-platform/<repo>:<tag>, add a service block:
   #
-  #   pivot-pilotage-core:
-  #     image: ghcr.io/pivot-platform/pivot-pilotage-core:${PIVOT_PILOTAGE_VERSION:?PIVOT_PILOTAGE_VERSION is required in production}
-  #     container_name: pivot-pilotage-core
-  #     # server.port=8081, management.server.port=9081 (set in that repo's application.yml) —
+  #   pivot-agilite-core:
+  #     image: ghcr.io/pivot-platform/pivot-agilite-core:${PIVOT_AGILITE_VERSION:?PIVOT_AGILITE_VERSION is required in production}
+  #     container_name: pivot-agilite-core
+  #     # server.port=8082, management.server.port=9082 (set in that repo's application.yml) —
   #     # verify this actually exists in that repo's application.yml before copying as-is; it
   #     # did NOT exist yet in pivot-collaboratif-core's own config when that service was wired
   #     # (see the real block above), so don't assume the convention table alone is enough.
   #     networks:
-  #       pivot-net-app: {}   # reachable by nginx (/api/pilotage/, /ws/pilotage/)
+  #       pivot-net-app: {}   # reachable by nginx (/api/agilite/, /ws/agilite/)
   #       pivot-net-data: {}  # reachable by postgres/redis — no host port exposed
   #     environment:
   #       SPRING_PROFILES_ACTIVE: prod
@@ -311,14 +309,12 @@ services:
   #       redis:     { condition: service_healthy }
   #       activemq:  { condition: service_healthy }
   #     healthcheck:
-  #       test: ["CMD-SHELL", "curl -f http://localhost:9081/actuator/health || exit 1"]
+  #       test: ["CMD-SHELL", "curl -f http://localhost:9082/actuator/health || exit 1"]
   #       interval: 10s
   #       timeout: 5s
   #       retries: 3
   #       start_period: 30s
   #     restart: unless-stopped
-  #
-  # Same shape for pivot-agilite-core (:8082, management :9082).
   # ------------------------------------------------------------------------------------
 
   postgres:
@@ -422,9 +418,9 @@ services:
   #     postgres's compiled-in default max_connections=100 (superuser_reserved_connections=3
   #     leaves ~97 for regular roles), leaving headroom for autovacuum, admin psql sessions,
   #     and future replicas without touching postgres's own config.
-  #   - MAX_CLIENT_CONN=200 client-side sockets accepted by pgbouncer itself — today's 4
-  #     services (pivot-core + the 3 module-cores once wired) x Hikari's default
-  #     maximum-pool-size (10) = 40 baseline; 200 leaves room to scale each service to several
+  #   - MAX_CLIENT_CONN=200 client-side sockets accepted by pgbouncer itself — today's 3
+  #     services (pivot-core + the 2 module-cores once wired) x Hikari's default
+  #     maximum-pool-size (10) = 30 baseline; 200 leaves room to scale each service to several
   #     replicas before this ceiling (not postgres's own hard limit) is what queues new
   #     connection attempts. See application-prod.yml for pivot-core's own explicit Hikari
   #     sizing tied to this same math.

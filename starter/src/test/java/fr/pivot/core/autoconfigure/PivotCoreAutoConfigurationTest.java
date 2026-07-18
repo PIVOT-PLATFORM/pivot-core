@@ -39,7 +39,7 @@ class PivotCoreAutoConfigurationTest {
     @Test
     @DisplayName("registration logger logs each registered configurer")
     void moduleFlywayRegistrationLogger_withConfigurer_logsAndReturns() {
-        final var configurer = new ModuleFlywayConfigurer("pilotage", "classpath:db/pilotage");
+        final var configurer = new ModuleFlywayConfigurer("agilite", "classpath:db/agilite");
         @SuppressWarnings("unchecked")
         final ObjectProvider<ModuleFlywayConfigurer> provider = mock(ObjectProvider.class);
         when(provider.orderedStream()).thenReturn(Stream.of(configurer));

@@ -97,13 +97,13 @@ Declare a `ModuleFlywayConfigurer` bean:
 
 ```java
 @Configuration
-public class PilotageFlywayConfig {
+public class AgiliteFlywayConfig {
 
     @Bean
-    public ModuleFlywayConfigurer pilotageFlywayConfigurer() {
+    public ModuleFlywayConfigurer agiliteFlywayConfigurer() {
         // schema: dedicated PostgreSQL schema for this module
         // migrationsPath: Flyway location of migration scripts
-        return new ModuleFlywayConfigurer("pilotage", "classpath:db/pilotage");
+        return new ModuleFlywayConfigurer("agilite", "classpath:db/agilite");
     }
 }
 ```

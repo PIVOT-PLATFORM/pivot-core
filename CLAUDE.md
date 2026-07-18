@@ -38,7 +38,7 @@ et l'ADR-022 (`pivot-docs/docs/adr/`) pour le raisonnement complet.
 
 **Architecture BDD :** schéma `public` géré par pivot-core (Flyway). Les repos modules créent leur propre schéma Flyway et referencent `public.teams(id)` / `public.tenants(id)` par FK.
 
-**Modules fonctionnels** : dans les repos dédiés (`pivot-pilotage-core`, `pivot-agilite-core`, `pivot-collaboratif-core`). pivot-core ne contient PAS de logique métier module.
+**Modules fonctionnels** : dans les repos dédiés (`pivot-agilite-core`, `pivot-collaboratif-core`). pivot-core ne contient PAS de logique métier module.
 
 **Déploiement :**
 - Web internet public (SaaS auto-hébergeable)
@@ -174,7 +174,7 @@ Toute contribution mobilise les experts concernés — les mentionner explicitem
 | Parent | clé du parent (ex. `E01`, `F01.1`) |
 | Stage | ⬜ (pas encore terminé) / ✅ (Done — recette mainteneur). États intermédiaires internes, non persistés → pivot-docs/docs/backlog/README.md §2/§5 |
 | Priority | Critical / High / Medium / Low |
-| Module | core / auth / admin / oidc / pilotage / agilite / collaboratif (extensible par domaine) |
+| Module | core / auth / admin / oidc / agilite / collaboratif (extensible par domaine) |
 | Phase | Socle / v1-enterprise / phase-3 |
 | Sprint | Sprint 1…N |
 | Size | XS / S / M / L / XL |

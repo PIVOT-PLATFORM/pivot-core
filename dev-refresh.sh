@@ -10,10 +10,10 @@
 #
 # Étapes :
 #   1. (option --pull) git pull --ff-only sur tous les repos siblings
-#   2. pack des libs UI depuis les sources locales (design-system + collaboratif/pilotage/agilite)
+#   2. pack des libs UI depuis les sources locales (design-system + collaboratif/agilite)
 #   3. (option --reset-db) reset des schémas modules — évite le piège Flyway « V1 édité en place »
 #      (checksum mismatch quand une image plus récente re-migre une base déjà migrée). DESTRUCTIF :
-#      supprime les données de test des schémas collaboratif/pilotage/agilite.
+#      supprime les données de test des schémas collaboratif/agilite.
 #   4. rebuild + recreate de TOUS les services depuis les sources locales
 #   5. dev-versions.sh — confirme zéro dérive
 #
@@ -37,7 +37,7 @@ done
 
 WORKSPACE="$(cd .. && pwd)"
 SIBLINGS=(pivot-core pivot-ui pivot-design-system pivot-collaboratif-core pivot-collaboratif-ui \
-          pivot-pilotage-core pivot-pilotage-ui pivot-agilite-core pivot-agilite-ui)
+          pivot-agilite-core pivot-agilite-ui)
 
 command -v docker >/dev/null || { echo "❌ docker introuvable"; exit 1; }
 
@@ -63,7 +63,7 @@ bash scripts/pack-local-ui.sh
 if (( DO_RESET_DB )); then
   echo "▶ reset des schémas modules (piège Flyway V1)…"
   if docker ps --format '{{.Names}}' | grep -qx pivot-postgres; then
-    for schema in collaboratif pilotage agilite; do
+    for schema in collaboratif agilite; do
       docker exec pivot-postgres psql -U pivot -d pivot_dev \
         -c "DROP SCHEMA IF EXISTS $schema CASCADE; CREATE SCHEMA $schema AUTHORIZATION pivot;" \
         >/dev/null 2>&1 && echo "  · schéma $schema réinitialisé" || echo "  ⚠ reset $schema échoué"

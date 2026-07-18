@@ -2,9 +2,9 @@
 #
 # dev-up.sh — lance TOUTE la plateforme PIVOT en local (compose.yml de ce repo).
 #
-# Construit et démarre : backend (pivot-core) + les 3 module-cores (pilotage, agilite,
-# collaboratif) + frontend (pivot-ui) + l'infra (postgres, pgbouncer, redis, activemq, mailpit).
-# Les repos siblings doivent être clonés à côté de pivot-core (../pivot-ui, ../pivot-pilotage-core,
+# Construit et démarre : backend (pivot-core) + les 2 module-cores (agilite, collaboratif)
+# + frontend (pivot-ui) + l'infra (postgres, pgbouncer, redis, activemq, mailpit).
+# Les repos siblings doivent être clonés à côté de pivot-core (../pivot-ui,
 # ../pivot-agilite-core, ../pivot-collaboratif-core) — cf. README §Développement local.
 #
 # Ce script résout automatiquement les credentials de BUILD (jamais committés) :
@@ -49,7 +49,7 @@ echo
 echo "✅ Stack PIVOT démarrée :"
 echo "     UI (SPA + gateway API)  http://localhost/"
 echo "     API pivot-core          http://localhost/api/…      (health: http://localhost:8081/actuator/health)"
-echo "     Modules                 http://localhost/api/{pilotage,agilite,collaboratif}/…"
+echo "     Modules                 http://localhost/api/{agilite,collaboratif}/…"
 echo "     Mailpit (emails dev)     http://localhost:8025/"
 echo "     ActiveMQ console         http://localhost:8161/     (admin/admin)"
 echo

@@ -24,9 +24,8 @@ ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 MAP=(
   "pivot-backend|pivot-core"
   "pivot-collaboratif-core|pivot-collaboratif-core"
-  "pivot-pilotage-core|pivot-pilotage-core"
   "pivot-agilite-core|pivot-agilite-core"
-  "pivot-frontend|pivot-ui,pivot-design-system,pivot-collaboratif-ui,pivot-pilotage-ui,pivot-agilite-ui"
+  "pivot-frontend|pivot-ui,pivot-design-system,pivot-collaboratif-ui,pivot-agilite-ui"
 )
 
 epoch_of_image() { # $1 = container

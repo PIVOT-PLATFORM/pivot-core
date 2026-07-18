@@ -87,12 +87,14 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       POOL_MODE: session
       MAX_CLIENT_CONN: "200"
-      # EN17.9 — the dev stack runs FOUR Spring Boot apps (backend + pilotage/agilite/collaboratif)
+      # EN17.9 — the dev stack runs THREE Spring Boot apps (backend + agilite/collaboratif)
       # through this single pooler. In session mode each Hikari connection pins one server
       # connection for its whole lifetime, so the pool must cover every app's Hikari pool at once
-      # (Spring default maximumPoolSize=10 → up to 4×10=40) plus headroom — otherwise a cold
+      # (Spring default maximumPoolSize=10 → up to 3×10=30) plus headroom — otherwise a cold
       # start or a single-service restart under load exhausts the pool and the late app dies with
-      # `FATAL: query_wait_timeout` during Flyway init. 20 was sized for one app; 50 fits four.
+      # `FATAL: query_wait_timeout` during Flyway init. 20 was sized for one app; 50 covers three
+      # with headroom (kept unchanged after EN53.3 dropped a third module-core — no functional
+      # need to shrink it).
       DEFAULT_POOL_SIZE: "50"
       MIN_POOL_SIZE: "5"
       RESERVE_POOL_SIZE: "10"
@@ -178,41 +180,10 @@ services:
 
   # EN17.9 — modules satellites, service name = hostname attendu par pivot-ui/nginx.conf
   # (résolution DNS Docker par défaut sur le nom de service, pas besoin d'alias réseau
-  # comme pour `backend` ci-dessus). Aucun des trois n'expose de `management.server.port`
+  # comme pour `backend` ci-dessus). Aucun des deux n'expose de `management.server.port`
   # séparé aujourd'hui (application.yml de chaque repo) — l'actuator vit donc sous le même
   # port ET le même `context-path` que l'API (contrairement à pivot-core, qui isole son
   # actuator sur :8081 hors context-path) : le healthcheck doit inclure le context-path.
-
-  pivot-pilotage-core:
-    build:
-      context: ../pivot-pilotage-core
-      dockerfile: Dockerfile
-    container_name: pivot-pilotage-core
-    environment:
-      # EN07.4 — routed through pgbouncer (session mode), never straight to postgres.
-      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:5432/pivot_dev
-      SPRING_DATASOURCE_USERNAME: pivot
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      # EN07.3 — matches this module-core's own enableStompBrokerRelay() defaults; explicit
-      # here for consistency with this file's style (defaults already match if omitted).
-      PIVOT_ACTIVEMQ_RELAY_HOST: activemq
-      PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
-    depends_on:
-      pgbouncer:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      activemq:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8081/api/pilotage/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
 
   pivot-agilite-core:
     build:
@@ -282,7 +253,7 @@ services:
       activemq:
         condition: service_healthy
     healthcheck:
-      # collaboratif-core (unlike pilotage/agilite) exposes Actuator on a SEPARATE management
+      # collaboratif-core (unlike agilite) exposes Actuator on a SEPARATE management
       # port 9083 with root context (management.server.port=9083 in its application.yml, EN04.2)
       # — when the mgmt port differs from server.port, Spring Boot does NOT apply
       # server.servlet.context-path to Actuator, so health lives at :9083/actuator/health, NOT
@@ -311,7 +282,6 @@ services:
       - ../pivot-ui/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
-      - pivot-pilotage-core
       - pivot-agilite-core
       - pivot-collaboratif-core
     restart: unless-stopped

@@ -47,17 +47,17 @@ scrape_configs:
           service: pgbouncer
 
   # --- Module-core targets — NOT wired yet ------------------------------------------
-  # pivot-pilotage-core, pivot-agilite-core, pivot-collaboratif-core don't exist as repos yet
+  # pivot-agilite-core, pivot-collaboratif-core don't exist as repos yet
   # ("à créer avec le repo" — pivot-platform/CLAUDE.md). Once one exists, ships EN04.2/EN04.3
   # of its own, and is wired into docker-compose.prod.yml, add a job modeled on pivot-core
   # above:
   #
-  #   - job_name: pivot-pilotage-core
+  #   - job_name: pivot-agilite-core
   #     metrics_path: /actuator/prometheus
   #     static_configs:
-  #       - targets: ["pivot-pilotage-core:8081"]
+  #       - targets: ["pivot-agilite-core:8081"]
   #         labels:
-  #           service: pivot-pilotage-core
+  #           service: pivot-agilite-core
   #
-  # Same shape for pivot-agilite-core and pivot-collaboratif-core.
+  # Same shape for pivot-collaboratif-core.
   # ------------------------------------------------------------------------------------
