@@ -24,6 +24,7 @@ import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import java.lang.reflect.Type;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 
 import static fr.pivot.collaboratif.whiteboard.canvas.BroadcastPayloads.map;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * Integration tests for EN08 (Frames) — the durable {@link Frame} model and its {@code frame:*}
@@ -122,11 +124,12 @@ class WhiteboardFrameIT extends AbstractCollaboratifIntegrationTest {
         assertThat(frame.get("active")).isEqualTo(false);
         assertThat(((Number) frame.get("layer")).intValue()).isZero();
 
-        Thread.sleep(200);
-        List<Frame> frames = frameRepository
-                .findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(board.getId(), tenantId);
-        assertThat(frames).hasSize(1);
-        assertThat(frames.get(0).getPosX()).isEqualTo(10.0);
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<Frame> frames = frameRepository
+                    .findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(board.getId(), tenantId);
+            assertThat(frames).hasSize(1);
+            assertThat(frames.get(0).getPosX()).isEqualTo(10.0);
+        });
     }
 
     // =========================================================================
@@ -194,9 +197,11 @@ class WhiteboardFrameIT extends AbstractCollaboratifIntegrationTest {
         // Full flat frame — not just {id, posX, posY}.
         assertThat(body).containsKeys("boardId", "title", "width", "height", "color", "active", "layer");
 
-        Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
-        assertThat(reloaded.getPosX()).isEqualTo(111.0);
-        assertThat(reloaded.getPosY()).isEqualTo(222.0);
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
+            assertThat(reloaded.getPosX()).isEqualTo(111.0);
+            assertThat(reloaded.getPosY()).isEqualTo(222.0);
+        });
     }
 
     // =========================================================================
@@ -227,9 +232,11 @@ class WhiteboardFrameIT extends AbstractCollaboratifIntegrationTest {
         assertThat(((Number) body.get("height")).doubleValue()).isEqualTo(555.0);
         assertThat(body).containsKeys("id", "boardId", "posX", "posY", "title", "color", "active", "layer");
 
-        Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
-        assertThat(reloaded.getWidth()).isEqualTo(999.0);
-        assertThat(reloaded.getHeight()).isEqualTo(555.0);
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
+            assertThat(reloaded.getWidth()).isEqualTo(999.0);
+            assertThat(reloaded.getHeight()).isEqualTo(555.0);
+        });
     }
 
     // =========================================================================
@@ -260,8 +267,10 @@ class WhiteboardFrameIT extends AbstractCollaboratifIntegrationTest {
         assertThat(body.get("title")).isEqualTo("Iteration 3");
         assertThat(body).containsKeys("boardId", "posX", "posY", "width", "height", "color", "active", "layer");
 
-        Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
-        assertThat(reloaded.getTitle()).isEqualTo("Iteration 3");
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
+            assertThat(reloaded.getTitle()).isEqualTo("Iteration 3");
+        });
     }
 
     // =========================================================================
@@ -289,8 +298,10 @@ class WhiteboardFrameIT extends AbstractCollaboratifIntegrationTest {
         assertThat(msg.type()).isEqualTo("frame:updated");
         assertThat(map(msg).get("active")).isEqualTo(true);
 
-        Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
-        assertThat(reloaded.isActive()).isTrue();
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
+            assertThat(reloaded.isActive()).isTrue();
+        });
     }
 
     // =========================================================================
@@ -319,8 +330,8 @@ class WhiteboardFrameIT extends AbstractCollaboratifIntegrationTest {
         // and the frontend's on<string>('frame:deleted', id => …). See handleFrameDelete.
         assertThat(msg.data()).isEqualTo(frame.getId().toString());
 
-        Thread.sleep(200);
-        assertThat(frameRepository.findById(frame.getId())).isEmpty();
+        await().atMost(Duration.ofSeconds(5))
+                .untilAsserted(() -> assertThat(frameRepository.findById(frame.getId())).isEmpty());
     }
 
     // =========================================================================
@@ -380,8 +391,10 @@ class WhiteboardFrameIT extends AbstractCollaboratifIntegrationTest {
         assertThat(body.get("id")).isEqualTo(frame.getId().toString());
         assertThat(((Number) body.get("layer")).intValue()).isEqualTo(7);
 
-        Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
-        assertThat(reloaded.getLayer()).isEqualTo(7);
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            Frame reloaded = frameRepository.findById(frame.getId()).orElseThrow();
+            assertThat(reloaded.getLayer()).isEqualTo(7);
+        });
     }
 
     // =========================================================================
