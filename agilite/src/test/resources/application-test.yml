@@ -1,0 +1,89 @@
+# EN53.1 Vague 1 — adapted from pivot-agilite-core's standalone application-test.yml.
+# Relocated from src/main/resources (standalone repo) to src/test/resources (library module —
+# a "test" profile file has no business shipping inside the production library JAR aggregated
+# by pivot-core-app).
+#
+# Scope: this file exists ONLY to let this module's own test suite
+# (WebSocketConfigIT/RetroPhaseSchedulerIT/PokerRoomControllerIT/... — 23 of them use plain
+# @SpringBootTest with no explicit `classes=`, i.e. a full context) boot in isolation when this
+# module is tested on its own within the reactor. It is NOT loaded by pivot-core-app (test
+# resources are never packaged into the consumed jar), so nothing here needs to be "handed off"
+# to the app agent as production config — see application.yml (main resources) for the
+# properties that DO need an app-side production equivalent.
+#
+# spring.datasource is intentionally absent: every IT here starts its own
+# PostgreSQLContainer/GenericContainer(redis) and injects the real coordinates via
+# @DynamicPropertySource, overriding whatever host/port/schema is written below.
+#
+# server.servlet.context-path — EN53.1 Vague 1 routing fix — set to the aggregated app's own
+# global "/api" (matching pivot-core-app's real application.yml), NOT "/api/agilite" as this
+# file previously had it. Every controller in this module now composes its own class-level
+# @RequestMapping as `AgiliteApiPaths.BASE + "/<resource>"` (@RequestMapping("/agilite/poker/rooms"),
+# ("/agilite/wheels"), ("/agilite/teams"), ("/agilite/retro/sessions"), ...) instead of relying on
+# a per-module context-path, so this module's own isolated test suite now resolves to the exact
+# same final paths (e.g. "/api/agilite/poker/rooms") as it did before, and the exact same final
+# paths the aggregated app itself serves — no per-module context-path needed or wanted any more.
+# The WebSocket endpoint (WebSocketConfig#registerStompEndpoints) is registered at
+# "/agilite/ws/agilite" for the same reason, so "ws://localhost:" + port + "/api/agilite/ws/agilite"
+# (several tests build this URL against RANDOM_PORT) still resolves unchanged.
+# MockMvc-based tests (webAppContextSetup) bypass context-path entirely regardless of this
+# setting, per their own comments — their asserted paths were updated directly to the
+# "/agilite/..." prefix in this same Vague 1 pass.
+#
+# "/teams" was flagged as a generic, high-collision-risk segment if another domain module also
+# owned a bare /teams controller — now moot: every route here lives under /agilite/... instead.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    # EN53.1 — relocated from classpath:db/migration (collided with the other modules'
+    # V1__schema_init.sql at the shared classpath root) to the agilite-scoped subfolder.
+    locations: classpath:db/migration/agilite
+    baseline-on-migrate: false
+    schemas: agilite
+    default-schema: agilite
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+server:
+  port: ${SERVER_PORT:8082}
+  servlet:
+    context-path: /api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+
+logging:
+  level:
+    fr.pivot: DEBUG
+    org.springframework.web: DEBUG
+    org.flywaydb: INFO
+
+pivot:
+  activemq:
+    # See WebSocketConfig#configureMessageBroker JavaDoc (EN09.1) — an unreachable EN07.3 relay
+    # target is unsafe alongside the poker/retro/wheel in-process SimpleBroker in tests without
+    # a real ActiveMQ broker. WebSocketConfigIT overrides this back to true against a real
+    # ActiveMQ Testcontainer via @DynamicPropertySource.
+    relay-enabled: false
+  cors:
+    allowed-origins: http://localhost:4200
+  agilite:
+    retro:
+      phase-scheduler:
+        # Much shorter than the production default (2000ms) so RetroPhaseSchedulerIT's
+        # timer-expiry assertions converge quickly via Awaitility.
+        fixed-delay-ms: 200

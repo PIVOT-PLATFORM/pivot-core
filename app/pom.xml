@@ -70,6 +70,34 @@
                     <failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
                 </configuration>
             </plugin>
+
+            <!--
+              EN53.1 — testSourceDirectory above redirects the *legacy* test tree to
+              ../src/test/java (root), so new module-wiring tests that belong to the app
+              module specifically (e.g. ModularityTests, the Spring Modulith structural
+              verification test) are added as an ADDITIONAL test source root at the
+              conventional Maven location for this module (app/src/test/java) rather than
+              mixed into the legacy root tree. Both trees are compiled and run together.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.1</version>
+                <executions>
+                    <execution>
+                        <id>add-app-module-test-source</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.basedir}/src/test/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 
@@ -79,6 +107,31 @@
             <groupId>fr.pivot</groupId>
             <artifactId>pivot-core-starter</artifactId>
             <version>${project.version}</version>
+        </dependency>
+
+        <!--
+          EN53.1 — Agilité domain module (Vague 1). Version pinned explicitly to the
+          parent's own version (both modules are built/released together from this same
+          multi-module reactor — never a guessed/independent coordinate, matching the
+          convention already used for pivot-core-starter above).
+        -->
+        <dependency>
+            <groupId>fr.pivot</groupId>
+            <artifactId>pivot-agilite</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!--
+          EN53.1 — Spring Modulith. Version resolved via the spring-modulith-bom import in
+          the parent POM (see its <properties>/<dependencyManagement> for the exact version
+          and the compatibility-risk note) — no version repeated here, single source of truth.
+          spring-modulith-core: compile scope — ApplicationModules/@ApplicationModule are used
+          by ModularityTests AND are the mechanism modules use to declare their boundaries
+          (package-info.java), so this must be on the main compile classpath, not test-only.
+        -->
+        <dependency>
+            <groupId>org.springframework.modulith</groupId>
+            <artifactId>spring-modulith-core</artifactId>
         </dependency>
 
         <dependency>
@@ -169,6 +222,18 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          EN53.1 — Spring Modulith test support (@ApplicationModuleTest, Scenario API, JMolecules
+          integration). Version from spring-modulith-bom (parent POM), see spring-modulith-core
+          comment above. ModularityTests itself only needs spring-modulith-core (ApplicationModules)
+          — this starter is added per the EN53.1 contract for module-local tests that agilite (or
+          future modules) may add using the richer @ApplicationModuleTest slice.
+        -->
+        <dependency>
+            <groupId>org.springframework.modulith</groupId>
+            <artifactId>spring-modulith-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

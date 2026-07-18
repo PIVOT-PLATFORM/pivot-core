@@ -25,11 +25,17 @@
 	<!--
 	  EN17.1 — Multi-module structure.
 	  pivot-core-starter : published library artifact consumed by all pivot-xxx-core repos.
+	  pivot-agilite       : EN53.1 — Agilité domain module (Maven artifactId pivot-agilite,
+	                         package fr.pivot.agilite), folded into the modulith from the
+	                         former standalone pivot-agilite-core repo. Listed after starter
+	                         (depends on it) and before app (aggregates everything).
 	  pivot-core-app     : runnable Spring Boot application shell (Docker / deploy).
-	  Modules are listed in build order: starter must be installed before app depends on it.
+	  Modules are listed in build order: starter must be installed before agilite/app depend
+	  on it; agilite before app (app depends on agilite as a runtime module dependency).
 	-->
 	<modules>
 		<module>starter</module>
+		<module>agilite</module>
 		<module>app</module>
 	</modules>
 
@@ -41,9 +47,17 @@
 		<!-- CVE-2026-10532 (LOW, logback-core deserialization) — fixed upstream in 1.5.35,
 		     spring-boot-starter-parent 4.1.0 still manages 1.5.34. Override until the parent bumps. -->
 		<logback.version>1.5.35</logback.version>
-		<!-- Build reproductible : timestamp d'entrées d'archive figé → même source = même
-		     digest de JAR. Sous-tend la vérification de digest sur reprise (release.yml). -->
-		<project.build.outputTimestamp>2026-07-09T19:33:07Z</project.build.outputTimestamp>
+		<!-- EN53.1 — Spring Modulith BOM. 2.1.0 is the release coordinated with Spring Boot
+		     4.1.0 GA (both shipped as part of the same June 2026 release train; Spring Modulith
+		     2.1 milestones tracked Spring Boot 4.1 milestones lockstep, e.g. "2.1 M4" alongside
+		     "Boot 4.1 M4" — see spring.io/blog 2026-03-27 and 2026-06-01 release notes). Not
+		     independently verified against a live Maven Central resolution from this sandbox
+		     (no local Maven/JDK 24 available — see pivot-core CLAUDE.md JDK gap) — CI is the
+		     source of truth; if 2.1.0 fails to resolve or its transitive ArchUnit/Boot versions
+		     conflict, try 2.1.0-RC1 or check
+		     https://docs.spring.io/spring-modulith/reference/appendix.html for the current
+		     compatibility matrix and adjust here (single line to change, no other impact). -->
+		<spring-modulith.version>2.1.0</spring-modulith.version>
 	</properties>
 
 	<dependencyManagement>
@@ -52,6 +66,13 @@
 				<groupId>org.testcontainers</groupId>
 				<artifactId>testcontainers-bom</artifactId>
 				<version>${testcontainers.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.springframework.modulith</groupId>
+				<artifactId>spring-modulith-bom</artifactId>
+				<version>${spring-modulith.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>

@@ -1,0 +1,54 @@
+# EN53.1 Vague 1 — adapted from pivot-agilite-core's standalone application.yml.
+#
+# REMOVED (standalone-app boot config now owned by pivot-core-app; do NOT re-add here):
+#   - spring.application.name           (single app identity, owned by app)
+#   - spring.datasource.*               (single shared datasource, owned by app)
+#   - spring.jpa.*                      (global JPA/Hibernate settings, owned by app)
+#   - spring.flyway.*                   (global Flyway bootstrap; app's aggregate
+#                                        `locations` list MUST include
+#                                        classpath:db/migration/agilite in addition to this
+#                                        module's own db/migration/agilite/V1__schema_init.sql —
+#                                        schema "agilite", baseline-on-migrate: true,
+#                                        baseline-version: 0, same as before)
+#   - spring.data.redis.*               (single shared Redis connection, owned by app)
+#   - server.port / server.servlet.context-path   (single app listener, owned by app)
+#   - management.*                      (single actuator surface, owned by app)
+#   - logging.level.*                   (global logging config, owned by app)
+#
+# KEPT — genuinely domain-owned defaults consumed directly by fr.pivot.agilite.* code:
+#   - pivot.agilite.poker.room.default-expiration-hours   (PokerRoomService — has an inline
+#     ":24" @Value fallback too, so this entry is redundant-but-harmless documentation)
+#   - pivot.agilite.retro.phase-scheduler.fixed-delay-ms  (RetroPhaseScheduler)
+#
+# CARRIED OVER FOR MODULE-LEVEL TEST SELF-SUFFICIENCY ONLY (pivot.activemq.*, pivot.cors.*):
+#   WebSocketConfig's constructor binds `pivot.activemq.relay-host`, `pivot.activemq.relay-port`
+#   and `pivot.cors.allowed-origins` via @Value with NO inline default — Spring context
+#   creation fails outright if they are unresolved. They are kept here so this module's own
+#   test suite (`mvn test` run against just this module in the reactor) can boot in isolation.
+#
+#   RISK — DO NOT ASSUME THIS FILE MERGES WITH pivot-core-app's application.yml AT RUNTIME:
+#   when this module's jar and pivot-core-app's own classes/resources are both on the runtime
+#   classpath, Spring Boot loads config from the classpath by *name* (application.yml,
+#   application-{profile}.yml) — if two JARs on the classpath each ship a file with the exact
+#   same name at the classpath root, only ONE is loaded (first match, classloader-order
+#   dependent, NOT a deep merge of both). This file must therefore NOT be relied upon to
+#   supply pivot.activemq.*/pivot.cors.* in the aggregated app. The app integrator MUST ensure
+#   pivot.activemq.relay-host / pivot.activemq.relay-port / pivot.activemq.relay-enabled and
+#   pivot.cors.allowed-origins are defined in pivot-core-app's own application.yml (the CORS key
+#   already exists there today with an identical default; the ActiveMQ relay keys currently do
+#   NOT exist anywhere in pivot-core-app's config and must be added, or agilite's
+#   WebSocketConfig will fail to start inside the aggregated app).
+pivot:
+  activemq:
+    relay-enabled: ${PIVOT_ACTIVEMQ_RELAY_ENABLED:true}
+    relay-host: ${PIVOT_ACTIVEMQ_RELAY_HOST:activemq}
+    relay-port: ${PIVOT_ACTIVEMQ_RELAY_PORT:61613}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+  agilite:
+    poker:
+      room:
+        default-expiration-hours: ${PIVOT_POKER_ROOM_DEFAULT_EXPIRATION_HOURS:24}
+    retro:
+      phase-scheduler:
+        fixed-delay-ms: ${PIVOT_RETRO_PHASE_SCHEDULER_FIXED_DELAY_MS:2000}

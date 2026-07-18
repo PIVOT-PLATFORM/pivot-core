@@ -3,7 +3,6 @@ package fr.pivot.notification.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
-import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -27,6 +26,22 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  * bloquant), le client peut se rabattre sur le polling {@code GET
  * /api/notifications/unread-count} toutes les 30 s — mécanisme documenté par l'AC EN-NOTIF,
  * indépendant de cette configuration.
+ *
+ * <p><strong>EN53.1 Vague 1 modulith merge (ADR-030) — {@code configureMessageBroker} retiré
+ * d'ici.</strong> Dans l'app agrégée, cette classe partage son {@code ApplicationContext} avec
+ * {@code fr.pivot.agilite.config.WebSocketConfig} (module agilite) : Spring invoque {@code
+ * configureMessageBroker} sur CHAQUE {@code WebSocketMessageBrokerConfigurer} du contexte avec
+ * LE MÊME {@code MessageBrokerRegistry}, et {@code enableSimpleBroker}/{@code
+ * setApplicationDestinationPrefixes} écrasent (last-wins, pas de merge) tout appel précédent sur
+ * ce registre. La configuration du broker et des préfixes est donc désormais centralisée dans
+ * l'unique {@link fr.pivot.config.WebSocketBrokerTopologyConfig} (package {@code fr.pivot.config}
+ * — voir sa JavaDoc pour le raisonnement complet), qui reprend telle quelle l'ancienne
+ * configuration de cette classe ({@code enableSimpleBroker("/queue", "/topic")}, {@code
+ * setUserDestinationPrefix("/user")}) et y ajoute l'union des préfixes de destination applicative
+ * ({@code "/app"} + {@code "/app/agilite"}). Cette classe conserve {@code
+ * @EnableWebSocketMessageBroker} (importe l'infrastructure STOMP — n'a pas besoin d'être
+ * co-localisé avec la classe qui configure le registre), son endpoint {@code /ws/notifications}
+ * et son intercepteur d'authentification, inchangés.
  */
 @Configuration
 @EnableWebSocketMessageBroker
@@ -53,13 +68,6 @@ public class NotificationWebSocketConfig implements WebSocketMessageBrokerConfig
     public void registerStompEndpoints(final StompEndpointRegistry registry) {
         registry.addEndpoint("/ws/notifications")
                 .setAllowedOriginPatterns(allowedOrigins.split(","));
-    }
-
-    @Override
-    public void configureMessageBroker(final MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/queue", "/topic");
-        registry.setApplicationDestinationPrefixes("/app");
-        registry.setUserDestinationPrefix("/user");
     }
 
     @Override

@@ -29,7 +29,9 @@ spring:
 
   flyway:
     enabled: true
-    locations: classpath:db/migration,classpath:db/seeds
+    # EN53.1 — see application.yml for why "db/migration" became "db/migration/public"
+    # (avoids recursively picking up "db/migration/agilite").
+    locations: classpath:db/migration/public,classpath:db/seeds
     baseline-on-migrate: false
 
   data:
@@ -128,3 +130,21 @@ pivot:
     avatars:
       # Never write into the repo working directory during tests — system temp dir instead.
       base-path: ${java.io.tmpdir:/tmp}/pivot-test-avatars
+  # EN53.1 — test-profile counterparts of the agilite properties in application.yml (ported
+  # from pivot-agilite-core's own application-test.yml — same reconciliation caveat applies).
+  activemq:
+    # An unreachable relay target is unsafe to leave enabled in tests with no real broker.
+    relay-enabled: false
+  agilite:
+    # EN53.1 Vague 1 (ADR-030) — same reasoning as application.yml: keeps any full-context test
+    # of the aggregated app (e.g. AbstractIntegrationTest/PivotBackendApplicationTests, which
+    # boot the whole context including agilite's WebSocketConfig bean via component scan) from
+    # reintroducing the last-write-wins broker/prefix collision that
+    # fr.pivot.config.WebSocketBrokerTopologyConfig resolves — see its JavaDoc.
+    websocket:
+      broker:
+        self-managed: false
+    retro:
+      phase-scheduler:
+        # US20.1.2a — much shorter than production so timer-expiry ITs don't need long waits.
+        fixed-delay-ms: 200
