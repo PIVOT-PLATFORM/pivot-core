@@ -34,7 +34,7 @@ public class RetroFormatService {
     private static final String FALLBACK_SLUG = "COLUMN";
 
     private static final Pattern NON_ALPHANUMERIC = Pattern.compile("[^A-Z0-9]+");
-    private static final Pattern BOUNDARY_UNDERSCORES = Pattern.compile("^_+|_+$");
+    private static final Pattern BOUNDARY_UNDERSCORES = Pattern.compile("(?:^_+)|(?:_+$)");
 
     private final RetroCustomFormatRepository customFormatRepository;
 
