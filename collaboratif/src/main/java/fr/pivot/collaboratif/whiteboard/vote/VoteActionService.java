@@ -5,6 +5,7 @@ import fr.pivot.collaboratif.whiteboard.board.BoardRole;
 import fr.pivot.collaboratif.whiteboard.canvas.CardRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.dto.BroadcastCanvasMessage;
 import fr.pivot.collaboratif.whiteboard.canvas.dto.CanvasActionMessage;
+import fr.pivot.collaboratif.whiteboard.LogSanitizer;
 import fr.pivot.collaboratif.whiteboard.vote.dto.VoteSessionResponse;
 import fr.pivot.collaboratif.whiteboard.ws.StompPrincipal;
 import org.slf4j.Logger;
@@ -134,7 +135,7 @@ public class VoteActionService {
             case IN_STOP -> handleStop(boardId, data, principal);
             case IN_EXTEND -> handleExtend(boardId, data, principal);
             default -> LOG.warn("Unknown vote action type '{}' — dropped board={} user={}",
-                    message.type(), boardId, principal.userId());
+                    LogSanitizer.forLog(message.type()), boardId, principal.userId());
         }
     }
 

@@ -11,6 +11,7 @@ import fr.pivot.collaboratif.whiteboard.canvas.dto.FieldValueDto;
 import fr.pivot.collaboratif.whiteboard.canvas.dto.FrameDto;
 import fr.pivot.collaboratif.whiteboard.canvas.dto.ParticipantInfo;
 import fr.pivot.collaboratif.whiteboard.canvas.opengraph.CardContentEnrichmentRequestedEvent;
+import fr.pivot.collaboratif.whiteboard.LogSanitizer;
 import fr.pivot.collaboratif.whiteboard.canvas.table.TableCardContentSanitizer;
 import fr.pivot.collaboratif.whiteboard.ws.ErrorPayload;
 import fr.pivot.collaboratif.whiteboard.ws.StompPrincipal;
@@ -283,7 +284,7 @@ public class CanvasActionService {
         CanvasEventType eventType = CanvasEventType.fromWire(message.type());
         if (eventType == null) {
             LOG.warn("Unknown canvas action type '{}' — dropped board={} user={}",
-                    message.type(), boardId, principal.userId());
+                    LogSanitizer.forLog(message.type()), boardId, principal.userId());
             return;
         }
         if (eventType == CanvasEventType.UNDO && isViewer(boardId, principal.userId())) {
@@ -490,7 +491,8 @@ public class CanvasActionService {
         // showing it (same {@code endsAt}), same room-wide rationale as {@code board:state} above.
         broadcastActiveTimer(boardId, principal);
 
-        LOG.info("Canvas JOIN: board={} user={} displayName={}", boardId, principal.userId(), displayName);
+        LOG.info("Canvas JOIN: board={} user={} displayName={}",
+                boardId, principal.userId(), LogSanitizer.forLog(displayName));
     }
 
     /**
@@ -1624,7 +1626,7 @@ public class CanvasActionService {
         if (type == null) {
             // §6.6 fix: validate before persist — an invalid/missing type is dropped silently.
             LOG.warn("Board field create refused (invalid type '{}'): board={} user={}",
-                    data.get("type"), boardId, principal.userId());
+                    LogSanitizer.forLog(data.get("type")), boardId, principal.userId());
             return;
         }
         String name = data.get("name") instanceof String s ? s : "";
