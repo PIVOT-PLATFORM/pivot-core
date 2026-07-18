@@ -254,7 +254,7 @@ public class VoteSession {
      *
      * @param voterIds the voter ids (user ids as strings), or {@code null}
      */
-    public final void setVoterIds(final List<String> voterIds) {
+    public void setVoterIds(final List<String> voterIds) {
         if (voterIds == null || voterIds.isEmpty()) {
             this.voterIdsCsv = "";
             return;

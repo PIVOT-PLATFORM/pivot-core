@@ -56,7 +56,7 @@ class OpenGraphFetcher {
     // atomic run so an embedded '>' inside it (e.g. a smuggled "<script>" inside content="...")
     // never prematurely closes the tag match — see OpenGraphFetcherTest for the adversarial case.
     private static final Pattern META_TAG = Pattern.compile(
-            "<meta\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", Pattern.CASE_INSENSITIVE);
+            "<meta\\b(?:[^>\"']++|\"[^\"]*+\"|'[^']*+')*+>", Pattern.CASE_INSENSITIVE);
     private static final Pattern TITLE_TAG =
             Pattern.compile("<title[^>]*>(.*?)</title>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern ATTR =

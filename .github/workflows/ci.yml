@@ -83,7 +83,12 @@ jobs:
         run: mvn --no-transfer-progress verify -Pcoverage -Dmaven.compiler.release=24
 
       # Compiled classes + coverage shared with the sonar job (no recompile downstream).
-      # Multi-module build: classes land in app/ and starter/ subdirs (artifactIds pivot-core-app / pivot-core-starter).
+      # Multi-module build: classes land in starter/, agilite/, collaboratif/ and app/ subdirs
+      # (artifactIds pivot-core-starter / pivot-agilite / pivot-collaboratif / pivot-core-app).
+      # agilite/ and collaboratif/ were missing here until EN53 Vague 1/2 gate investigation
+      # (2026-07-18): the sonar job only ever saw starter+app target dirs, so SonarCloud had no
+      # jacoco.xml for the ~30k absorbed lines and reported new_coverage=0.0% on #226/#227 even
+      # though both modules' tests run and pass — the reports were simply never uploaded.
       - name: Upload backend build (classes + coverage)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -93,6 +98,12 @@ jobs:
             starter/target/classes/
             starter/target/test-classes/
             starter/target/site/jacoco/jacoco.xml
+            agilite/target/classes/
+            agilite/target/test-classes/
+            agilite/target/site/jacoco/jacoco.xml
+            collaboratif/target/classes/
+            collaboratif/target/test-classes/
+            collaboratif/target/site/jacoco/jacoco.xml
             app/target/classes/
             app/target/test-classes/
             app/target/site/jacoco/jacoco.xml
