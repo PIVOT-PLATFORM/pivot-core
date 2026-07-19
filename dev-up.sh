@@ -2,10 +2,10 @@
 #
 # dev-up.sh — lance TOUTE la plateforme PIVOT en local (compose.yml de ce repo).
 #
-# Construit et démarre : backend (pivot-core) + les 2 module-cores (agilite, collaboratif)
-# + frontend (pivot-ui) + l'infra (postgres, pgbouncer, redis, activemq, mailpit).
-# Les repos siblings doivent être clonés à côté de pivot-core (../pivot-ui,
-# ../pivot-agilite-core, ../pivot-collaboratif-core) — cf. README §Développement local.
+# Construit et démarre : backend (pivot-core, modulith incluant les modules agilite +
+# collaboratif — EN53/ADR-030) + frontend (pivot-ui) + l'infra (postgres, pgbouncer, redis,
+# activemq, mailpit). Seuls ../pivot-ui et ../pivot-core sont nécessaires : les anciens
+# module-cores standalone sont retirés du compose (repos archivés).
 #
 # Ce script résout automatiquement les credentials de BUILD (jamais committés) :
 #   - GITHUB_ACTOR / GITHUB_TOKEN : GitHub Packages (Maven) — dépendance privée

@@ -234,7 +234,9 @@ jobs:
           services = config["services"]
           errors = []
 
-          for name in ("nginx", "pivot-core", "pivot-collaboratif-core", "postgres", "redis", "activemq", "pgbouncer", "pgbouncer-exporter"):
+          # EN53 (ADR-030) — pivot-collaboratif-core retiré : agilité et collaboratif
+          # sont des modules internes du backend modulith pivot-core.
+          for name in ("nginx", "pivot-core", "postgres", "redis", "activemq", "pgbouncer", "pgbouncer-exporter"):
               svc = services.get(name)
               if svc is None:
                   errors.append(f"missing service: {name}")
@@ -242,7 +244,7 @@ jobs:
               if "healthcheck" not in svc:
                   errors.append(f"{name}: no healthcheck defined")
 
-          for name in ("pivot-core", "pivot-collaboratif-core", "postgres", "redis", "activemq", "pgbouncer", "pgbouncer-exporter"):
+          for name in ("pivot-core", "postgres", "redis", "activemq", "pgbouncer", "pgbouncer-exporter"):
               svc = services.get(name, {})
               if svc.get("ports"):
                   errors.append(f"{name}: must not publish a host port (found {svc['ports']})")
@@ -253,8 +255,8 @@ jobs:
                   print(f"  - {e}")
               sys.exit(1)
 
-          print("OK — healthchecks present on nginx/pivot-core/pivot-collaboratif-core/postgres/redis, "
-                "no host port on pivot-core/pivot-collaboratif-core/postgres/redis.")
+          print("OK — healthchecks present on nginx/pivot-core/postgres/redis, "
+                "no host port on pivot-core/postgres/redis.")
           PY
 
   # Les jobs réservés aux PR (Mutation PITest + previews Docker/Maven) vivent dans

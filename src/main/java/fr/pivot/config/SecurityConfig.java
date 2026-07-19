@@ -133,6 +133,17 @@ public class SecurityConfig {
                     // fr.pivot.notification.config.StompAuthChannelInterceptor — an
                     // unauthenticated CONNECT is rejected and the STOMP session never established.
                     .requestMatchers("/ws/notifications/**").permitAll()
+                    // EN53 (ADR-030) — même raisonnement pour les modules internes agilité et
+                    // collaboratif absorbés dans le modulith : leurs endpoints de handshake WS
+                    // (/api/agilite/ws/**, /api/collaboratif/ws/**, préfixés /api par le
+                    // context-path) doivent être publics au niveau HTTP — l'auth réelle se fait au
+                    // premier frame STOMP CONNECT (Authorization: Bearer) via les intercepteurs de
+                    // canal des modules. Sans cela le handshake navigateur (qui ne peut porter
+                    // d'en-tête Authorization) échoue en 403 et le whiteboard/agilité ne se
+                    // connecte jamais (régression exposée par la bascule du routage vers le
+                    // backend modulith — auparavant servi par les services standalone qui avaient
+                    // leur propre SecurityConfig).
+                    .requestMatchers("/agilite/ws/**", "/collaboratif/ws/**").permitAll()
                     .anyRequest().authenticated()
                 )
                 // Opaque token filter runs before Spring's default UsernamePasswordAuthenticationFilter
