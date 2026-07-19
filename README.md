@@ -69,17 +69,25 @@ Chaque module est activable individuellement par les administrateurs tenant.
 
 ## Développement local — lancer tout l'écosystème
 
+> **Bascule Spring Modulith en cours (ADR-030, EN53).** Les domaines **agilité** et **collaboratif**
+> sont désormais des **modules internes** de pivot-core (`agilite/`, `collaboratif/`) : le service
+> `backend` les embarque et les sert directement. Les repos `pivot-agilite-core` /
+> `pivot-collaboratif-core` sont **archivés**. Tant que le routage (compose.yml + nginx pivot-ui)
+> n'a pas basculé vers le backend, le compose ci-dessous continue **transitoirement** à build et
+> lancer ces module-cores standalone depuis `../` — d'où leur présence encore ici. À supprimer une
+> fois la bascule de déploiement effectuée.
+
 `compose.yml` (ce repo) est l'**orchestrateur** de la plateforme complète en local : il build et
-démarre le backend + les deux module-cores + le frontend, plus toute l'infra. PIVOT est un
-multi-repo : les repos siblings doivent être **clonés côte à côte** (mêmes parents), car le compose
-les build depuis `../` :
+démarre le backend + (transitoirement) les deux module-cores standalone + le frontend, plus toute
+l'infra. Les repos siblings doivent être **clonés côte à côte** (mêmes parents), car le compose les
+build depuis `../` :
 
 ```
 un-dossier-parent/
-├── pivot-core/                 # ← ce repo (backend shell + compose.yml orchestrateur)
+├── pivot-core/                 # ← ce repo (backend modulith + compose.yml orchestrateur)
 ├── pivot-ui/                   # frontend Angular (service `frontend`, nginx :80)
-├── pivot-agilite-core/         # module-core Agilité   (:8082 interne, /api/agilite)
-└── pivot-collaboratif-core/    # module-core Collaboratif (:8083 interne, /api/collaboratif)
+├── pivot-agilite-core/         # [archivé] module-core standalone transitoire (:8082, /api/agilite)
+└── pivot-collaboratif-core/    # [archivé] module-core standalone transitoire (:8083, /api/collaboratif)
 ```
 
 ### Prérequis

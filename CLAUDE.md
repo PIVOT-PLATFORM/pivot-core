@@ -36,9 +36,19 @@ cette extraction, aucun repo `pivot-xxx-core` n'ayant de logique métier implém
 (bootstrap infrastructure uniquement). Voir la Javadoc de `PivotCoreAutoConfiguration` (starter)
 et l'ADR-022 (`pivot-docs/docs/adr/`) pour le raisonnement complet.
 
-**Architecture BDD :** schéma `public` géré par pivot-core (Flyway). Les repos modules créent leur propre schéma Flyway et referencent `public.teams(id)` / `public.tenants(id)` par FK.
+**Architecture BDD :** schéma `public` géré par pivot-core (Flyway). Chaque module interne
+(`agilite/`, `collaboratif/`) gère ses propres migrations Flyway dans son schéma dédié
+(`agilite`, `collaboratif`) et référence `public.teams(id)` / `public.tenants(id)` par FK.
+Les trois schémas migrent dans une **JVM unique** au démarrage du backend.
 
-**Modules fonctionnels** : dans les repos dédiés (`pivot-agilite-core`, `pivot-collaboratif-core`). pivot-core ne contient PAS de logique métier module.
+**Modules fonctionnels** : depuis la bascule Spring Modulith (ADR-030, EN53), les domaines métier
+sont des **modules internes** de pivot-core — `agilite/` (`fr.pivot.agilite.*`) et `collaboratif/`
+(`fr.pivot.collaboratif.*`), agrégés par le module `app` en un JAR unique. Frontières vérifiées
+par `ModularityTests` (`ApplicationModules.verify()`), aucune dépendance croisée entre modules.
+Le domaine `pilotage` a été retiré (extraction — voir `PILOTAGE-HANDOFF.md`).
+> Transition en cours : `compose.yml` et le nginx `pivot-ui` routent encore `/api/{agilite,collaboratif}`
+> vers les anciens services standalone (repos archivés) ; la bascule du déploiement vers le backend
+> modulith reste à faire.
 
 **Déploiement :**
 - Web internet public (SaaS auto-hébergeable)
