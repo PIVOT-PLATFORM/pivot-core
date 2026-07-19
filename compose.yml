@@ -87,14 +87,12 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
       POOL_MODE: session
       MAX_CLIENT_CONN: "200"
-      # EN17.9 — the dev stack runs THREE Spring Boot apps (backend + agilite/collaboratif)
-      # through this single pooler. In session mode each Hikari connection pins one server
-      # connection for its whole lifetime, so the pool must cover every app's Hikari pool at once
-      # (Spring default maximumPoolSize=10 → up to 3×10=30) plus headroom — otherwise a cold
-      # start or a single-service restart under load exhausts the pool and the late app dies with
-      # `FATAL: query_wait_timeout` during Flyway init. 20 was sized for one app; 50 covers three
-      # with headroom (kept unchanged after EN53.3 dropped a third module-core — no functional
-      # need to shrink it).
+      # EN53 (ADR-030) — the dev stack now runs a SINGLE Spring Boot app: the pivot-core
+      # modulith (backend) embeds the agilite/collaboratif modules, which previously ran as
+      # separate services. In session mode each Hikari connection pins one server connection
+      # for its whole lifetime, so the pool must cover the backend's Hikari pool (Spring default
+      # maximumPoolSize=10) plus headroom. 50 was sized for three apps; kept as-is — generous
+      # headroom, no functional need to shrink it.
       DEFAULT_POOL_SIZE: "50"
       MIN_POOL_SIZE: "5"
       RESERVE_POOL_SIZE: "10"
@@ -178,101 +176,14 @@ services:
         aliases:
           - pivot-core
 
-  # EN17.9 — modules satellites, service name = hostname attendu par pivot-ui/nginx.conf
-  # (résolution DNS Docker par défaut sur le nom de service, pas besoin d'alias réseau
-  # comme pour `backend` ci-dessus). Aucun des deux n'expose de `management.server.port`
-  # séparé aujourd'hui (application.yml de chaque repo) — l'actuator vit donc sous le même
-  # port ET le même `context-path` que l'API (contrairement à pivot-core, qui isole son
-  # actuator sur :8081 hors context-path) : le healthcheck doit inclure le context-path.
-
-  pivot-agilite-core:
-    build:
-      context: ../pivot-agilite-core
-      dockerfile: Dockerfile
-      # Local dev build needs read access to the private fr.pivot:pivot-core-starter
-      # GitHub Package (Maven) — same secret ids/mechanism as CI (see this repo's
-      # .github/actions/setup-java and pivot-agilite-core/Dockerfile), sourced here from the
-      # host's GITHUB_ACTOR / GITHUB_TOKEN env vars (a GitHub PAT with read:packages, or
-      # `gh auth token`; set once in the developer's shell — never committed). See README §Local dev.
-      secrets:
-        - github_actor
-        - github_token
-    container_name: pivot-agilite-core
-    environment:
-      # EN07.4 — routed through pgbouncer (session mode), never straight to postgres.
-      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:5432/pivot_dev
-      SPRING_DATASOURCE_USERNAME: pivot
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      # EN07.3 — matches this module-core's own enableStompBrokerRelay() defaults; explicit
-      # here for consistency with this file's style (defaults already match if omitted).
-      PIVOT_ACTIVEMQ_RELAY_HOST: activemq
-      PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
-    depends_on:
-      pgbouncer:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      activemq:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8082/api/agilite/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-
-  pivot-collaboratif-core:
-    build:
-      context: ../pivot-collaboratif-core
-      dockerfile: Dockerfile
-      # Same as pivot-agilite-core above: private fr.pivot:pivot-core-starter (GitHub Packages,
-      # Maven) needs GITHUB_ACTOR / GITHUB_TOKEN at build time. See README §Local dev.
-      secrets:
-        - github_actor
-        - github_token
-    container_name: pivot-collaboratif-core
-    environment:
-      # EN07.4 — routed through pgbouncer (session mode), never straight to postgres.
-      SPRING_DATASOURCE_URL: jdbc:postgresql://pgbouncer:5432/pivot_dev
-      SPRING_DATASOURCE_USERNAME: pivot
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-pivot_dev}
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      # EN07.3 — matches this module-core's own enableStompBrokerRelay() defaults; explicit
-      # here for consistency with this file's style (defaults already match if omitted).
-      PIVOT_ACTIVEMQ_RELAY_HOST: activemq
-      PIVOT_ACTIVEMQ_RELAY_PORT: "61613"
-    depends_on:
-      pgbouncer:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      activemq:
-        condition: service_healthy
-    healthcheck:
-      # collaboratif-core (unlike agilite) exposes Actuator on a SEPARATE management
-      # port 9083 with root context (management.server.port=9083 in its application.yml, EN04.2)
-      # — when the mgmt port differs from server.port, Spring Boot does NOT apply
-      # server.servlet.context-path to Actuator, so health lives at :9083/actuator/health, NOT
-      # :8083/api/collaboratif/actuator/health (which 404s).
-      test: ["CMD", "wget", "-qO-", "http://localhost:9083/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
-
   frontend:
     build:
       context: ../pivot-ui
       dockerfile: Dockerfile
-      # Local dev build needs read access to the private @pivot-platform/collaboratif-ui
-      # GitHub Package (EN17.10) — same secret id/mechanism as CI (see pivot-ui's
-      # publish-ui-core.yml / Dockerfile), sourced here from the host's NODE_AUTH_TOKEN env
-      # var (set once in the developer's shell profile, never committed).
+      # Local dev build needs read access to the private @pivot-platform/* npm
+      # packages historically published by the module-ui repos — désormais rapatriées
+      # dans le workspace pivot-ui (EN53.4). Le token npm reste requis pour d'éventuelles
+      # deps privées : même secret id/mechanism que la CI, depuis NODE_AUTH_TOKEN.
       secrets:
         - npm_token
     container_name: pivot-frontend
@@ -282,8 +193,6 @@ services:
       - ../pivot-ui/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
-      - pivot-agilite-core
-      - pivot-collaboratif-core
     restart: unless-stopped
 
 volumes:
@@ -294,10 +203,6 @@ secrets:
   # Frontend (pivot-ui) build — private @pivot-platform/* npm packages (GitHub Packages, npm).
   npm_token:
     environment: NODE_AUTH_TOKEN
-  # Module-core builds (agilite, collaboratif) — private fr.pivot:pivot-core-starter (GitHub
-  # Packages, Maven). GITHUB_ACTOR = your GitHub username, GITHUB_TOKEN = a PAT with read:packages
-  # (or `gh auth token`). All three vars are read from the shell running `docker compose`.
-  github_actor:
-    environment: GITHUB_ACTOR
-  github_token:
-    environment: GITHUB_TOKEN
+  # EN53 (ADR-030) — les secrets Maven github_actor/github_token ont été retirés avec les
+  # services standalone agilite/collaboratif : le backend modulith build son starter dans le
+  # même réacteur Maven, sans dépendance GitHub Packages privée.
