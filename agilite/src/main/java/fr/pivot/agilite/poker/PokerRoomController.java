@@ -65,7 +65,12 @@ public class PokerRoomController {
             @RequestBody @Valid final CreateRoomRequest request,
             final RequestPrincipal principal) {
         return service.create(
-                request.name(), principal.userId(), principal.tenantId(), request.expirationHours());
+                request.name(),
+                principal.userId(),
+                principal.tenantId(),
+                request.expirationHours(),
+                request.deck(),
+                request.facilitatorVotes());
     }
 
     /**

@@ -109,10 +109,56 @@ class PokerRoomControllerIT extends AbstractAgiliteIntegrationTest {
                 .andExpect(jsonPath("$.cardValues").isArray())
                 .andExpect(jsonPath("$.cardValues.length()").value(12))
                 .andExpect(jsonPath("$.facilitatorUserId").value(userA))
+                .andExpect(jsonPath("$.facilitatorVotes").value(true))
                 .andExpect(jsonPath("$.active").value(true))
                 .andExpect(jsonPath("$.createdAt").isNotEmpty())
                 .andExpect(jsonPath("$.expiresAt").isNotEmpty())
                 .andExpect(jsonPath("$.wsTopic").isString());
+    }
+
+    /**
+     * Given an explicit {@code deck}, when POST /poker/rooms is called, then the room uses that
+     * deck — {@code sequence} and {@code cardValues} reflect it (classic parity — deck choice).
+     * The migration widening the {@code sequence} CHECK to the three decks is exercised here too.
+     */
+    @Test
+    void createRoom_withTshirtDeck_returnsThatDeck() throws Exception {
+        mockMvc.perform(post(BASE_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA)
+                        .content("{\"name\": \"Room\", \"deck\": \"TSHIRT\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.sequence").value("TSHIRT"))
+                .andExpect(jsonPath("$.cardValues.length()").value(7))
+                .andExpect(jsonPath("$.cardValues[0]").value("XS"));
+    }
+
+    /**
+     * Given {@code facilitatorVotes = false}, when POST /poker/rooms is called, then the response
+     * carries that flag (the "does the scrum master also vote?" option).
+     */
+    @Test
+    void createRoom_facilitatorNotVoting_returnsFlagFalse() throws Exception {
+        mockMvc.perform(post(BASE_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA)
+                        .content("{\"name\": \"Room\", \"facilitatorVotes\": false}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.facilitatorVotes").value(false));
+    }
+
+    /**
+     * Error case: given a present-but-unknown {@code deck}, when POST /poker/rooms is called, then
+     * it returns HTTP 400 with {@code code = INVALID_DECK}.
+     */
+    @Test
+    void createRoom_unknownDeck_returns400() throws Exception {
+        mockMvc.perform(post(BASE_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA)
+                        .content("{\"name\": \"Room\", \"deck\": \"NOT_A_DECK\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_DECK"));
     }
 
     /**

@@ -5,6 +5,7 @@ import fr.pivot.agilite.poker.dto.GuestHeartbeatResponse;
 import fr.pivot.agilite.poker.dto.JoinRoomResponse;
 import fr.pivot.agilite.poker.dto.RoomResponse;
 import fr.pivot.agilite.poker.exception.GuestSessionExpiredException;
+import fr.pivot.agilite.poker.exception.InvalidDeckException;
 import fr.pivot.agilite.poker.exception.InviteCodeNotFoundException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
 import fr.pivot.agilite.poker.ws.PokerParticipantRegistryService;
@@ -74,7 +75,7 @@ class PokerRoomServiceTest {
             return room;
         });
 
-        RoomResponse response = service.create("Sprint 8 estimation", 7L, 3L, null);
+        RoomResponse response = service.create("Sprint 8 estimation", 7L, 3L, null, null, null);
 
         assertThat(response.name()).isEqualTo("Sprint 8 estimation");
         assertThat(response.facilitatorUserId()).isEqualTo(7L);
@@ -103,12 +104,63 @@ class PokerRoomServiceTest {
             return room;
         });
 
-        RoomResponse response = service.create("Sprint 8 estimation", 7L, 3L, 1);
+        RoomResponse response = service.create("Sprint 8 estimation", 7L, 3L, 1, null, null);
 
         assertThat(response.accessToken()).isNotBlank();
         Duration expectedTtl = Duration.ofHours(1);
         verify(roomAccessGrantService).grantAccess(eq(ROOM_ID), anyString(), eq(expectedTtl));
         verify(participantRegistryService).register(eq(ROOM_ID), anyString(), eq(expectedTtl));
+    }
+
+    /**
+     * Given an explicit {@code deck}, when a room is created, then the response's {@code sequence}
+     * and {@code cardValues} reflect that deck (classic parity — deck choice).
+     */
+    @Test
+    void create_withDeck_appliesChosenDeck() {
+        when(repository.existsByInviteCode(anyString())).thenReturn(false);
+        when(repository.save(any(PokerRoom.class))).thenAnswer(invocation -> {
+            PokerRoom room = invocation.getArgument(0);
+            setId(room, ROOM_ID);
+            return room;
+        });
+
+        RoomResponse response = service.create(
+                "Room", 7L, 3L, null, PokerCardDeck.SEQUENCE_TSHIRT, null);
+
+        assertThat(response.sequence()).isEqualTo(PokerCardDeck.SEQUENCE_TSHIRT);
+        assertThat(response.cardValues()).isEqualTo(PokerCardDeck.TSHIRT_VALUES);
+        // Deck absent on a later create defaults back to Fibonacci — the deck is per-room.
+        assertThat(response.facilitatorVotes()).isTrue();
+    }
+
+    /**
+     * Given {@code facilitatorVotes = false}, when a room is created, then the response carries
+     * that flag (the "does the scrum master also vote?" option).
+     */
+    @Test
+    void create_facilitatorVotesFalse_isPersistedOnResponse() {
+        when(repository.existsByInviteCode(anyString())).thenReturn(false);
+        when(repository.save(any(PokerRoom.class))).thenAnswer(invocation -> {
+            PokerRoom room = invocation.getArgument(0);
+            setId(room, ROOM_ID);
+            return room;
+        });
+
+        RoomResponse response = service.create("Room", 7L, 3L, null, null, false);
+
+        assertThat(response.facilitatorVotes()).isFalse();
+    }
+
+    /**
+     * Error case: given a present-but-unknown {@code deck}, when a room is created, then {@link
+     * InvalidDeckException} is thrown (mapped to 400 {@code INVALID_DECK}); no room is saved.
+     */
+    @Test
+    void create_unknownDeck_throwsInvalidDeckException() {
+        assertThatThrownBy(() -> service.create("Room", 7L, 3L, null, "NOT_A_DECK", null))
+                .isInstanceOf(InvalidDeckException.class);
+        verifyNoInteractions(repository);
     }
 
     /**
@@ -124,7 +176,7 @@ class PokerRoomServiceTest {
             return room;
         });
 
-        RoomResponse response = service.create("Room", 1L, 1L, 1);
+        RoomResponse response = service.create("Room", 1L, 1L, 1, null, null);
 
         assertThat(response.expiresAt()).isEqualTo(FIXED_NOW.plusSeconds(3600L));
     }
@@ -142,7 +194,7 @@ class PokerRoomServiceTest {
             return room;
         });
 
-        RoomResponse response = service.create("Room", 1L, 1L, null);
+        RoomResponse response = service.create("Room", 1L, 1L, null, null, null);
 
         assertThat(response.inviteCode()).isNotNull();
         verify(repository, times(3)).existsByInviteCode(anyString());
@@ -157,7 +209,7 @@ class PokerRoomServiceTest {
     void create_persistentInviteCodeCollision_throwsIllegalState() {
         when(repository.existsByInviteCode(anyString())).thenReturn(true);
 
-        assertThatThrownBy(() -> service.create("Room", 1L, 1L, null))
+        assertThatThrownBy(() -> service.create("Room", 1L, 1L, null, null, null))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -167,7 +219,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void findById_existingRoomInTenant_returnsResponse() {
-        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", FIXED_NOW, FIXED_NOW.plusSeconds(3600));
+        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, FIXED_NOW.plusSeconds(3600));
         setId(room, ROOM_ID);
         when(repository.findByIdAndTenantId(ROOM_ID, 3L)).thenReturn(Optional.of(room));
 
@@ -201,7 +253,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void findById_crossTenantLookup_isScopedByTenantId() {
-        PokerRoom roomForTenantA = new PokerRoom(1L, 1L, "Room", "ABC234", FIXED_NOW, FIXED_NOW.plusSeconds(3600));
+        PokerRoom roomForTenantA = new PokerRoom(1L, 1L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, FIXED_NOW.plusSeconds(3600));
         setId(roomForTenantA, ROOM_ID);
         when(repository.findByIdAndTenantId(ROOM_ID, 1L)).thenReturn(Optional.of(roomForTenantA));
         when(repository.findByIdAndTenantId(ROOM_ID, 2L)).thenReturn(Optional.empty());
@@ -224,7 +276,7 @@ class PokerRoomServiceTest {
     @Test
     void join_validActiveCode_mintsTokenAndGrantsAccess() {
         Instant expiresAt = FIXED_NOW.plusSeconds(3600);
-        PokerRoom room = new PokerRoom(3L, 7L, "Sprint 8", "ABC234", FIXED_NOW, expiresAt);
+        PokerRoom room = new PokerRoom(3L, 7L, "Sprint 8", "ABC234", "FIBONACCI", true, FIXED_NOW, expiresAt);
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
@@ -267,7 +319,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void join_crossTenantCode_throwsInviteCodeNotFoundException() {
-        PokerRoom room = new PokerRoom(1L, 7L, "Room", "ABC234", FIXED_NOW, FIXED_NOW.plusSeconds(3600));
+        PokerRoom room = new PokerRoom(1L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, FIXED_NOW.plusSeconds(3600));
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
@@ -283,7 +335,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void join_inactiveRoomCode_throwsInviteCodeNotFoundException() {
-        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", FIXED_NOW, FIXED_NOW.plusSeconds(3600));
+        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, FIXED_NOW.plusSeconds(3600));
         setId(room, ROOM_ID);
         setActive(room, false);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
@@ -300,7 +352,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void join_expiredRoomCode_throwsInviteCodeNotFoundException() {
-        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", FIXED_NOW.minusSeconds(7200), FIXED_NOW.minusSeconds(3600));
+        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW.minusSeconds(7200), FIXED_NOW.minusSeconds(3600));
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
@@ -317,7 +369,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void join_expiresAtExactlyNow_isTreatedAsExpired() {
-        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", FIXED_NOW.minusSeconds(3600), FIXED_NOW);
+        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW.minusSeconds(3600), FIXED_NOW);
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
@@ -343,7 +395,7 @@ class PokerRoomServiceTest {
         // expiry) is what should apply here; the room-expiring-soon case is covered separately
         // by joinAnonymous_roomExpiringSoon_capsGuestSessionAtRoomExpiry below.
         Instant expiresAt = FIXED_NOW.plusSeconds(10_800);
-        PokerRoom room = new PokerRoom(3L, 7L, "Sprint 8", "ABC234", FIXED_NOW, expiresAt);
+        PokerRoom room = new PokerRoom(3L, 7L, "Sprint 8", "ABC234", "FIBONACCI", true, FIXED_NOW, expiresAt);
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
@@ -366,7 +418,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void joinAnonymous_withPseudonym_returnsTrimmedPseudonym() {
-        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", FIXED_NOW, FIXED_NOW.plusSeconds(3600));
+        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, FIXED_NOW.plusSeconds(3600));
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
@@ -383,7 +435,7 @@ class PokerRoomServiceTest {
     @Test
     void joinAnonymous_roomExpiringSoon_capsGuestSessionAtRoomExpiry() {
         Instant expiresAt = FIXED_NOW.plusSeconds(600);
-        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", FIXED_NOW, expiresAt);
+        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, expiresAt);
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
@@ -414,7 +466,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void joinAnonymous_inactiveRoomCode_throwsInviteCodeNotFoundException() {
-        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", FIXED_NOW, FIXED_NOW.plusSeconds(3600));
+        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, FIXED_NOW.plusSeconds(3600));
         setId(room, ROOM_ID);
         setActive(room, false);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
@@ -431,7 +483,7 @@ class PokerRoomServiceTest {
     @Test
     void joinAnonymous_expiredRoomCode_throwsInviteCodeNotFoundException() {
         PokerRoom room = new PokerRoom(
-                3L, 7L, "Room", "ABC234", FIXED_NOW.minusSeconds(7200), FIXED_NOW.minusSeconds(3600));
+                3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW.minusSeconds(7200), FIXED_NOW.minusSeconds(3600));
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
@@ -447,7 +499,7 @@ class PokerRoomServiceTest {
     @Test
     void refreshGuestSession_validSession_refreshesGrantAndReturnsNewExpiry() {
         Instant expiresAt = FIXED_NOW.plusSeconds(7200);
-        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", FIXED_NOW, expiresAt);
+        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, expiresAt);
         setId(room, ROOM_ID);
         when(roomAccessGrantService.isGuest(ROOM_ID, "guest-token")).thenReturn(true);
         when(repository.findById(ROOM_ID)).thenReturn(Optional.of(room));
@@ -479,7 +531,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void refreshGuestSession_roomNoLongerActive_throwsGuestSessionExpiredException() {
-        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", FIXED_NOW, FIXED_NOW.plusSeconds(3600));
+        PokerRoom room = new PokerRoom(3L, 7L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, FIXED_NOW.plusSeconds(3600));
         setId(room, ROOM_ID);
         setActive(room, false);
         when(roomAccessGrantService.isGuest(ROOM_ID, "guest-token")).thenReturn(true);

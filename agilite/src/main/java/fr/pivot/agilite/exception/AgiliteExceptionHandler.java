@@ -2,6 +2,7 @@ package fr.pivot.agilite.exception;
 
 import fr.pivot.agilite.poker.exception.ActiveTicketExistsException;
 import fr.pivot.agilite.poker.exception.GuestSessionExpiredException;
+import fr.pivot.agilite.poker.exception.InvalidDeckException;
 import fr.pivot.agilite.poker.exception.InviteCodeNotFoundException;
 import fr.pivot.agilite.poker.exception.PokerFacilitatorOnlyException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
@@ -45,6 +46,22 @@ import java.util.Map;
  */
 @RestControllerAdvice(basePackages = "fr.pivot.agilite")
 public class AgiliteExceptionHandler {
+
+    /**
+     * Returns HTTP 400 with {@code { "code": "INVALID_DECK" }} when a room creation request names
+     * a deck that is not one of {@code PokerCardDeck}'s supported decks (E09 — deck choice),
+     * mirroring {@link #handleInvalidRetroFormat}.
+     *
+     * @param ex the thrown exception
+     * @return a 400 problem detail with {@code { "code": "INVALID_DECK" } }
+     */
+    @ExceptionHandler(InvalidDeckException.class)
+    public ProblemDetail handleInvalidDeck(final InvalidDeckException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Invalid deck");
+        problem.setProperties(Map.of("code", "INVALID_DECK"));
+        return problem;
+    }
 
     /**
      * Returns HTTP 404 when a planning poker room is not found, or belongs to another tenant
