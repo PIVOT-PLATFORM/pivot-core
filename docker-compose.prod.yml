@@ -103,6 +103,10 @@ services:
       SPRING_MAIL_USERNAME: ${SMTP_USERNAME:?SMTP_USERNAME is required in production}
       PIVOT_MAIL_FROM: ${PIVOT_MAIL_FROM:?PIVOT_MAIL_FROM is required in production}
       PIVOT_APP_URL: ${PIVOT_APP_URL:?PIVOT_APP_URL is required in production}
+      # Whiteboard invitation links (US08.2.x) — derived from PIVOT_APP_URL rather than exposing a
+      # second required variable: both denote the public origin of the front end, and an operator
+      # setting one but not the other would ship dead share links without any startup error.
+      PIVOT_SHARE_BASE_URL: ${PIVOT_APP_URL:?PIVOT_APP_URL is required in production}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required in production}
       PIVOT_SUPPORT_EMAIL: ${PIVOT_SUPPORT_EMAIL:-support@pivot.app}
       PIVOT_OWNER_MAIL: ${PIVOT_OWNER_MAIL:-}

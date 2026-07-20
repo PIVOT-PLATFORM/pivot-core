@@ -307,8 +307,16 @@ pivot:
   share:
     # Base URL of the Angular frontend, used by BoardShareService to compose whiteboard
     # invitation links. No default in the @Value annotation itself (required property) — a
-    # default is supplied here instead, matching the source repo's own application.yml.
-    base-url: ${PIVOT_SHARE_BASE_URL:http://localhost:4200}
+    # default is supplied here instead.
+    #
+    # The default targets what nginx actually serves (port 80), NOT the Angular dev server. The
+    # previous `:4200` default came from pivot-collaboratif-core, where the front ran separately
+    # under `ng serve`; since the modulith bascule the shell is served by the `frontend` nginx
+    # container on port 80, so a generated link pointed at a port nothing listens on.
+    #
+    # ALWAYS set PIVOT_SHARE_BASE_URL to the public origin in any deployment: a default is a
+    # dev convenience, and a link built from `localhost` resolves on the *recipient's* machine.
+    base-url: ${PIVOT_SHARE_BASE_URL:http://localhost}
   whiteboard:
     card:
       image:
