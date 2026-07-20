@@ -2,6 +2,7 @@ package fr.pivot.agilite.poker.ticket;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,4 +31,15 @@ public interface PokerTicketRepository extends JpaRepository<PokerTicket, UUID> 
      * @return {@code true} if such a ticket already exists
      */
     boolean existsByRoomIdAndStatus(UUID roomId, PokerTicketStatus status);
+
+    /**
+     * Finds every ticket of a room with the given status, in revelation order — used by {@link
+     * PokerTicketService#recap} (E09 — end-of-session recap) to list the room's already-decided
+     * tickets chronologically.
+     *
+     * @param roomId the owning room's identifier
+     * @param status the status to match, always {@link PokerTicketStatus#REVEALED} in practice
+     * @return the matching tickets, oldest revelation first
+     */
+    List<PokerTicket> findByRoomIdAndStatusOrderByRevealedAtAsc(UUID roomId, PokerTicketStatus status);
 }

@@ -2,6 +2,7 @@ package fr.pivot.agilite.poker.ticket;
 
 import fr.pivot.agilite.context.RequestPrincipal;
 import fr.pivot.agilite.poker.ticket.dto.CreateTicketRequest;
+import fr.pivot.agilite.poker.ticket.dto.RecapResponse;
 import fr.pivot.agilite.poker.ticket.dto.RevealResponse;
 import fr.pivot.agilite.poker.ticket.dto.TicketResponse;
 import fr.pivot.agilite.web.AgiliteApiPaths;
@@ -19,7 +20,7 @@ import java.util.UUID;
 
 /**
  * REST controller exposing planning poker ticket operations under {@code
- * /poker/rooms/{roomId}/tickets} (US09.2.1 creation/lookup, US09.2.2 revelation).
+ * /poker/rooms/{roomId}/tickets} (US09.2.1 creation/lookup, US09.2.2 revelation, E09 recap).
  *
  * <p>All endpoints require a valid {@code Authorization: Bearer <token>} header, resolved into a
  * {@link RequestPrincipal} by {@code RequestPrincipalResolver}. Missing, malformed, or rejected
@@ -81,7 +82,7 @@ public class PokerTicketController {
      * @param roomId    the target room
      * @param ticketId  the ticket to reveal
      * @param principal the resolved caller identity (user + tenant)
-     * @return the revealed ticket, its raw vote values, and the computed consensus, HTTP 200 OK
+     * @return the revealed ticket, its attributed votes, and the computed consensus, HTTP 200 OK
      */
     @PostMapping("/{ticketId}/reveal")
     public RevealResponse reveal(
@@ -89,5 +90,22 @@ public class PokerTicketController {
             @PathVariable final UUID ticketId,
             final RequestPrincipal principal) {
         return service.reveal(roomId, ticketId, principal.userId(), principal.tenantId());
+    }
+
+    /**
+     * Returns the room's end-of-session recap (E09 — classic parity): every already-revealed
+     * ticket, oldest first, with its attributed votes and consensus. Not facilitator-restricted —
+     * accessible to any authenticated caller in the room's tenant, since every ticket listed here
+     * was already broadcast to every participant at its own reveal time.
+     *
+     * @param roomId    the target room
+     * @param principal the resolved caller identity (user + tenant)
+     * @return the room's recap, HTTP 200 OK — empty {@code tickets} if none has been revealed yet
+     */
+    @GetMapping("/recap")
+    public RecapResponse recap(
+            @PathVariable final UUID roomId,
+            final RequestPrincipal principal) {
+        return service.recap(roomId, principal.tenantId());
     }
 }

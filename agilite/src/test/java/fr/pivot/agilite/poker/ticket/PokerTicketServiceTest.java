@@ -7,7 +7,10 @@ import fr.pivot.agilite.poker.exception.TicketAlreadyRevealedException;
 import fr.pivot.agilite.poker.exception.TicketFacilitatorOnlyException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
 import fr.pivot.agilite.poker.exception.TicketNotFoundException;
+import fr.pivot.agilite.poker.ticket.dto.AttributedVoteResponse;
+import fr.pivot.agilite.poker.ticket.dto.RecapResponse;
 import fr.pivot.agilite.poker.ticket.dto.RevealResponse;
+import fr.pivot.agilite.poker.ticket.dto.TicketRecapEntry;
 import fr.pivot.agilite.poker.ticket.dto.TicketResponse;
 import fr.pivot.agilite.poker.ticket.dto.VotesRevealedEvent;
 import fr.pivot.agilite.poker.ws.PokerRosterService;
@@ -25,6 +28,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -193,14 +197,16 @@ class PokerTicketServiceTest {
      * broadcast to the room topic.
      */
     @Test
-    void reveal_asFacilitatorWithVotes_revealsAndBroadcastsConsensus() {
+    void reveal_asFacilitatorWithVotes_revealsAndBroadcastsAttributedConsensus() {
         PokerRoom room = facilitatorRoom();
         PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
         setId(ticket, TICKET_ID);
         when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
         when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
         when(voteRepository.findByTicketId(TICKET_ID)).thenReturn(List.of(
-                voteWithValue("3"), voteWithValue("5"), voteWithValue("5")));
+                voteWithValue("key-alice", "3"), voteWithValue("key-bob", "5"), voteWithValue("key-carol", "5")));
+        when(rosterService.namesByParticipantKey(ROOM_ID)).thenReturn(
+                Map.of("key-alice", "Alice", "key-bob", "Bob", "key-carol", "Carol"));
         when(ticketRepository.save(ticket)).thenReturn(ticket);
 
         RevealResponse response = service.reveal(ROOM_ID, TICKET_ID, FACILITATOR_USER_ID, TENANT_ID);
@@ -208,7 +214,10 @@ class PokerTicketServiceTest {
         assertThat(response.id()).isEqualTo(TICKET_ID);
         assertThat(response.status()).isEqualTo("REVEALED");
         assertThat(response.revealedAt()).isEqualTo(FIXED_NOW);
-        assertThat(response.values()).containsExactlyInAnyOrder("3", "5", "5");
+        assertThat(response.attributedVotes()).containsExactlyInAnyOrder(
+                new AttributedVoteResponse("Alice", "3"),
+                new AttributedVoteResponse("Bob", "5"),
+                new AttributedVoteResponse("Carol", "5"));
         assertThat(response.consensus().mean()).isEqualTo(4.3);
         assertThat(response.consensus().median()).isEqualTo(5.0);
         assertThat(response.consensus().majority()).isEqualTo("5");
@@ -221,15 +230,39 @@ class PokerTicketServiceTest {
         assertThat(event.type()).isEqualTo("VOTES_REVEALED");
         assertThat(event.roomId()).isEqualTo(ROOM_ID);
         assertThat(event.ticketId()).isEqualTo(TICKET_ID);
-        assertThat(event.values()).containsExactlyInAnyOrder("3", "5", "5");
+        assertThat(event.attributedVotes()).containsExactlyInAnyOrder(
+                new AttributedVoteResponse("Alice", "3"),
+                new AttributedVoteResponse("Bob", "5"),
+                new AttributedVoteResponse("Carol", "5"));
         assertThat(event.consensus()).isEqualTo(response.consensus());
         assertThat(event.revealedAt()).isEqualTo(FIXED_NOW);
     }
 
     /**
+     * Given a vote whose participant key no longer resolves in the room's live roster (e.g. an
+     * expired guest session), when the ticket is revealed, then that vote is attributed to the
+     * generic placeholder name rather than throwing or leaking a null/blank name.
+     */
+    @Test
+    void reveal_voteFromUnresolvableParticipant_attributesToPlaceholderName() {
+        PokerRoom room = facilitatorRoom();
+        PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
+        when(voteRepository.findByTicketId(TICKET_ID)).thenReturn(List.of(voteWithValue("key-gone", "8")));
+        when(rosterService.namesByParticipantKey(ROOM_ID)).thenReturn(Map.of());
+        when(ticketRepository.save(ticket)).thenReturn(ticket);
+
+        RevealResponse response = service.reveal(ROOM_ID, TICKET_ID, FACILITATOR_USER_ID, TENANT_ID);
+
+        assertThat(response.attributedVotes()).containsExactly(new AttributedVoteResponse("Participant", "8"));
+    }
+
+    /**
      * Given a ticket with zero cast votes, when it is revealed, then it still succeeds — an
-     * empty {@code values} list and an all-{@code null} consensus, never a blocking error (no
-     * completeness gate, Gate 1 decision).
+     * empty {@code attributedVotes} list and an all-{@code null} consensus, never a blocking
+     * error (no completeness gate, Gate 1 decision).
      */
     @Test
     void reveal_noVotesCast_succeedsWithNullConsensus() {
@@ -239,11 +272,12 @@ class PokerTicketServiceTest {
         when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
         when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
         when(voteRepository.findByTicketId(TICKET_ID)).thenReturn(List.of());
+        when(rosterService.namesByParticipantKey(ROOM_ID)).thenReturn(Map.of());
         when(ticketRepository.save(ticket)).thenReturn(ticket);
 
         RevealResponse response = service.reveal(ROOM_ID, TICKET_ID, FACILITATOR_USER_ID, TENANT_ID);
 
-        assertThat(response.values()).isEmpty();
+        assertThat(response.attributedVotes()).isEmpty();
         assertThat(response.consensus().mean()).isNull();
         assertThat(response.consensus().median()).isNull();
         assertThat(response.consensus().majority()).isNull();
@@ -329,8 +363,79 @@ class PokerTicketServiceTest {
         verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
-    private static PokerVote voteWithValue(final String value) {
-        return new PokerVote(TICKET_ID, "participant-key-" + UUID.randomUUID(), value, FIXED_NOW);
+    // ── recap (E09 — end-of-session recap) ──
+
+    /**
+     * Given a room with two already-revealed tickets, when the recap is fetched, then it lists
+     * both, oldest revelation first, each with its own attributed votes and consensus.
+     */
+    @Test
+    void recap_roomWithRevealedTickets_returnsThemOldestFirstWithAttributedVotesAndConsensus() {
+        PokerRoom room = facilitatorRoom();
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+
+        UUID firstTicketId = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        PokerTicket firstTicket = new PokerTicket(ROOM_ID, "First ticket", FIXED_NOW.minusSeconds(120));
+        setId(firstTicket, firstTicketId);
+        firstTicket.reveal(FIXED_NOW.minusSeconds(90));
+
+        UUID secondTicketId = UUID.fromString("55555555-5555-5555-5555-555555555555");
+        PokerTicket secondTicket = new PokerTicket(ROOM_ID, "Second ticket", FIXED_NOW.minusSeconds(60));
+        setId(secondTicket, secondTicketId);
+        secondTicket.reveal(FIXED_NOW.minusSeconds(30));
+
+        when(ticketRepository.findByRoomIdAndStatusOrderByRevealedAtAsc(ROOM_ID, PokerTicketStatus.REVEALED))
+                .thenReturn(List.of(firstTicket, secondTicket));
+        when(voteRepository.findByTicketId(firstTicketId)).thenReturn(List.of(voteWithValue("key-alice", "3")));
+        when(voteRepository.findByTicketId(secondTicketId)).thenReturn(List.of(voteWithValue("key-alice", "8")));
+        when(rosterService.namesByParticipantKey(ROOM_ID)).thenReturn(Map.of("key-alice", "Alice"));
+
+        RecapResponse recap = service.recap(ROOM_ID, TENANT_ID);
+
+        assertThat(recap.roomId()).isEqualTo(ROOM_ID);
+        assertThat(recap.tickets()).hasSize(2);
+        TicketRecapEntry first = recap.tickets().get(0);
+        assertThat(first.id()).isEqualTo(firstTicketId);
+        assertThat(first.title()).isEqualTo("First ticket");
+        assertThat(first.attributedVotes()).containsExactly(new AttributedVoteResponse("Alice", "3"));
+        assertThat(first.consensus().mean()).isEqualTo(3.0);
+        TicketRecapEntry second = recap.tickets().get(1);
+        assertThat(second.id()).isEqualTo(secondTicketId);
+        assertThat(second.attributedVotes()).containsExactly(new AttributedVoteResponse("Alice", "8"));
+        assertThat(second.consensus().mean()).isEqualTo(8.0);
+    }
+
+    /**
+     * Given a room with no revealed ticket yet, when the recap is fetched, then it returns an
+     * empty ticket list rather than an error.
+     */
+    @Test
+    void recap_noRevealedTickets_returnsEmptyList() {
+        PokerRoom room = facilitatorRoom();
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findByRoomIdAndStatusOrderByRevealedAtAsc(ROOM_ID, PokerTicketStatus.REVEALED))
+                .thenReturn(List.of());
+
+        RecapResponse recap = service.recap(ROOM_ID, TENANT_ID);
+
+        assertThat(recap.tickets()).isEmpty();
+    }
+
+    /**
+     * Security AC: given a room belonging to another tenant, when the recap is fetched, then
+     * {@link RoomNotFoundException} is thrown — never confirms cross-tenant existence. Not
+     * facilitator-restricted (unlike reveal/create) — any authenticated same-tenant caller.
+     */
+    @Test
+    void recap_crossTenantRoom_throwsRoomNotFoundException() {
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.recap(ROOM_ID, TENANT_ID))
+                .isInstanceOf(RoomNotFoundException.class);
+    }
+
+    private static PokerVote voteWithValue(final String participantKey, final String value) {
+        return new PokerVote(TICKET_ID, participantKey, value, FIXED_NOW);
     }
 
     private static PokerRoom facilitatorRoom() {

@@ -231,8 +231,12 @@ class PokerTicketControllerIT extends AbstractAgiliteIntegrationTest {
      * Security-critical AC: given a {@code VOTING} ticket with cast votes, when the facilitator
      * reveals it, then the ticket transitions in the database from {@code VOTING}/{@code
      * revealedAt == null} to {@code REVEALED}/{@code revealedAt} non-null, the response carries
-     * every raw vote value and the computed consensus, and the raw JSON never carries a
-     * {@code participantKey} or any other identity field.
+     * every vote attributed to a name and the computed consensus, and the raw JSON never carries
+     * a {@code participantKey} or any other identity field (E09 — attributed reveal replaces the
+     * pre-E09 anonymous {@code values} shape with {@code attributedVotes}; {@code seedVote} here
+     * writes a raw {@code PokerVote} row with no matching roster entry, so every attributed vote
+     * falls back to the generic placeholder name — proving that fallback end-to-end — while the
+     * unit tests, mocking the roster, prove the real-name attribution path).
      */
     @Test
     void revealTicket_asFacilitatorWithVotes_transitionsStatusAndReturnsConsensus() throws Exception {
@@ -254,7 +258,11 @@ class PokerTicketControllerIT extends AbstractAgiliteIntegrationTest {
                 .andExpect(jsonPath("$.id").value(ticketId))
                 .andExpect(jsonPath("$.status").value("REVEALED"))
                 .andExpect(jsonPath("$.revealedAt").isNotEmpty())
-                .andExpect(jsonPath("$.values", org.hamcrest.Matchers.containsInAnyOrder("3", "5", "5")))
+                .andExpect(jsonPath(
+                        "$.attributedVotes[*].value", org.hamcrest.Matchers.containsInAnyOrder("3", "5", "5")))
+                .andExpect(jsonPath(
+                        "$.attributedVotes[*].name",
+                        org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.equalTo("Participant"))))
                 .andExpect(jsonPath("$.consensus.mean").value(4.3))
                 .andExpect(jsonPath("$.consensus.median").value(5.0))
                 .andExpect(jsonPath("$.consensus.majority").value("5"))
@@ -270,7 +278,8 @@ class PokerTicketControllerIT extends AbstractAgiliteIntegrationTest {
 
     /**
      * Given a ticket with zero cast votes, when it is revealed, then it still succeeds with an
-     * empty {@code values} array and an all-{@code null} consensus (no completeness gate).
+     * empty {@code attributedVotes} array and an all-{@code null} consensus (no completeness
+     * gate).
      */
     @Test
     void revealTicket_noVotesCast_succeedsWithNullConsensus() throws Exception {
@@ -280,7 +289,7 @@ class PokerTicketControllerIT extends AbstractAgiliteIntegrationTest {
         mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
                         .header("Authorization", "Bearer " + facilitatorToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.values", org.hamcrest.Matchers.empty()))
+                .andExpect(jsonPath("$.attributedVotes", org.hamcrest.Matchers.empty()))
                 .andExpect(jsonPath("$.consensus.mean").doesNotExist())
                 .andExpect(jsonPath("$.consensus.median").doesNotExist())
                 .andExpect(jsonPath("$.consensus.majority").doesNotExist());
@@ -381,6 +390,86 @@ class PokerTicketControllerIT extends AbstractAgiliteIntegrationTest {
 
         mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /poker/rooms/{roomId}/tickets/recap (E09 — end-of-session recap)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Given a room with one revealed ticket, when the recap is fetched, then it lists that
+     * ticket with its attributed votes and consensus — not facilitator-restricted, any
+     * authenticated same-tenant caller can read it (every ticket listed was already broadcast to
+     * every participant at its own reveal time).
+     */
+    @Test
+    void recap_roomWithOneRevealedTicket_listsItWithAttributedVotesAndConsensus() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        seedVote(ticketId, "3");
+        seedVote(ticketId, "5");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(ROOMS_PATH + "/" + roomId + "/tickets/recap")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roomId").value(roomId))
+                .andExpect(jsonPath("$.tickets", org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.tickets[0].id").value(ticketId))
+                .andExpect(jsonPath("$.tickets[0].title").value("Estimate JIRA-123"))
+                .andExpect(jsonPath("$.tickets[0].revealedAt").isNotEmpty())
+                .andExpect(jsonPath(
+                        "$.tickets[0].attributedVotes[*].value",
+                        org.hamcrest.Matchers.containsInAnyOrder("3", "5")))
+                .andExpect(jsonPath("$.tickets[0].consensus.mean").value(4.0));
+    }
+
+    /**
+     * Given a room with no revealed ticket yet, when the recap is fetched, then it returns an
+     * empty ticket list rather than an error.
+     */
+    @Test
+    void recap_noRevealedTicketsYet_returnsEmptyList() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+
+        mockMvc.perform(get(ROOMS_PATH + "/" + roomId + "/tickets/recap")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tickets", org.hamcrest.Matchers.empty()));
+    }
+
+    /**
+     * Security AC: a non-facilitator, same-tenant caller can still read the recap — this endpoint
+     * is deliberately not facilitator-restricted (unlike create/reveal).
+     */
+    @Test
+    void recap_asNonFacilitatorSameTenant_returns200() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(ROOMS_PATH + "/" + roomId + "/tickets/recap")
+                        .header("Authorization", "Bearer " + otherUserToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tickets", org.hamcrest.Matchers.hasSize(1)));
+    }
+
+    /**
+     * Security AC: given a room belonging to another tenant, when the recap is fetched, then it
+     * returns 404 — never confirms cross-tenant existence.
+     */
+    @Test
+    void recap_crossTenantRoom_returns404() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+
+        mockMvc.perform(get(ROOMS_PATH + "/" + roomId + "/tickets/recap")
+                        .header("Authorization", "Bearer " + otherTenantToken))
+                .andExpect(status().isNotFound());
     }
 
     // -------------------------------------------------------------------------
