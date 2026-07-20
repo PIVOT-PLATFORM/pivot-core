@@ -15,10 +15,19 @@ import jakarta.validation.constraints.Size;
  * the caller's bearer token ({@code RequestPrincipal}); accepting either here would be an IDOR
  * vector.
  *
- * @param code the 6-character invite code to resolve
+ * @param code        the 6-character invite code to resolve
+ * @param displayName optional display name shown in the room roster, trimmed server-side, max 40
+ *                    characters; a default is substituted when absent/blank
+ * @param role        optional role identifier ({@code JOUEUR}/{@code VISITEUR}); defaults to
+ *                    {@code JOUEUR} when absent/unknown (see {@code ParticipantRole#fromNullable})
  */
 public record JoinRoomRequest(
         @NotBlank(message = "INVALID_CODE")
         @Size(min = 6, max = 6, message = "INVALID_CODE")
-        String code) {
+        String code,
+
+        @Size(max = 40, message = "INVALID_DISPLAY_NAME")
+        String displayName,
+
+        String role) {
 }

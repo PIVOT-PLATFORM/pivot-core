@@ -1,9 +1,12 @@
 package fr.pivot.agilite.poker.vote;
 
+import fr.pivot.agilite.poker.PokerRoom;
+import fr.pivot.agilite.poker.PokerRoomRepository;
 import fr.pivot.agilite.poker.ticket.PokerTicket;
 import fr.pivot.agilite.poker.ticket.PokerTicketRepository;
 import fr.pivot.agilite.poker.vote.dto.SubmitVoteRequest;
 import fr.pivot.agilite.poker.ws.PokerParticipantRegistryService;
+import fr.pivot.agilite.poker.ws.PokerRosterService;
 import fr.pivot.agilite.ws.WsErrorPayload;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +25,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,7 +49,13 @@ class PokerVoteServiceTest {
     private PokerTicketRepository ticketRepository;
 
     @Mock
+    private PokerRoomRepository roomRepository;
+
+    @Mock
     private PokerParticipantRegistryService participantRegistryService;
+
+    @Mock
+    private PokerRosterService rosterService;
 
     @Mock
     private SimpMessagingTemplate messagingTemplate;
@@ -59,7 +69,11 @@ class PokerVoteServiceTest {
     void setUp() {
         Clock fixedClock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
         service = new PokerVoteService(
-                voteRepository, ticketRepository, participantRegistryService, messagingTemplate, fixedClock);
+                voteRepository, ticketRepository, roomRepository, participantRegistryService,
+                rosterService, messagingTemplate, fixedClock);
+        // The room's deck drives card-value validation — a Fibonacci room for these tests.
+        lenient().when(roomRepository.findById(ROOM_ID)).thenReturn(Optional.of(new PokerRoom(
+                1L, 1L, "Room", "ABC234", "FIBONACCI", true, FIXED_NOW, FIXED_NOW.plusSeconds(3600))));
     }
 
     /**

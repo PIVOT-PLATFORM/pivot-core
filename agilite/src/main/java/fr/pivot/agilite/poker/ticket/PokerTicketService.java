@@ -15,6 +15,7 @@ import fr.pivot.agilite.poker.ticket.dto.VotesRevealedEvent;
 import fr.pivot.agilite.poker.vote.PokerVote;
 import fr.pivot.agilite.poker.vote.PokerVoteRepository;
 import fr.pivot.agilite.poker.ws.PokerRoomDestinations;
+import fr.pivot.agilite.poker.ws.PokerRosterService;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,7 @@ public class PokerTicketService {
     private final PokerTicketRepository ticketRepository;
     private final PokerRoomRepository roomRepository;
     private final PokerVoteRepository voteRepository;
+    private final PokerRosterService rosterService;
     private final SimpMessagingTemplate messagingTemplate;
     private final Clock clock;
 
@@ -44,6 +46,8 @@ public class PokerTicketService {
      * @param roomRepository    room persistence, used to resolve the room and check the
      *                          facilitator identity
      * @param voteRepository    vote persistence, used at reveal time to load every cast vote
+     * @param rosterService     rebroadcasts the named roster (resetting per-participant voted
+     *                          state) when a new ticket opens
      * @param messagingTemplate used to broadcast {@code TICKET_CREATED}/{@code VOTES_REVEALED}
      *                          events
      * @param clock             the shared clock, overridable in tests
@@ -52,11 +56,13 @@ public class PokerTicketService {
             final PokerTicketRepository ticketRepository,
             final PokerRoomRepository roomRepository,
             final PokerVoteRepository voteRepository,
+            final PokerRosterService rosterService,
             final SimpMessagingTemplate messagingTemplate,
             final Clock clock) {
         this.ticketRepository = ticketRepository;
         this.roomRepository = roomRepository;
         this.voteRepository = voteRepository;
+        this.rosterService = rosterService;
         this.messagingTemplate = messagingTemplate;
         this.clock = clock;
     }
@@ -88,6 +94,8 @@ public class PokerTicketService {
         messagingTemplate.convertAndSend(
                 PokerRoomDestinations.roomTopic(roomId),
                 (Object) TicketCreatedEvent.of(roomId, saved.getId(), saved.getTitle(), saved.getCreatedAt()));
+        // New ticket → nobody has voted on it yet; refresh the roster so every "voted" square resets.
+        rosterService.broadcast(roomId);
 
         return toResponse(saved);
     }

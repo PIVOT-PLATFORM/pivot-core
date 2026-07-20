@@ -296,6 +296,9 @@ class PokerVoteSubmissionIT extends AbstractAgiliteIntegrationTest {
         String destination = roomIdOrDestination.startsWith("/")
                 ? roomIdOrDestination
                 : "/topic/agilite/poker/" + roomIdOrDestination;
+        // Only the shared ROOM topic now also carries ROSTER_UPDATED; the /user/queue/errors
+        // subscription must keep every frame (its error payloads are not VOTE_CAST).
+        final boolean isRoomTopic = destination.startsWith("/topic/agilite/poker/");
         BlockingQueue<String> queue = new LinkedBlockingQueue<>();
         StompHeaders headers = new StompHeaders();
         headers.setDestination(destination);
@@ -310,7 +313,15 @@ class PokerVoteSubmissionIT extends AbstractAgiliteIntegrationTest {
 
             @Override
             public void handleFrame(final StompHeaders stompHeaders, final Object payload) {
-                queue.add(new String((byte[]) payload, StandardCharsets.UTF_8));
+                String frame = new String((byte[]) payload, StandardCharsets.UTF_8);
+                // On the room topic this IT asserts only on VOTE_CAST frames; since E09's named
+                // roster that topic also carries ROSTER_UPDATED after each vote — filter it out so
+                // the single-frame poll()s stay aligned. ("VOTE_CAST" can never appear spuriously
+                // in a hex-UUID roomId/ticketId.) Other subscriptions (e.g. /user/queue/errors)
+                // keep every frame.
+                if (!isRoomTopic || frame.contains("VOTE_CAST")) {
+                    queue.add(frame);
+                }
             }
         });
         return queue;

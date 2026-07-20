@@ -70,7 +70,8 @@ public class PokerRoomController {
                 principal.tenantId(),
                 request.expirationHours(),
                 request.deck(),
-                request.facilitatorVotes());
+                request.facilitatorVotes(),
+                request.facilitatorName());
     }
 
     /**
@@ -102,7 +103,7 @@ public class PokerRoomController {
     public JoinRoomResponse join(
             @RequestBody @Valid final JoinRoomRequest request,
             final RequestPrincipal principal) {
-        return service.join(request.code(), principal.tenantId());
+        return service.join(request.code(), principal.tenantId(), request.displayName(), request.role());
     }
 
     /**
@@ -121,7 +122,7 @@ public class PokerRoomController {
     @PostMapping("/join-anonymous")
     public AnonymousJoinResponse joinAnonymous(
             @RequestBody @Valid final AnonymousJoinRequest request) {
-        return service.joinAnonymous(request.code(), request.pseudonym());
+        return service.joinAnonymous(request.code(), request.pseudonym(), request.role());
     }
 
     /**
