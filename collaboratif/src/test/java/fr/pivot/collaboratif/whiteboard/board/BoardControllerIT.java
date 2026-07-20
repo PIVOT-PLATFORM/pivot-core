@@ -623,6 +623,118 @@ class BoardControllerIT extends AbstractCollaboratifIntegrationTest {
     }
 
     // -------------------------------------------------------------------------
+    // GET /whiteboard/boards/{boardId}/preview
+    // -------------------------------------------------------------------------
+
+    /**
+     * Given a board with one card and one frame, when GET
+     * /whiteboard/boards/{boardId}/preview is called, then it returns HTTP 200 with the card's
+     * and frame's geometry and colour, and the card's {@code content} field is never present in
+     * the JSON response (no base64 image data leaks into the preview).
+     */
+    @Test
+    void preview_returnsCardsAndFramesGeometryOnlyWithoutContent() throws Exception {
+        String boardId = createBoardFor(tokenA, "Preview Board");
+        Card card = new Card(
+                UUID.fromString(boardId), tenantA, CardType.IMAGE,
+                "data:image/png;base64,AAAAVERYLONGBASE64PAYLOAD", 10, 20, Instant.now());
+        cardRepository.save(card);
+        Frame frame = new Frame(UUID.fromString(boardId), tenantA, 0, 0, Instant.now());
+        frameRepository.save(frame);
+
+        mockMvc.perform(get(BASE_PATH + "/" + boardId + "/preview")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cards", org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.cards[0].type").value("IMAGE"))
+                .andExpect(jsonPath("$.cards[0].posX").value(10))
+                .andExpect(jsonPath("$.cards[0].posY").value(20))
+                .andExpect(jsonPath("$.cards[0].color").value("#FFEB3B"))
+                .andExpect(jsonPath("$.cards[0].content").doesNotExist())
+                .andExpect(jsonPath("$.frames", org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.frames[0].width").value(400))
+                .andExpect(jsonPath("$.frames[0].height").value(300))
+                .andExpect(jsonPath("$.frames[0].color").value("#94A3B8"));
+    }
+
+    /**
+     * Given a board shared with a VIEWER, when GET /whiteboard/boards/{boardId}/preview is
+     * called by that viewer, then it returns HTTP 200 — the preview endpoint grants access to
+     * any board member (OWNER/EDITOR/VIEWER), the same membership gate as findById.
+     */
+    @Test
+    void preview_asViewer_returns200() throws Exception {
+        String boardId = createBoardFor(tokenA, "Shared Board");
+        long viewerId = PlatformAuthTestSupport.seedUser(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(), tenantA, true);
+        String viewerToken = PlatformAuthTestSupport.issueToken(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
+                viewerId, "active", Instant.now().plusSeconds(3600));
+        insertBoardMember(UUID.fromString(boardId), viewerId, BoardRole.VIEWER);
+
+        mockMvc.perform(get(BASE_PATH + "/" + boardId + "/preview")
+                        .header("Authorization", "Bearer " + viewerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cards").isEmpty())
+                .andExpect(jsonPath("$.frames").isEmpty());
+    }
+
+    /**
+     * Given no board exists with the given id, when GET /whiteboard/boards/{boardId}/preview
+     * is called, then it returns HTTP 404.
+     */
+    @Test
+    void preview_nonExistentBoard_returns404() throws Exception {
+        mockMvc.perform(get(BASE_PATH + "/" + UUID.randomUUID() + "/preview")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Given a board belongs to tenant A, when a user from tenant B requests its preview,
+     * then it returns HTTP 404 (cross-tenant isolation).
+     */
+    @Test
+    void preview_crossTenant_returns404() throws Exception {
+        String boardId = createBoardFor(tokenA, "Tenant A Board");
+
+        mockMvc.perform(get(BASE_PATH + "/" + boardId + "/preview")
+                        .header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Given the caller is in the same tenant but is not a member of the board, when GET
+     * /whiteboard/boards/{boardId}/preview is called, then it returns HTTP 404 — the preview is
+     * membership-gated like findById and must not leak a non-member's board geometry.
+     */
+    @Test
+    void preview_nonMember_returns404() throws Exception {
+        String boardId = createBoardFor(tokenA, "Private Board");
+        long strangerId = PlatformAuthTestSupport.seedUser(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(), tenantA, true);
+        String strangerToken = PlatformAuthTestSupport.issueToken(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
+                strangerId, "active", Instant.now().plusSeconds(3600));
+
+        mockMvc.perform(get(BASE_PATH + "/" + boardId + "/preview")
+                        .header("Authorization", "Bearer " + strangerToken))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Given the Authorization bearer header is absent, when GET
+     * /whiteboard/boards/{boardId}/preview is called, then it returns HTTP 401 Unauthorized.
+     */
+    @Test
+    void preview_missingPrincipalHeaders_returns401() throws Exception {
+        String boardId = createBoardFor(tokenA, "Board");
+
+        mockMvc.perform(get(BASE_PATH + "/" + boardId + "/preview"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // -------------------------------------------------------------------------
     // PATCH /whiteboard/boards/{boardId}
     // -------------------------------------------------------------------------
 

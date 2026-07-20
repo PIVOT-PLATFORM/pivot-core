@@ -7,6 +7,7 @@ import fr.pivot.collaboratif.exception.InvalidActivityException;
 import fr.pivot.collaboratif.exception.TemplateNotFoundException;
 import fr.pivot.collaboratif.exception.WhiteboardModuleDisabledException;
 import fr.pivot.collaboratif.whiteboard.board.dto.BoardPageResponse;
+import fr.pivot.collaboratif.whiteboard.board.dto.BoardPreviewResponse;
 import fr.pivot.collaboratif.whiteboard.board.dto.BoardResponse;
 import fr.pivot.collaboratif.whiteboard.board.dto.PatchBoardRequest;
 import fr.pivot.collaboratif.whiteboard.board.dto.SaveAsTemplateRequest;
@@ -14,6 +15,8 @@ import fr.pivot.collaboratif.whiteboard.canvas.CanvasEventRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.Card;
 import fr.pivot.collaboratif.whiteboard.canvas.CardRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.CardType;
+import fr.pivot.collaboratif.whiteboard.canvas.Frame;
+import fr.pivot.collaboratif.whiteboard.canvas.FrameRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.WhiteboardBroadcastService;
 import fr.pivot.collaboratif.whiteboard.template.WhiteboardTemplate;
 import fr.pivot.collaboratif.whiteboard.template.WhiteboardTemplateService;
@@ -69,6 +72,9 @@ class BoardServiceTest {
     private CardRepository cardRepository;
 
     @Mock
+    private FrameRepository frameRepository;
+
+    @Mock
     private WhiteboardModuleCheck moduleCheck;
 
     @Mock
@@ -87,8 +93,8 @@ class BoardServiceTest {
     void setUp() {
         boardService = new BoardService(
                 boardRepository, boardMemberRepository, boardFavoriteRepository,
-                canvasEventRepository, cardRepository, moduleCheck, templateService,
-                broadcastService, new ObjectMapper());
+                canvasEventRepository, cardRepository, frameRepository, moduleCheck,
+                templateService, broadcastService, new ObjectMapper());
     }
 
     // -------------------------------------------------------------------------
@@ -369,6 +375,103 @@ class BoardServiceTest {
         BoardPageResponse page = boardService.findAccessible(USER_A, TENANT_A, null, 0, 20);
 
         assertThat(page.boards().get(0).shareCount()).isEqualTo(2);
+    }
+
+    // -------------------------------------------------------------------------
+    // getPreview() — lightweight geometry-only board preview
+    // -------------------------------------------------------------------------
+
+    @Test
+    void getPreview_returnsCardsAndFramesGeometryOnly() {
+        UUID boardId = UUID.randomUUID();
+        Board board = boardWithOwner(boardId, "My Board", USER_A, TENANT_A);
+        Card card = cardWithId(UUID.randomUUID(),
+                new Card(boardId, TENANT_A, CardType.TEXT, "Secret content", 10, 20, Instant.now()));
+        Frame frame = new Frame(boardId, TENANT_A, 0, 0, Instant.now());
+        when(boardRepository.findByIdAndTenantIdAndDeletedAtIsNull(boardId, TENANT_A))
+                .thenReturn(Optional.of(board));
+        when(cardRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, TENANT_A))
+                .thenReturn(List.of(card));
+        when(frameRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, TENANT_A))
+                .thenReturn(List.of(frame));
+
+        BoardPreviewResponse preview = boardService.getPreview(boardId, USER_A, TENANT_A);
+
+        assertThat(preview.cards()).hasSize(1);
+        assertThat(preview.cards().get(0).type()).isEqualTo("TEXT");
+        assertThat(preview.cards().get(0).posX()).isEqualTo(10);
+        assertThat(preview.cards().get(0).posY()).isEqualTo(20);
+        assertThat(preview.cards().get(0).color()).isEqualTo("#FFEB3B");
+        assertThat(preview.frames()).hasSize(1);
+        assertThat(preview.frames().get(0).width()).isEqualTo(400);
+        assertThat(preview.frames().get(0).height()).isEqualTo(300);
+        assertThat(preview.frames().get(0).color()).isEqualTo("#94A3B8");
+    }
+
+    @Test
+    void getPreview_neverExposesCardContent() {
+        UUID boardId = UUID.randomUUID();
+        Board board = boardWithOwner(boardId, "My Board", USER_A, TENANT_A);
+        Card card = cardWithId(UUID.randomUUID(),
+                new Card(boardId, TENANT_A, CardType.IMAGE, "data:image/png;base64,AAAA", 0, 0, Instant.now()));
+        when(boardRepository.findByIdAndTenantIdAndDeletedAtIsNull(boardId, TENANT_A))
+                .thenReturn(Optional.of(board));
+        when(cardRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, TENANT_A))
+                .thenReturn(List.of(card));
+        when(frameRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, TENANT_A))
+                .thenReturn(List.of());
+
+        BoardPreviewResponse preview = boardService.getPreview(boardId, USER_A, TENANT_A);
+
+        assertThat(preview.cards()).hasSize(1);
+        assertThat(preview.cards().get(0).toString()).doesNotContain("base64");
+    }
+
+    @Test
+    void getPreview_noCardsOrFrames_returnsEmptyLists() {
+        UUID boardId = UUID.randomUUID();
+        Board board = boardWithOwner(boardId, "Empty Board", USER_A, TENANT_A);
+        when(boardRepository.findByIdAndTenantIdAndDeletedAtIsNull(boardId, TENANT_A))
+                .thenReturn(Optional.of(board));
+        when(cardRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, TENANT_A))
+                .thenReturn(List.of());
+        when(frameRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, TENANT_A))
+                .thenReturn(List.of());
+
+        BoardPreviewResponse preview = boardService.getPreview(boardId, USER_A, TENANT_A);
+
+        assertThat(preview.cards()).isEmpty();
+        assertThat(preview.frames()).isEmpty();
+    }
+
+    @Test
+    void getPreview_whenBoardInaccessible_throwsBoardNotFoundException() {
+        UUID boardId = UUID.randomUUID();
+        when(boardRepository.findByIdAndTenantIdAndDeletedAtIsNull(boardId, TENANT_A))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> boardService.getPreview(boardId, USER_A, TENANT_A))
+                .isInstanceOf(BoardNotFoundException.class);
+        verify(cardRepository, never()).findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(any(), any());
+        verify(frameRepository, never()).findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(any(), any());
+    }
+
+    @Test
+    void getPreview_whenCallerIsSameTenantNonMember_throwsBoardNotFoundException() {
+        UUID boardId = UUID.randomUUID();
+        Long nonMember = 999L;
+        // Board exists and is accessible tenant-wide, but is owned by USER_A and has no member row
+        // for the caller — membership gate (resolveRole) must 404, not leak the geometry.
+        Board board = boardWithOwner(boardId, "Someone else's board", USER_A, TENANT_A);
+        when(boardRepository.findByIdAndTenantIdAndDeletedAtIsNull(boardId, TENANT_A))
+                .thenReturn(Optional.of(board));
+        when(boardMemberRepository.findByIdBoardIdAndIdUserId(boardId, nonMember))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> boardService.getPreview(boardId, nonMember, TENANT_A))
+                .isInstanceOf(BoardNotFoundException.class);
+        verify(cardRepository, never()).findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(any(), any());
+        verify(frameRepository, never()).findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(any(), any());
     }
 
     // -------------------------------------------------------------------------

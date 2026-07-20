@@ -3,6 +3,7 @@ package fr.pivot.collaboratif.whiteboard.board;
 import fr.pivot.collaboratif.context.CollaboratifRequestPrincipal;
 import fr.pivot.collaboratif.web.CollaboratifApiPaths;
 import fr.pivot.collaboratif.whiteboard.board.dto.BoardPageResponse;
+import fr.pivot.collaboratif.whiteboard.board.dto.BoardPreviewResponse;
 import fr.pivot.collaboratif.whiteboard.board.dto.BoardResponse;
 import fr.pivot.collaboratif.whiteboard.board.dto.CreateBoardRequest;
 import fr.pivot.collaboratif.whiteboard.board.dto.PatchBoardRequest;
@@ -126,6 +127,26 @@ public class BoardController {
             @PathVariable final UUID boardId,
             final CollaboratifRequestPrincipal principal) {
         return boardService.findById(boardId, principal.userId(), principal.tenantId());
+    }
+
+    /**
+     * Returns a lightweight, geometry-only preview of a board's canvas, for the frontend
+     * board-list to render a mini-thumbnail (no card content, no base64 images).
+     *
+     * <p>Access is gated exactly like {@link #findById}: the caller must be a member of the board
+     * (OWNER, EDITOR or VIEWER). A same-tenant caller who is not a member gets HTTP 404 — the
+     * preview never leaks a board's geometry to someone who could not open the board itself.
+     *
+     * @param boardId   the board UUID from the path
+     * @param principal the resolved caller identity
+     * @return the board's cards and frames, geometry and colour only, or HTTP 404 if the board
+     *         does not exist, is trashed, belongs to another tenant, or the caller is not a member
+     */
+    @GetMapping("/{boardId}/preview")
+    public BoardPreviewResponse preview(
+            @PathVariable final UUID boardId,
+            final CollaboratifRequestPrincipal principal) {
+        return boardService.getPreview(boardId, principal.userId(), principal.tenantId());
     }
 
     /**

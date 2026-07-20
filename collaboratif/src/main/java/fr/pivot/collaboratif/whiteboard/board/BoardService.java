@@ -7,12 +7,16 @@ import fr.pivot.collaboratif.exception.InvalidActivityException;
 import fr.pivot.collaboratif.exception.WhiteboardModuleDisabledException;
 import fr.pivot.collaboratif.whiteboard.board.dto.BoardCardResponse;
 import fr.pivot.collaboratif.whiteboard.board.dto.BoardPageResponse;
+import fr.pivot.collaboratif.whiteboard.board.dto.BoardPreviewResponse;
+import fr.pivot.collaboratif.whiteboard.board.dto.BoardPreviewResponse.PreviewCard;
+import fr.pivot.collaboratif.whiteboard.board.dto.BoardPreviewResponse.PreviewFrame;
 import fr.pivot.collaboratif.whiteboard.board.dto.BoardResponse;
 import fr.pivot.collaboratif.whiteboard.board.dto.PatchBoardRequest;
 import fr.pivot.collaboratif.whiteboard.board.dto.SaveAsTemplateRequest;
 import fr.pivot.collaboratif.whiteboard.canvas.CanvasEventRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.Card;
 import fr.pivot.collaboratif.whiteboard.canvas.CardRepository;
+import fr.pivot.collaboratif.whiteboard.canvas.FrameRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.WhiteboardBroadcastService;
 import fr.pivot.collaboratif.whiteboard.template.WhiteboardTemplate;
 import fr.pivot.collaboratif.whiteboard.template.WhiteboardTemplateService;
@@ -63,6 +67,7 @@ public class BoardService {
     private final BoardFavoriteRepository boardFavoriteRepository;
     private final CanvasEventRepository canvasEventRepository;
     private final CardRepository cardRepository;
+    private final FrameRepository frameRepository;
     private final WhiteboardModuleCheck moduleCheck;
     private final WhiteboardTemplateService templateService;
     private final WhiteboardBroadcastService broadcastService;
@@ -78,6 +83,9 @@ public class BoardService {
      * @param cardRepository          repository for durable card state, read-only here, used to
      *                                embed cards with field values in {@code GET
      *                                /whiteboard/boards/{boardId}} (US08.1.9)
+     * @param frameRepository         repository for durable frame state, read-only here, used to
+     *                                supply frame geometry for {@code GET
+     *                                /whiteboard/boards/{boardId}/preview}
      * @param moduleCheck             check for whiteboard module activation
      * @param templateService         service resolving templates and initializing a board's
      *                                canvas from one, and snapshotting a board into a new
@@ -92,6 +100,7 @@ public class BoardService {
             final BoardFavoriteRepository boardFavoriteRepository,
             final CanvasEventRepository canvasEventRepository,
             final CardRepository cardRepository,
+            final FrameRepository frameRepository,
             final WhiteboardModuleCheck moduleCheck,
             final WhiteboardTemplateService templateService,
             final WhiteboardBroadcastService broadcastService,
@@ -101,6 +110,7 @@ public class BoardService {
         this.boardFavoriteRepository = boardFavoriteRepository;
         this.canvasEventRepository = canvasEventRepository;
         this.cardRepository = cardRepository;
+        this.frameRepository = frameRepository;
         this.moduleCheck = moduleCheck;
         this.templateService = templateService;
         this.broadcastService = broadcastService;
@@ -325,6 +335,41 @@ public class BoardService {
                 .map(this::toCardResponse)
                 .toList();
         return BoardResponse.withCards(board, role, favorite, shareCountOf(boardId), cards);
+    }
+
+    /**
+     * Returns a lightweight, geometry-only preview of a board's canvas (cards and frames),
+     * for the frontend board-list to render a mini-thumbnail without downloading card content
+     * (text, base64 images) or any other non-geometric field.
+     *
+     * <p>Access is gated exactly like {@link #findById}: tenant-scoped existence via
+     * {@link #requireAccessibleBoard} plus a membership check via {@link #resolveRole}. A
+     * same-tenant caller who is neither the owner nor a member gets a 404 — the preview never
+     * leaks a board's geometry to someone who could not open the board itself. Any member
+     * (OWNER/EDITOR/VIEWER) may request a preview.
+     *
+     * @param boardId  the board UUID
+     * @param userId   calling user's {@code public.users.id}
+     * @param tenantId calling tenant's {@code public.tenants.id}
+     * @return the board's cards and frames, geometry and colour only
+     * @throws BoardNotFoundException if the board does not exist, is trashed, belongs to another
+     *                                tenant, or the caller is not a member
+     */
+    public BoardPreviewResponse getPreview(final UUID boardId, final Long userId, final Long tenantId) {
+        Board board = requireAccessibleBoard(boardId, tenantId);
+        // Membership gate, identical to findById — a non-member (even same tenant) gets 404.
+        resolveRole(boardId, userId, board.getOwnerId());
+        List<PreviewCard> cards = cardRepository
+                .findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, tenantId)
+                .stream()
+                .map(PreviewCard::from)
+                .toList();
+        List<PreviewFrame> frames = frameRepository
+                .findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, tenantId)
+                .stream()
+                .map(PreviewFrame::from)
+                .toList();
+        return new BoardPreviewResponse(cards, frames);
     }
 
     // -------------------------------------------------------------------------
