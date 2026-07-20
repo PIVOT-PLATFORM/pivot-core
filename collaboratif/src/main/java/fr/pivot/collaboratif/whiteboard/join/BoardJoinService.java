@@ -1,6 +1,5 @@
 package fr.pivot.collaboratif.whiteboard.join;
 
-import fr.pivot.collaboratif.exception.BoardAlreadyMemberException;
 import fr.pivot.collaboratif.exception.BoardAccessDeniedException;
 import fr.pivot.collaboratif.exception.BoardShareTokenExpiredException;
 import fr.pivot.collaboratif.exception.BoardShareTokenNotFoundException;
@@ -9,6 +8,7 @@ import fr.pivot.collaboratif.whiteboard.board.BoardMember;
 import fr.pivot.collaboratif.whiteboard.board.BoardMemberId;
 import fr.pivot.collaboratif.whiteboard.board.BoardMemberRepository;
 import fr.pivot.collaboratif.whiteboard.board.BoardRepository;
+import fr.pivot.collaboratif.whiteboard.board.BoardRole;
 import fr.pivot.collaboratif.whiteboard.join.dto.JoinBoardResponse;
 import fr.pivot.collaboratif.whiteboard.share.BoardShareToken;
 import fr.pivot.collaboratif.whiteboard.share.BoardShareTokenRepository;
@@ -20,6 +20,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -27,8 +28,6 @@ import java.util.UUID;
  *
  * <p>The submitted plain token is hashed with SHA-256, looked up in the database,
  * then verified for validity (not revoked, not expired, use count below the limit).
- * On success a {@link BoardMember} record is created and the token's use count is
- * incremented atomically within the same transaction.
  *
  * <p>Security properties maintained by this service:
  * <ul>
@@ -38,6 +37,13 @@ import java.util.UUID;
  *   <li>Cross-tenant access is rejected: the joining user's tenant must match the board's
  *       tenant, verified from the caller's resolved {@code tenantId}.</li>
  * </ul>
+ *
+ * <p><strong>Upsert semantics (US08.2.5).</strong> Joining via a link never demotes or promotes
+ * an existing member: the board creator always resolves to {@link BoardRole#OWNER} without a
+ * share row; an already-present member keeps their current role and consumes no token use; only
+ * a genuinely new member creates a {@link BoardMember} row and consumes a use. This supersedes
+ * the original 409-on-repeat-join behaviour, which made a shared link unusable on a second click
+ * by the same already-joined user.
  */
 @Service
 @Transactional(readOnly = true)
@@ -73,8 +79,9 @@ public class BoardJoinService {
      *   <li>Check that the token is not revoked.</li>
      *   <li>Check that the token has not expired and use count is below the limit.</li>
      *   <li>Load the board and verify tenant isolation (403 on cross-tenant).</li>
-     *   <li>Reject if the caller is already a member (409).</li>
-     *   <li>Create the membership and increment the token's use count.</li>
+     *   <li>Upsert (US08.2.5): the creator returns OWNER without change; an existing member keeps
+     *       their current role (never demoted/promoted, no token use consumed); a new member is
+     *       created and the token's use count incremented.</li>
      * </ol>
      *
      * @param plainToken the raw token value from the query parameter
@@ -85,7 +92,6 @@ public class BoardJoinService {
      * @throws BoardShareTokenNotFoundException  if the token does not exist (404)
      * @throws BoardShareTokenExpiredException   if the token is expired or quota exhausted (410)
      * @throws BoardAccessDeniedException        if cross-tenant join is attempted (403)
-     * @throws BoardAlreadyMemberException       if the user is already a member (409)
      */
     @Transactional
     public JoinBoardResponse join(
@@ -124,11 +130,23 @@ public class BoardJoinService {
             throw new BoardAccessDeniedException(board.getId());
         }
 
-        if (memberRepository.findByIdBoardIdAndIdUserId(board.getId(), callerId).isPresent()
-                || board.getOwnerId().equals(callerId)) {
-            throw new BoardAlreadyMemberException(board.getId(), callerId);
+        // Upsert semantics (US08.2.5): joining via a link never demotes/promotes anyone.
+        // The creator owns the board and has no share row — return OWNER without upsert.
+        if (board.getOwnerId().equals(callerId)) {
+            logAuditEvent("BoardJoinOwnerNoop", board.getId(), callerId, "role=OWNER");
+            return JoinBoardResponse.from(board, BoardRole.OWNER);
         }
 
+        // Already a member → keep the existing role, no token use consumed.
+        Optional<BoardMember> existing =
+                memberRepository.findByIdBoardIdAndIdUserId(board.getId(), callerId);
+        if (existing.isPresent()) {
+            BoardRole currentRole = existing.get().getRole();
+            logAuditEvent("BoardJoinMemberNoop", board.getId(), callerId, "role=" + currentRole);
+            return JoinBoardResponse.from(board, currentRole);
+        }
+
+        // New member → create the share and consume one token use.
         BoardMemberId memberId = new BoardMemberId(board.getId(), callerId);
         memberRepository.save(new BoardMember(memberId, token.getRole(), now));
         token.incrementUseCount();
