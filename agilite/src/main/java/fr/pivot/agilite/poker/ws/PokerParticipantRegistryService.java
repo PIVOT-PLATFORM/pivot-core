@@ -88,16 +88,22 @@ public class PokerParticipantRegistryService {
     public List<RosterMember> roster(final UUID roomId) {
         Map<Object, Object> entries = redisTemplate.opsForHash().entries(rosterKey(roomId));
         List<RosterMember> members = new ArrayList<>(entries.size());
+        int skipped = 0;
         for (Map.Entry<Object, Object> entry : entries.entrySet()) {
             String stored = String.valueOf(entry.getValue());
             int separator = stored.indexOf(VALUE_SEPARATOR);
             if (separator < 0) {
-                LOG.warn("Skipping malformed roster entry for room={}", roomId);
+                skipped++;
                 continue;
             }
             ParticipantRole role = ParticipantRole.fromNullable(stored.substring(0, separator));
             String name = stored.substring(separator + 1);
             members.add(new RosterMember(String.valueOf(entry.getKey()), name, role));
+        }
+        // Log only an aggregate count (never the Redis-read entry contents) so no user-controlled
+        // roster data can ever reach a log sink (avoids log forging — Sonar S5145).
+        if (skipped > 0) {
+            LOG.warn("Skipped {} malformed roster entrie(s) for room={}", skipped, roomId);
         }
         return members;
     }
