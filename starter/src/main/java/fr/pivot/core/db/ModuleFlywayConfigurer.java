@@ -75,11 +75,14 @@ public record ModuleFlywayConfigurer(String schema, String migrationsPath) {
                 // schema when the module was absorbed into the modulith). On a long-lived
                 // database (recette, that carried a schema from the module's standalone-service
                 // era) that "applied but not resolved locally" state must NOT fail the boot —
-                // tolerate it. Combined with repair()+migrate() in the module runners, this makes
-                // module migrations self-heal against a persistent DB while the schema is still
-                // mutable pre-BETA. Post-BETA (numbered, immutable migrations) this pattern is a
-                // no-op because there is never a missing migration.
-                .ignoreMigrationPatterns("*:missing")
+                // tolerate it, whether the orphan version sits below the latest resolved one
+                // (:missing) or above it (:future — the case of the dropped collaboratif V7, whose
+                // version is higher than every migration this build ships). Combined with
+                // repair()+migrate() in the module runners, this makes module migrations self-heal
+                // against a persistent DB while the schema is still mutable pre-BETA. Post-BETA
+                // (numbered, immutable migrations) these patterns are a no-op — there is never an
+                // orphan applied migration.
+                .ignoreMigrationPatterns("*:missing", "*:future")
                 .load();
     }
 }

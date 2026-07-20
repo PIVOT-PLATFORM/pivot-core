@@ -95,8 +95,10 @@ public class ModuleFlywayMigrationConfig {
      * build resolves, and Flyway's {@code validate} (run implicitly by {@code migrate}) aborts
      * with {@code FlywayValidateException: checksum mismatch}. {@link Flyway#repair()} realigns the
      * stored checksums (and clears any failed entry) so {@code migrate()} then proceeds. Together
-     * with {@code ignoreMigrationPatterns("*:missing")} (see {@link ModuleFlywayConfigurer}) this
-     * lets module migrations self-heal against a persistent DB while the schema is still mutable.
+     * with {@code ignoreMigrationPatterns("*:missing", "*:future")} (see
+     * {@link ModuleFlywayConfigurer}) — which tolerates an applied migration whose script was
+     * dropped from this build — this lets module migrations self-heal against a persistent DB
+     * while the schema is still mutable.
      *
      * <p>{@code repair()} only touches the {@code flyway_schema_history} bookkeeping — it never
      * re-runs or drops applied SQL — so it is a safe no-op when history is already consistent
