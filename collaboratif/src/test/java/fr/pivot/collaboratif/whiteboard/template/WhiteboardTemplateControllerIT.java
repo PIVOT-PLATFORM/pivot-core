@@ -13,6 +13,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -22,7 +24,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Integration tests for {@link WhiteboardTemplateController} (US08.4.1), exercising the
  * full Spring context against a real PostgreSQL database (including the Flyway-seeded
- * templates) and Redis, both provided by Testcontainers.
+ * templates — V1 initial 3 plus the V7 re-platform's 7 additional ones) and Redis, both
+ * provided by Testcontainers.
  *
  * <p>Note: MockMvc via {@code webAppContextSetup} dispatches against the servlet path
  * directly, without the {@code server.servlet.context-path} prefix — paths used here
@@ -32,6 +35,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class WhiteboardTemplateControllerIT extends AbstractCollaboratifIntegrationTest {
 
     private static final String BASE_PATH = "/collaboratif/whiteboard/templates";
+
+    /** Every global template code, in the exact {@code display_order} seeded by V1 + V7. */
+    private static final List<String> EXPECTED_CODES_IN_ORDER = List.of(
+            "BRAINSTORM",
+            "RETROSPECTIVE",
+            "USER_STORY_MAP",
+            "RETRO_START_STOP_CONTINUE",
+            "RETRO_MAD_SAD_GLAD",
+            "RETRO_4L",
+            "RETRO_SPEEDBOAT",
+            "RISK_ANALYSIS",
+            "MINDMAP",
+            "VISUAL_MANAGEMENT");
 
     @Autowired
     private WebApplicationContext wac;
@@ -62,21 +78,24 @@ class WhiteboardTemplateControllerIT extends AbstractCollaboratifIntegrationTest
     }
 
     /**
-     * Given the 3 templates seeded via Flyway, when GET /whiteboard/templates is called,
-     * then it returns HTTP 200 with all 3 templates, ordered, "Vierge" (blank) absent.
+     * Given the 10 templates seeded via Flyway (V1's original 3, re-authored onto the live
+     * board model, plus V7's 7 additional ones), when GET /whiteboard/templates is called,
+     * then it returns HTTP 200 with all 10 templates in {@code display_order}, "Vierge"
+     * (blank) absent.
      */
     @Test
-    void listTemplates_returnsTheThreeSeededGlobalTemplates() throws Exception {
-        mockMvc.perform(get(BASE_PATH)
+    void listTemplates_returnsAllTenSeededGlobalTemplatesInOrder() throws Exception {
+        var result = mockMvc.perform(get(BASE_PATH)
                         .header("Authorization", "Bearer " + tokenA))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(3))
-                .andExpect(jsonPath("$[0].code").value("BRAINSTORM"))
-                .andExpect(jsonPath("$[1].code").value("RETROSPECTIVE"))
-                .andExpect(jsonPath("$[2].code").value("USER_STORY_MAP"))
+                .andExpect(jsonPath("$.length()").value(EXPECTED_CODES_IN_ORDER.size()))
                 .andExpect(jsonPath("$[0].name").value("Brainstorm"))
                 .andExpect(jsonPath("$[0].id").isString())
                 .andExpect(jsonPath("$[0].thumbnailUrl").isString());
+
+        for (int i = 0; i < EXPECTED_CODES_IN_ORDER.size(); i++) {
+            result.andExpect(jsonPath("$[%d].code".formatted(i)).value(EXPECTED_CODES_IN_ORDER.get(i)));
+        }
     }
 
     /**
