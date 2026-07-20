@@ -18,8 +18,9 @@ import java.util.UUID;
  *
  * @param roomId     room primary key
  * @param name       room display name
- * @param sequence   fixed card sequence identifier, always {@code "FIBONACCI"} in v1
- * @param cardValues the fixed card values for {@code sequence}
+ * @param sequence   the room's deck identifier (see {@code PokerCardDeck})
+ * @param cardValues the ordered card values for {@code sequence}
+ * @param facilitatorVotes whether the facilitator also votes in this room
  * @param active     whether the room is still active
  * @param expiresAt  expiry timestamp
  * @param wsTopic    the STOMP destination this room's participants subscribe to
@@ -30,6 +31,7 @@ public record JoinRoomResponse(
         String name,
         String sequence,
         List<String> cardValues,
+        boolean facilitatorVotes,
         boolean active,
         Instant expiresAt,
         String wsTopic,

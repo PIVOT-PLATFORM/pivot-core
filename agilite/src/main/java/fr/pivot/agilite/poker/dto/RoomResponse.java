@@ -24,9 +24,10 @@ import java.util.UUID;
  * @param id                room primary key
  * @param name              room display name
  * @param inviteCode        6-character invite code
- * @param sequence          fixed card sequence identifier, always {@code "FIBONACCI"} in v1
- * @param cardValues        the fixed card values for {@code sequence}
+ * @param sequence          the room's deck identifier (see {@code PokerCardDeck})
+ * @param cardValues        the ordered card values for {@code sequence}
  * @param facilitatorUserId the creator's user id
+ * @param facilitatorVotes  whether the facilitator also votes in this room
  * @param active            whether the room is still active
  * @param createdAt         creation timestamp
  * @param expiresAt         expiry timestamp
@@ -41,6 +42,7 @@ public record RoomResponse(
         String sequence,
         List<String> cardValues,
         Long facilitatorUserId,
+        boolean facilitatorVotes,
         boolean active,
         Instant createdAt,
         Instant expiresAt,

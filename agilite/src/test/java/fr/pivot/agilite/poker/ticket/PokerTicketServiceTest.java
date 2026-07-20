@@ -331,7 +331,8 @@ class PokerTicketServiceTest {
 
     private static PokerRoom facilitatorRoom() {
         PokerRoom room = new PokerRoom(
-                TENANT_ID, FACILITATOR_USER_ID, "Room", "ABC234", FIXED_NOW, FIXED_NOW.plusSeconds(3600));
+                TENANT_ID, FACILITATOR_USER_ID, "Room", "ABC234", "FIBONACCI", true,
+                FIXED_NOW, FIXED_NOW.plusSeconds(3600));
         setId(room, ROOM_ID);
         return room;
     }

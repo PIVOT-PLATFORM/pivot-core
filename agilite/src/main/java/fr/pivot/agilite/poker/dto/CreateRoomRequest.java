@@ -15,13 +15,16 @@ import jakarta.validation.constraints.Size;
  * Failures are handled by {@code AgiliteExceptionHandler}, returning HTTP 400 with {@code
  * { "code": "INVALID_NAME" } } or {@code { "code": "INVALID_EXPIRATION" } }.
  *
- * <p>Deliberately excludes {@code tenantId}/{@code facilitatorUserId}/{@code sequence} — the
- * first two are resolved exclusively from the caller's bearer token ({@code RequestPrincipal}),
- * the third is fixed to Fibonacci for every room in v1 (ADR-026 §2) — accepting any of them here
- * would be either an IDOR vector or a silent v1-scope violation.
+ * <p>Deliberately excludes {@code tenantId}/{@code facilitatorUserId} — both are resolved
+ * exclusively from the caller's bearer token ({@code RequestPrincipal}); accepting either here
+ * would be an IDOR vector. {@code deck} may only name one of {@code PokerCardDeck}'s supported
+ * decks (validated server-side, {@code INVALID_DECK} → 400) — never arbitrary card values.
  *
- * @param name            the room's display name (1-120 characters, required)
- * @param expirationHours optional room lifetime in hours (1-168), defaults to 24h when absent
+ * @param name             the room's display name (1-120 characters, required)
+ * @param expirationHours  optional room lifetime in hours (1-168), defaults to 24h when absent
+ * @param deck             optional deck identifier (see {@code PokerCardDeck}); defaults to
+ *                         {@code FIBONACCI} when absent/blank
+ * @param facilitatorVotes optional — whether the facilitator also votes; defaults to {@code true}
  */
 public record CreateRoomRequest(
         @NotBlank(message = "INVALID_NAME")
@@ -30,5 +33,9 @@ public record CreateRoomRequest(
 
         @Min(value = 1, message = "INVALID_EXPIRATION")
         @Max(value = 168, message = "INVALID_EXPIRATION")
-        Integer expirationHours) {
+        Integer expirationHours,
+
+        String deck,
+
+        Boolean facilitatorVotes) {
 }

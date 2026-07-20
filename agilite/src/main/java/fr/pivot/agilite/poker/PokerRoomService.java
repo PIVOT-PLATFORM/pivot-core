@@ -5,6 +5,7 @@ import fr.pivot.agilite.poker.dto.GuestHeartbeatResponse;
 import fr.pivot.agilite.poker.dto.JoinRoomResponse;
 import fr.pivot.agilite.poker.dto.RoomResponse;
 import fr.pivot.agilite.poker.exception.GuestSessionExpiredException;
+import fr.pivot.agilite.poker.exception.InvalidDeckException;
 import fr.pivot.agilite.poker.exception.InviteCodeNotFoundException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
 import fr.pivot.agilite.poker.ws.PokerParticipantRegistryService;
@@ -93,19 +94,32 @@ public class PokerRoomService {
      * @param tenantId          the caller's tenant id, resolved server-side from the bearer token
      * @param expirationHours   optional room lifetime in hours (1-168); {@code null} applies
      *                          {@link #defaultExpirationHours}
+     * @param deck              optional deck identifier; {@code null}/blank applies
+     *                          {@link PokerCardDeck#DEFAULT_SEQUENCE}
+     * @param facilitatorVotes  optional — whether the facilitator also votes; {@code null}
+     *                          defaults to {@code true}
      * @return the created room, including the facilitator's freshly minted {@code accessToken}
+     * @throws InvalidDeckException if {@code deck} is present but not a supported deck
      */
     @Transactional
     public RoomResponse create(
             final String name,
             final Long facilitatorUserId,
             final Long tenantId,
-            final Integer expirationHours) {
+            final Integer expirationHours,
+            final String deck,
+            final Boolean facilitatorVotes) {
+        final String sequence = (deck == null || deck.isBlank()) ? PokerCardDeck.DEFAULT_SEQUENCE : deck;
+        if (!PokerCardDeck.isSupported(sequence)) {
+            throw new InvalidDeckException();
+        }
+        final boolean facilitatorAlsoVotes = facilitatorVotes == null || facilitatorVotes;
         final Instant now = clock.instant();
         final int hours = expirationHours != null ? expirationHours : defaultExpirationHours;
         final String inviteCode = generateUniqueInviteCode();
         final PokerRoom room = new PokerRoom(
-                tenantId, facilitatorUserId, name, inviteCode, now, now.plus(hours, ChronoUnit.HOURS));
+                tenantId, facilitatorUserId, name, inviteCode, sequence, facilitatorAlsoVotes,
+                now, now.plus(hours, ChronoUnit.HOURS));
         final PokerRoom saved = repository.save(room);
 
         final String accessToken = UUID.randomUUID().toString();
@@ -164,7 +178,8 @@ public class PokerRoomService {
                 room.getId(),
                 room.getName(),
                 room.getSequence(),
-                PokerCardDeck.FIBONACCI_VALUES,
+                PokerCardDeck.valuesFor(room.getSequence()),
+                room.isFacilitatorVotes(),
                 room.isActive(),
                 room.getExpiresAt(),
                 PokerRoomDestinations.roomTopic(room.getId()),
@@ -205,7 +220,7 @@ public class PokerRoomService {
                 room.getId(),
                 room.getName(),
                 room.getSequence(),
-                PokerCardDeck.FIBONACCI_VALUES,
+                PokerCardDeck.valuesFor(room.getSequence()),
                 room.isActive(),
                 room.getExpiresAt(),
                 PokerRoomDestinations.roomTopic(room.getId()),
@@ -339,8 +354,9 @@ public class PokerRoomService {
                 room.getName(),
                 room.getInviteCode(),
                 room.getSequence(),
-                PokerCardDeck.FIBONACCI_VALUES,
+                PokerCardDeck.valuesFor(room.getSequence()),
                 room.getFacilitatorUserId(),
+                room.isFacilitatorVotes(),
                 room.isActive(),
                 room.getCreatedAt(),
                 room.getExpiresAt(),

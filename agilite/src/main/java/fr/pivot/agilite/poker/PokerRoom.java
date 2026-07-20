@@ -57,20 +57,26 @@ public class PokerRoom {
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
+    @Column(name = "facilitator_votes", nullable = false)
+    private boolean facilitatorVotes;
+
     /** No-argument constructor required by JPA. */
     protected PokerRoom() {
     }
 
     /**
-     * Creates a new room ready to persist. {@code sequence} is always {@link
-     * PokerCardDeck#SEQUENCE_FIBONACCI} in v1 (ADR-026 §2) and {@code active} always starts
-     * {@code true} — neither is settable from outside this constructor.
+     * Creates a new room ready to persist. {@code active} always starts {@code true} and is not
+     * settable from outside this constructor; {@code sequence} must be one of {@link
+     * PokerCardDeck}'s supported decks (validated by the caller) and {@code facilitatorVotes}
+     * captures whether the facilitator also estimates.
      *
      * @param tenantId          the owning tenant, resolved server-side from the caller's token
      * @param facilitatorUserId the creator's user id, resolved server-side from the caller's
      *                          token
      * @param name              the room's display name
      * @param inviteCode        the generated, pre-checked-unique invite code
+     * @param sequence          the chosen deck identifier (see {@link PokerCardDeck})
+     * @param facilitatorVotes  whether the facilitator also casts a vote
      * @param createdAt         creation timestamp
      * @param expiresAt         expiry timestamp
      */
@@ -79,13 +85,16 @@ public class PokerRoom {
             final Long facilitatorUserId,
             final String name,
             final String inviteCode,
+            final String sequence,
+            final boolean facilitatorVotes,
             final Instant createdAt,
             final Instant expiresAt) {
         this.tenantId = tenantId;
         this.facilitatorUserId = facilitatorUserId;
         this.name = name;
         this.inviteCode = inviteCode;
-        this.sequence = PokerCardDeck.SEQUENCE_FIBONACCI;
+        this.sequence = sequence;
+        this.facilitatorVotes = facilitatorVotes;
         this.active = true;
         this.createdAt = createdAt;
         this.expiresAt = expiresAt;
@@ -116,9 +125,14 @@ public class PokerRoom {
         return inviteCode;
     }
 
-    /** @return the fixed card sequence identifier, always {@code "FIBONACCI"} in v1 */
+    /** @return the chosen deck identifier (see {@link PokerCardDeck}) */
     public String getSequence() {
         return sequence;
+    }
+
+    /** @return whether the facilitator also casts a vote in this room */
+    public boolean isFacilitatorVotes() {
+        return facilitatorVotes;
     }
 
     /** @return {@code true} while the room has not been deactivated */
