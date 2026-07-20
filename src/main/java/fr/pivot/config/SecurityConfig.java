@@ -133,6 +133,11 @@ public class SecurityConfig {
                     // fr.pivot.notification.config.StompAuthChannelInterceptor — an
                     // unauthenticated CONNECT is rejected and the STOMP session never established.
                     .requestMatchers("/ws/notifications/**").permitAll()
+                    // EN53 modulith — comme /ws/notifications ci-dessus, les handshakes WS des modules absorbés
+                    // (agilite, collaboratif) sont publics au niveau HTTP ; l'auth réelle se fait au CONNECT STOMP
+                    // (StompAuthenticationChannelInterceptor de chaque module). Ces permitAll vivaient auparavant
+                    // dans les SecurityConfig des repos pivot-*-core, perdus à l'absorption.
+                    .requestMatchers("/collaboratif/ws/whiteboard", "/agilite/ws/agilite").permitAll()
                     .anyRequest().authenticated()
                 )
                 // Opaque token filter runs before Spring's default UsernamePasswordAuthenticationFilter
