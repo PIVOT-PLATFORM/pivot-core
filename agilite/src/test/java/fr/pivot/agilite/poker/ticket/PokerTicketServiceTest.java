@@ -10,6 +10,7 @@ import fr.pivot.agilite.poker.exception.TicketNotFoundException;
 import fr.pivot.agilite.poker.ticket.dto.RevealResponse;
 import fr.pivot.agilite.poker.ticket.dto.TicketResponse;
 import fr.pivot.agilite.poker.ticket.dto.VotesRevealedEvent;
+import fr.pivot.agilite.poker.ws.PokerRosterService;
 import fr.pivot.agilite.poker.vote.PokerVote;
 import fr.pivot.agilite.poker.vote.PokerVoteRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,6 +58,9 @@ class PokerTicketServiceTest {
     private PokerVoteRepository voteRepository;
 
     @Mock
+    private PokerRosterService rosterService;
+
+    @Mock
     private SimpMessagingTemplate messagingTemplate;
 
     private PokerTicketService service;
@@ -65,7 +69,7 @@ class PokerTicketServiceTest {
     void setUp() {
         Clock fixedClock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
         service = new PokerTicketService(
-                ticketRepository, roomRepository, voteRepository, messagingTemplate, fixedClock);
+                ticketRepository, roomRepository, voteRepository, rosterService, messagingTemplate, fixedClock);
     }
 
     /**

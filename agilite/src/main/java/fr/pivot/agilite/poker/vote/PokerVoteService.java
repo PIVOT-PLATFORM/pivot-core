@@ -1,13 +1,17 @@
 package fr.pivot.agilite.poker.vote;
 
 import fr.pivot.agilite.poker.PokerCardDeck;
+import fr.pivot.agilite.poker.PokerRoom;
+import fr.pivot.agilite.poker.PokerRoomRepository;
 import fr.pivot.agilite.poker.ticket.PokerTicket;
 import fr.pivot.agilite.poker.ticket.PokerTicketRepository;
 import fr.pivot.agilite.poker.ticket.PokerTicketStatus;
 import fr.pivot.agilite.poker.vote.dto.SubmitVoteRequest;
 import fr.pivot.agilite.poker.vote.dto.VoteCastEvent;
 import fr.pivot.agilite.poker.ws.PokerParticipantRegistryService;
+import fr.pivot.agilite.poker.ws.PokerParticipantKey;
 import fr.pivot.agilite.poker.ws.PokerRoomDestinations;
+import fr.pivot.agilite.poker.ws.PokerRosterService;
 import fr.pivot.agilite.ws.WsErrorPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,12 +19,8 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
 import java.time.Clock;
-import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -46,11 +46,11 @@ public class PokerVoteService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PokerVoteService.class);
 
-    private static final String HASH_ALGORITHM = "SHA-256";
-
     private final PokerVoteRepository voteRepository;
     private final PokerTicketRepository ticketRepository;
+    private final PokerRoomRepository roomRepository;
     private final PokerParticipantRegistryService participantRegistryService;
+    private final PokerRosterService rosterService;
     private final SimpMessagingTemplate messagingTemplate;
     private final Clock clock;
 
@@ -60,7 +60,12 @@ public class PokerVoteService {
      * @param voteRepository             vote persistence
      * @param ticketRepository           ticket persistence, used to resolve the target ticket and
      *                                   check its room/status
+     * @param roomRepository             room persistence, used to resolve the room's deck so a
+     *                                   submitted card value is validated against the room's own
+     *                                   deck (not a hardcoded one)
      * @param participantRegistryService resolves the room's total registered participant count
+     * @param rosterService              rebroadcasts the named roster (with per-participant voted
+     *                                   state) after a vote is recorded
      * @param messagingTemplate          used to broadcast {@code VOTE_CAST} events and error
      *                                   notifications
      * @param clock                      the shared clock, overridable in tests
@@ -68,12 +73,16 @@ public class PokerVoteService {
     public PokerVoteService(
             final PokerVoteRepository voteRepository,
             final PokerTicketRepository ticketRepository,
+            final PokerRoomRepository roomRepository,
             final PokerParticipantRegistryService participantRegistryService,
+            final PokerRosterService rosterService,
             final SimpMessagingTemplate messagingTemplate,
             final Clock clock) {
         this.voteRepository = voteRepository;
         this.ticketRepository = ticketRepository;
+        this.roomRepository = roomRepository;
         this.participantRegistryService = participantRegistryService;
+        this.rosterService = rosterService;
         this.messagingTemplate = messagingTemplate;
         this.clock = clock;
     }
@@ -108,12 +117,15 @@ public class PokerVoteService {
             notifyError(principal, "Voting is closed for this ticket");
             return;
         }
-        if (!PokerCardDeck.FIBONACCI_VALUES.contains(request.value())) {
+        // Validate against the ROOM'S deck, not a hardcoded one — a T-shirt/simplified-Fibonacci
+        // room's values would otherwise be wrongly rejected (E09 deck choice).
+        PokerRoom room = roomRepository.findById(roomId).orElse(null);
+        if (room == null || !PokerCardDeck.valuesFor(room.getSequence()).contains(request.value())) {
             notifyError(principal, "Invalid card value");
             return;
         }
 
-        String participantKey = hash(accessToken);
+        String participantKey = PokerParticipantKey.of(accessToken);
         var now = clock.instant();
         voteRepository.findByTicketIdAndParticipantKey(ticket.getId(), participantKey)
                 .ifPresentOrElse(
@@ -128,6 +140,8 @@ public class PokerVoteService {
         messagingTemplate.convertAndSend(
                 PokerRoomDestinations.roomTopic(roomId),
                 (Object) VoteCastEvent.of(roomId, ticket.getId(), votedCount, totalParticipants));
+        // Also refresh the named roster so each participant's "has voted" square updates live.
+        rosterService.broadcast(roomId);
     }
 
     /**
@@ -147,22 +161,4 @@ public class PokerVoteService {
         }
     }
 
-    /**
-     * Computes the SHA-256 hex digest of an access token — the persisted voter identity, never
-     * the raw token itself.
-     *
-     * @param accessToken the raw access token to hash
-     * @return the lowercase hex-encoded digest
-     */
-    private static String hash(final String accessToken) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance(HASH_ALGORITHM);
-            byte[] hashed = digest.digest(accessToken.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashed);
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is a standard JDK algorithm guaranteed available on every supported
-            // platform (JLS-mandated) — this can never actually happen at runtime.
-            throw new IllegalStateException("SHA-256 unavailable", e);
-        }
-    }
 }

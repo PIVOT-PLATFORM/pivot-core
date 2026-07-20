@@ -25,6 +25,8 @@ import jakarta.validation.constraints.Size;
  * @param deck             optional deck identifier (see {@code PokerCardDeck}); defaults to
  *                         {@code FIBONACCI} when absent/blank
  * @param facilitatorVotes optional — whether the facilitator also votes; defaults to {@code true}
+ * @param facilitatorName  optional display name for the facilitator in the room roster, trimmed
+ *                         server-side, max 40 characters; a default is substituted when absent
  */
 public record CreateRoomRequest(
         @NotBlank(message = "INVALID_NAME")
@@ -37,5 +39,8 @@ public record CreateRoomRequest(
 
         String deck,
 
-        Boolean facilitatorVotes) {
+        Boolean facilitatorVotes,
+
+        @Size(max = 40, message = "INVALID_DISPLAY_NAME")
+        String facilitatorName) {
 }

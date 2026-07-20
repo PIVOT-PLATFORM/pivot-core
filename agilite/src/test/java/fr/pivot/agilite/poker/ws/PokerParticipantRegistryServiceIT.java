@@ -9,13 +9,15 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.testcontainers.containers.GenericContainer;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration test proving {@link PokerParticipantRegistryService} against a real Redis instance
- * (US09.2.1) — registration, roster count, cross-room isolation, and TTL-driven expiry.
+ * (US09.2.1 + E09 named roster) — registration, roster count, the named roster read, role/name
+ * round-trip, cross-room isolation, and TTL-driven expiry.
  *
  * <p>Instantiates the service directly against a real {@link StringRedisTemplate}, same
  * convention as {@code RoomAccessGrantServiceIT} — a single collaborator, no Spring context
@@ -27,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PokerParticipantRegistryServiceIT {
 
     private static final GenericContainer<?> redis = AgiliteTestContainers.REDIS;
+    private static final Duration TTL = Duration.ofMinutes(5);
 
     private LettuceConnectionFactory connectionFactory;
     private PokerParticipantRegistryService registryService;
@@ -47,61 +50,93 @@ class PokerParticipantRegistryServiceIT {
 
     /**
      * Given no participant has ever registered for a room, when its roster is counted, then it
-     * is zero.
+     * is zero and the named roster is empty.
      */
     @Test
-    void countActiveIsZeroWithoutAnyRegistration() {
-        assertThat(registryService.countActive(UUID.randomUUID())).isZero();
+    void emptyRosterWithoutAnyRegistration() {
+        UUID roomId = UUID.randomUUID();
+        assertThat(registryService.countActive(roomId)).isZero();
+        assertThat(registryService.roster(roomId)).isEmpty();
     }
 
     /**
-     * Given one participant registered, when the roster is counted, then it is one.
+     * Given one participant registered, when the roster is read, then it carries that
+     * participant's name and role (round-tripped through Redis).
      */
     @Test
-    void countActiveIsOneAfterSingleRegistration() {
+    void registerThenRosterReturnsNameAndRole() {
         UUID roomId = UUID.randomUUID();
-        registryService.register(roomId, "token-1", Duration.ofMinutes(5));
+        registryService.register(roomId, "token-1", "Alice", ParticipantRole.JOUEUR, TTL);
 
         assertThat(registryService.countActive(roomId)).isEqualTo(1L);
+        List<PokerParticipantRegistryService.RosterMember> roster = registryService.roster(roomId);
+        assertThat(roster).singleElement().satisfies(member -> {
+            assertThat(member.name()).isEqualTo("Alice");
+            assertThat(member.role()).isEqualTo(ParticipantRole.JOUEUR);
+            assertThat(member.participantKey()).isEqualTo(PokerParticipantKey.of("token-1"));
+        });
     }
 
     /**
-     * Given two distinct access tokens registered for the same room, when the roster is
-     * counted, then it reflects both distinct participants.
+     * Given a display name that itself contains a colon, when the roster is read back, then the
+     * whole name is preserved (the role/name split is on the first colon only).
      */
     @Test
-    void countActiveReflectsDistinctParticipants() {
+    void nameContainingColonRoundTrips() {
         UUID roomId = UUID.randomUUID();
-        registryService.register(roomId, "token-1", Duration.ofMinutes(5));
-        registryService.register(roomId, "token-2", Duration.ofMinutes(5));
+        registryService.register(roomId, "token-1", "Ann: the PO", ParticipantRole.VISITEUR, TTL);
+
+        assertThat(registryService.roster(roomId)).singleElement().satisfies(member -> {
+            assertThat(member.name()).isEqualTo("Ann: the PO");
+            assertThat(member.role()).isEqualTo(ParticipantRole.VISITEUR);
+        });
+    }
+
+    /**
+     * Given two distinct access tokens registered for the same room, when the roster is counted
+     * and read, then it reflects both distinct participants.
+     */
+    @Test
+    void rosterReflectsDistinctParticipants() {
+        UUID roomId = UUID.randomUUID();
+        registryService.register(roomId, "token-1", "Alice", ParticipantRole.JOUEUR, TTL);
+        registryService.register(roomId, "token-2", "Bob", ParticipantRole.VISITEUR, TTL);
 
         assertThat(registryService.countActive(roomId)).isEqualTo(2L);
+        assertThat(registryService.roster(roomId))
+                .extracting(PokerParticipantRegistryService.RosterMember::name)
+                .containsExactlyInAnyOrder("Alice", "Bob");
     }
 
     /**
-     * Given the same access token registered twice (idempotent re-join), when the roster is
-     * counted, then it is still one — a Redis set never double-counts the same member.
+     * Given the same access token registered twice (idempotent re-join, possibly with an updated
+     * name), when the roster is counted, then it is still one — the hash field is overwritten.
      */
     @Test
-    void registeringSameTokenTwiceDoesNotDoubleCount() {
+    void registeringSameTokenTwiceOverwritesInsteadOfDuplicating() {
         UUID roomId = UUID.randomUUID();
-        registryService.register(roomId, "token-1", Duration.ofMinutes(5));
-        registryService.register(roomId, "token-1", Duration.ofMinutes(5));
+        registryService.register(roomId, "token-1", "Alice", ParticipantRole.JOUEUR, TTL);
+        registryService.register(roomId, "token-1", "Alice renamed", ParticipantRole.VISITEUR, TTL);
 
         assertThat(registryService.countActive(roomId)).isEqualTo(1L);
+        assertThat(registryService.roster(roomId)).singleElement().satisfies(member -> {
+            assertThat(member.name()).isEqualTo("Alice renamed");
+            assertThat(member.role()).isEqualTo(ParticipantRole.VISITEUR);
+        });
     }
 
     /**
      * Security AC (cross-room isolation): given participants registered for one room, when a
-     * different room's roster is counted, then it is unaffected.
+     * different room's roster is read, then it is unaffected.
      */
     @Test
     void registrationForOneRoomDoesNotAffectAnotherRoom() {
         UUID roomId = UUID.randomUUID();
         UUID otherRoomId = UUID.randomUUID();
-        registryService.register(roomId, "token-1", Duration.ofMinutes(5));
+        registryService.register(roomId, "token-1", "Alice", ParticipantRole.JOUEUR, TTL);
 
         assertThat(registryService.countActive(otherRoomId)).isZero();
+        assertThat(registryService.roster(otherRoomId)).isEmpty();
     }
 
     /**
@@ -112,11 +147,12 @@ class PokerParticipantRegistryServiceIT {
     @Test
     void rosterExpiresAfterItsTtl() throws InterruptedException {
         UUID roomId = UUID.randomUUID();
-        registryService.register(roomId, "token-1", Duration.ofSeconds(1));
+        registryService.register(roomId, "token-1", "Alice", ParticipantRole.JOUEUR, Duration.ofSeconds(1));
         assertThat(registryService.countActive(roomId)).isEqualTo(1L);
 
         Thread.sleep(1500);
 
         assertThat(registryService.countActive(roomId)).isZero();
+        assertThat(registryService.roster(roomId)).isEmpty();
     }
 }

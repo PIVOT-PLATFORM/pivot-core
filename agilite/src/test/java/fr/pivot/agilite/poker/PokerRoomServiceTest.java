@@ -8,7 +8,9 @@ import fr.pivot.agilite.poker.exception.GuestSessionExpiredException;
 import fr.pivot.agilite.poker.exception.InvalidDeckException;
 import fr.pivot.agilite.poker.exception.InviteCodeNotFoundException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
+import fr.pivot.agilite.poker.ws.ParticipantRole;
 import fr.pivot.agilite.poker.ws.PokerParticipantRegistryService;
+import fr.pivot.agilite.poker.ws.PokerRosterService;
 import fr.pivot.agilite.poker.ws.RoomAccessGrantService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,13 +54,16 @@ class PokerRoomServiceTest {
     @Mock
     private PokerParticipantRegistryService participantRegistryService;
 
+    @Mock
+    private PokerRosterService rosterService;
+
     private PokerRoomService service;
 
     @BeforeEach
     void setUp() {
         Clock fixedClock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
         service = new PokerRoomService(
-                repository, fixedClock, 24, roomAccessGrantService, participantRegistryService);
+                repository, fixedClock, 24, roomAccessGrantService, participantRegistryService, rosterService);
     }
 
     /**
@@ -75,7 +80,7 @@ class PokerRoomServiceTest {
             return room;
         });
 
-        RoomResponse response = service.create("Sprint 8 estimation", 7L, 3L, null, null, null);
+        RoomResponse response = service.create("Sprint 8 estimation", 7L, 3L, null, null, null, null);
 
         assertThat(response.name()).isEqualTo("Sprint 8 estimation");
         assertThat(response.facilitatorUserId()).isEqualTo(7L);
@@ -104,12 +109,13 @@ class PokerRoomServiceTest {
             return room;
         });
 
-        RoomResponse response = service.create("Sprint 8 estimation", 7L, 3L, 1, null, null);
+        RoomResponse response = service.create("Sprint 8 estimation", 7L, 3L, 1, null, null, null);
 
         assertThat(response.accessToken()).isNotBlank();
         Duration expectedTtl = Duration.ofHours(1);
         verify(roomAccessGrantService).grantAccess(eq(ROOM_ID), anyString(), eq(expectedTtl));
-        verify(participantRegistryService).register(eq(ROOM_ID), anyString(), eq(expectedTtl));
+        verify(participantRegistryService).register(
+                eq(ROOM_ID), anyString(), anyString(), any(ParticipantRole.class), eq(expectedTtl));
     }
 
     /**
@@ -126,7 +132,7 @@ class PokerRoomServiceTest {
         });
 
         RoomResponse response = service.create(
-                "Room", 7L, 3L, null, PokerCardDeck.SEQUENCE_TSHIRT, null);
+                "Room", 7L, 3L, null, PokerCardDeck.SEQUENCE_TSHIRT, null, null);
 
         assertThat(response.sequence()).isEqualTo(PokerCardDeck.SEQUENCE_TSHIRT);
         assertThat(response.cardValues()).isEqualTo(PokerCardDeck.TSHIRT_VALUES);
@@ -147,7 +153,7 @@ class PokerRoomServiceTest {
             return room;
         });
 
-        RoomResponse response = service.create("Room", 7L, 3L, null, null, false);
+        RoomResponse response = service.create("Room", 7L, 3L, null, null, false, null);
 
         assertThat(response.facilitatorVotes()).isFalse();
     }
@@ -158,7 +164,7 @@ class PokerRoomServiceTest {
      */
     @Test
     void create_unknownDeck_throwsInvalidDeckException() {
-        assertThatThrownBy(() -> service.create("Room", 7L, 3L, null, "NOT_A_DECK", null))
+        assertThatThrownBy(() -> service.create("Room", 7L, 3L, null, "NOT_A_DECK", null, null))
                 .isInstanceOf(InvalidDeckException.class);
         verifyNoInteractions(repository);
     }
@@ -176,7 +182,7 @@ class PokerRoomServiceTest {
             return room;
         });
 
-        RoomResponse response = service.create("Room", 1L, 1L, 1, null, null);
+        RoomResponse response = service.create("Room", 1L, 1L, 1, null, null, null);
 
         assertThat(response.expiresAt()).isEqualTo(FIXED_NOW.plusSeconds(3600L));
     }
@@ -194,7 +200,7 @@ class PokerRoomServiceTest {
             return room;
         });
 
-        RoomResponse response = service.create("Room", 1L, 1L, null, null, null);
+        RoomResponse response = service.create("Room", 1L, 1L, null, null, null, null);
 
         assertThat(response.inviteCode()).isNotNull();
         verify(repository, times(3)).existsByInviteCode(anyString());
@@ -209,7 +215,7 @@ class PokerRoomServiceTest {
     void create_persistentInviteCodeCollision_throwsIllegalState() {
         when(repository.existsByInviteCode(anyString())).thenReturn(true);
 
-        assertThatThrownBy(() -> service.create("Room", 1L, 1L, null, null, null))
+        assertThatThrownBy(() -> service.create("Room", 1L, 1L, null, null, null, null))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -280,7 +286,7 @@ class PokerRoomServiceTest {
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        JoinRoomResponse response = service.join("ABC234", 3L);
+        JoinRoomResponse response = service.join("ABC234", 3L, null, null);
 
         assertThat(response.roomId()).isEqualTo(ROOM_ID);
         assertThat(response.name()).isEqualTo("Sprint 8");
@@ -294,8 +300,8 @@ class PokerRoomServiceTest {
         Duration expectedTtl = Duration.between(FIXED_NOW, expiresAt);
         verify(roomAccessGrantService)
                 .grantAccess(eq(ROOM_ID), anyString(), eq(expectedTtl));
-        verify(participantRegistryService)
-                .register(eq(ROOM_ID), anyString(), eq(expectedTtl));
+        verify(participantRegistryService).register(
+                eq(ROOM_ID), anyString(), anyString(), any(ParticipantRole.class), eq(expectedTtl));
     }
 
     /**
@@ -306,7 +312,7 @@ class PokerRoomServiceTest {
     void join_unknownCode_throwsInviteCodeNotFoundException() {
         when(repository.findByInviteCode("ZZZZZZ")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.join("ZZZZZZ", 3L))
+        assertThatThrownBy(() -> service.join("ZZZZZZ", 3L, null, null))
                 .isInstanceOf(InviteCodeNotFoundException.class);
         verifyNoInteractions(roomAccessGrantService);
         verifyNoInteractions(participantRegistryService);
@@ -323,7 +329,7 @@ class PokerRoomServiceTest {
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        assertThatThrownBy(() -> service.join("ABC234", 2L))
+        assertThatThrownBy(() -> service.join("ABC234", 2L, null, null))
                 .isInstanceOf(InviteCodeNotFoundException.class);
         verifyNoInteractions(roomAccessGrantService);
         verifyNoInteractions(participantRegistryService);
@@ -340,7 +346,7 @@ class PokerRoomServiceTest {
         setActive(room, false);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        assertThatThrownBy(() -> service.join("ABC234", 3L))
+        assertThatThrownBy(() -> service.join("ABC234", 3L, null, null))
                 .isInstanceOf(InviteCodeNotFoundException.class);
         verifyNoInteractions(roomAccessGrantService);
         verifyNoInteractions(participantRegistryService);
@@ -356,7 +362,7 @@ class PokerRoomServiceTest {
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        assertThatThrownBy(() -> service.join("ABC234", 3L))
+        assertThatThrownBy(() -> service.join("ABC234", 3L, null, null))
                 .isInstanceOf(InviteCodeNotFoundException.class);
         verifyNoInteractions(roomAccessGrantService);
         verifyNoInteractions(participantRegistryService);
@@ -373,7 +379,7 @@ class PokerRoomServiceTest {
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        assertThatThrownBy(() -> service.join("ABC234", 3L))
+        assertThatThrownBy(() -> service.join("ABC234", 3L, null, null))
                 .isInstanceOf(InviteCodeNotFoundException.class);
         verifyNoInteractions(roomAccessGrantService);
         verifyNoInteractions(participantRegistryService);
@@ -399,7 +405,7 @@ class PokerRoomServiceTest {
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        AnonymousJoinResponse response = service.joinAnonymous("ABC234", null);
+        AnonymousJoinResponse response = service.joinAnonymous("ABC234", null, null);
 
         assertThat(response.roomId()).isEqualTo(ROOM_ID);
         assertThat(response.name()).isEqualTo("Sprint 8");
@@ -422,7 +428,7 @@ class PokerRoomServiceTest {
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        AnonymousJoinResponse response = service.joinAnonymous("ABC234", "  Alex  ");
+        AnonymousJoinResponse response = service.joinAnonymous("ABC234", "  Alex  ", null);
 
         assertThat(response.pseudonym()).isEqualTo("Alex");
     }
@@ -439,7 +445,7 @@ class PokerRoomServiceTest {
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        AnonymousJoinResponse response = service.joinAnonymous("ABC234", null);
+        AnonymousJoinResponse response = service.joinAnonymous("ABC234", null, null);
 
         assertThat(response.guestSessionExpiresAt()).isEqualTo(expiresAt);
         verify(roomAccessGrantService)
@@ -455,7 +461,7 @@ class PokerRoomServiceTest {
     void joinAnonymous_unknownCode_throwsInviteCodeNotFoundException() {
         when(repository.findByInviteCode("ZZZZZZ")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.joinAnonymous("ZZZZZZ", null))
+        assertThatThrownBy(() -> service.joinAnonymous("ZZZZZZ", null, null))
                 .isInstanceOf(InviteCodeNotFoundException.class);
         verifyNoInteractions(roomAccessGrantService);
     }
@@ -471,7 +477,7 @@ class PokerRoomServiceTest {
         setActive(room, false);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        assertThatThrownBy(() -> service.joinAnonymous("ABC234", null))
+        assertThatThrownBy(() -> service.joinAnonymous("ABC234", null, null))
                 .isInstanceOf(InviteCodeNotFoundException.class);
         verifyNoInteractions(roomAccessGrantService);
     }
@@ -487,7 +493,7 @@ class PokerRoomServiceTest {
         setId(room, ROOM_ID);
         when(repository.findByInviteCode("ABC234")).thenReturn(Optional.of(room));
 
-        assertThatThrownBy(() -> service.joinAnonymous("ABC234", null))
+        assertThatThrownBy(() -> service.joinAnonymous("ABC234", null, null))
                 .isInstanceOf(InviteCodeNotFoundException.class);
         verifyNoInteractions(roomAccessGrantService);
     }

@@ -310,7 +310,14 @@ class PokerVoteSubmissionIT extends AbstractAgiliteIntegrationTest {
 
             @Override
             public void handleFrame(final StompHeaders stompHeaders, final Object payload) {
-                queue.add(new String((byte[]) payload, StandardCharsets.UTF_8));
+                String frame = new String((byte[]) payload, StandardCharsets.UTF_8);
+                // This IT asserts only on VOTE_CAST frames. Since E09's named roster, the shared
+                // room topic also carries ROSTER_UPDATED after each vote — filter it out so the
+                // single-frame poll()s stay aligned with the vote events they assert on. ("VOTE_CAST"
+                // can never appear spuriously in a hex-UUID roomId/ticketId.)
+                if (frame.contains("VOTE_CAST")) {
+                    queue.add(frame);
+                }
             }
         });
         return queue;

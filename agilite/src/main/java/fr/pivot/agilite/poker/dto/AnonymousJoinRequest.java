@@ -17,6 +17,8 @@ import jakarta.validation.constraints.Size;
  * @param code      the 6-character invite code to resolve (same validation as {@link
  *                  JoinRoomRequest#code()})
  * @param pseudonym optional display name, trimmed server-side, max 40 characters
+ * @param role      optional role identifier ({@code JOUEUR}/{@code VISITEUR}); defaults to
+ *                  {@code JOUEUR} when absent/unknown (see {@code ParticipantRole#fromNullable})
  */
 public record AnonymousJoinRequest(
         @NotBlank(message = "INVALID_CODE")
@@ -24,5 +26,7 @@ public record AnonymousJoinRequest(
         String code,
 
         @Size(max = 40, message = "INVALID_PSEUDONYM")
-        String pseudonym) {
+        String pseudonym,
+
+        String role) {
 }

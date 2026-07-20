@@ -8,8 +8,10 @@ import fr.pivot.agilite.poker.exception.GuestSessionExpiredException;
 import fr.pivot.agilite.poker.exception.InvalidDeckException;
 import fr.pivot.agilite.poker.exception.InviteCodeNotFoundException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
+import fr.pivot.agilite.poker.ws.ParticipantRole;
 import fr.pivot.agilite.poker.ws.PokerParticipantRegistryService;
 import fr.pivot.agilite.poker.ws.PokerRoomDestinations;
+import fr.pivot.agilite.poker.ws.PokerRosterService;
 import fr.pivot.agilite.poker.ws.RoomAccessGrantService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -47,11 +49,21 @@ public class PokerRoomService {
     /** Length, in characters, of the random suffix appended to a generated pseudonym. */
     private static final int GENERATED_PSEUDONYM_SUFFIX_LENGTH = 4;
 
+    /** Roster display name used for the facilitator when they supply none. */
+    private static final String DEFAULT_FACILITATOR_NAME = "Animateur";
+
+    /** Roster display name used for a joining participant who supplies none. */
+    private static final String DEFAULT_PARTICIPANT_NAME = "Participant";
+
+    /** Max roster display name length (mirrors the DTO {@code @Size} bound). */
+    private static final int MAX_DISPLAY_NAME_LENGTH = 40;
+
     private final PokerRoomRepository repository;
     private final Clock clock;
     private final int defaultExpirationHours;
     private final RoomAccessGrantService roomAccessGrantService;
     private final PokerParticipantRegistryService participantRegistryService;
+    private final PokerRosterService rosterService;
 
     /**
      * Constructs the service.
@@ -74,12 +86,14 @@ public class PokerRoomService {
             final Clock clock,
             @Value("${pivot.agilite.poker.room.default-expiration-hours:24}") final int defaultExpirationHours,
             final RoomAccessGrantService roomAccessGrantService,
-            final PokerParticipantRegistryService participantRegistryService) {
+            final PokerParticipantRegistryService participantRegistryService,
+            final PokerRosterService rosterService) {
         this.repository = repository;
         this.clock = clock;
         this.defaultExpirationHours = defaultExpirationHours;
         this.roomAccessGrantService = roomAccessGrantService;
         this.participantRegistryService = participantRegistryService;
+        this.rosterService = rosterService;
     }
 
     /**
@@ -108,7 +122,8 @@ public class PokerRoomService {
             final Long tenantId,
             final Integer expirationHours,
             final String deck,
-            final Boolean facilitatorVotes) {
+            final Boolean facilitatorVotes,
+            final String facilitatorName) {
         final String sequence = (deck == null || deck.isBlank()) ? PokerCardDeck.DEFAULT_SEQUENCE : deck;
         if (!PokerCardDeck.isSupported(sequence)) {
             throw new InvalidDeckException();
@@ -124,10 +139,34 @@ public class PokerRoomService {
 
         final String accessToken = UUID.randomUUID().toString();
         final Duration ttl = Duration.between(now, saved.getExpiresAt());
+        // The facilitator is a JOUEUR when they also vote, otherwise a VISITEUR (present in the
+        // roster but not expected to estimate).
+        final ParticipantRole facilitatorRole =
+                facilitatorAlsoVotes ? ParticipantRole.JOUEUR : ParticipantRole.VISITEUR;
         roomAccessGrantService.grantAccess(saved.getId(), accessToken, ttl);
-        participantRegistryService.register(saved.getId(), accessToken, ttl);
+        participantRegistryService.register(
+                saved.getId(), accessToken,
+                resolveDisplayName(facilitatorName, DEFAULT_FACILITATOR_NAME), facilitatorRole, ttl);
+        rosterService.broadcast(saved.getId());
 
         return toResponse(saved, accessToken);
+    }
+
+    /**
+     * Resolves a caller-supplied display name to a stored value: trimmed, truncated to {@link
+     * #MAX_DISPLAY_NAME_LENGTH}, falling back to {@code fallback} when absent or blank.
+     *
+     * @param raw      the caller-supplied name, or {@code null}
+     * @param fallback the default to use when {@code raw} is absent/blank
+     * @return the resolved, non-blank display name
+     */
+    private static String resolveDisplayName(final String raw, final String fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        final String trimmed = raw.trim();
+        return trimmed.length() > MAX_DISPLAY_NAME_LENGTH
+                ? trimmed.substring(0, MAX_DISPLAY_NAME_LENGTH) : trimmed;
     }
 
     /**
@@ -161,7 +200,8 @@ public class PokerRoomService {
      *                                     joinable by this tenant
      */
     @Transactional
-    public JoinRoomResponse join(final String code, final Long tenantId) {
+    public JoinRoomResponse join(
+            final String code, final Long tenantId, final String displayName, final String role) {
         final Instant now = clock.instant();
         final PokerRoom room = repository.findByInviteCode(code)
                 .filter(candidate -> candidate.getTenantId().equals(tenantId))
@@ -172,7 +212,11 @@ public class PokerRoomService {
         final String accessToken = UUID.randomUUID().toString();
         final Duration ttl = Duration.between(now, room.getExpiresAt());
         roomAccessGrantService.grantAccess(room.getId(), accessToken, ttl);
-        participantRegistryService.register(room.getId(), accessToken, ttl);
+        participantRegistryService.register(
+                room.getId(), accessToken,
+                resolveDisplayName(displayName, DEFAULT_PARTICIPANT_NAME),
+                ParticipantRole.fromNullable(role), ttl);
+        rosterService.broadcast(room.getId());
 
         return new JoinRoomResponse(
                 room.getId(),
@@ -204,7 +248,8 @@ public class PokerRoomService {
      *                                     joinable anonymously
      */
     @Transactional
-    public AnonymousJoinResponse joinAnonymous(final String code, final String pseudonym) {
+    public AnonymousJoinResponse joinAnonymous(
+            final String code, final String pseudonym, final String role) {
         final Instant now = clock.instant();
         final PokerRoom room = repository.findByInviteCode(code)
                 .filter(PokerRoom::isActive)
@@ -213,8 +258,12 @@ public class PokerRoomService {
 
         final String accessToken = UUID.randomUUID().toString();
         final String sessionId = UUID.randomUUID().toString();
+        final String resolvedPseudonym = resolvePseudonym(pseudonym);
         final Duration ttl = cappedGuestTtl(now, room.getExpiresAt());
         roomAccessGrantService.grantGuestAccess(room.getId(), accessToken, ttl);
+        participantRegistryService.register(
+                room.getId(), accessToken, resolvedPseudonym, ParticipantRole.fromNullable(role), ttl);
+        rosterService.broadcast(room.getId());
 
         return new AnonymousJoinResponse(
                 room.getId(),
@@ -226,7 +275,7 @@ public class PokerRoomService {
                 PokerRoomDestinations.roomTopic(room.getId()),
                 accessToken,
                 sessionId,
-                resolvePseudonym(pseudonym),
+                resolvedPseudonym,
                 now.plus(ttl));
     }
 

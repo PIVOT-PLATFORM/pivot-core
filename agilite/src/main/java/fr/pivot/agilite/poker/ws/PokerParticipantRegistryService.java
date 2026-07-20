@@ -6,73 +6,110 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
- * Tracks the roster of participants who have ever obtained a room access grant (facilitator at
- * room creation, participants at join — US09.2.1), backing the live "X/Y have voted" counter's
- * denominator ({@code Y}).
+ * Tracks the live named roster of a planning poker room (E09 — classic parity): who is present,
+ * their chosen display name, and their {@link ParticipantRole}. Backs both the "X/Y have voted"
+ * denominator (via {@link #countActive}) and the named participant table broadcast to every
+ * subscriber (via {@link #roster}).
  *
- * <p><strong>Deliberately not a WebSocket-connection presence tracker.</strong> {@code Y} counts
- * distinct access tokens registered for the room, not currently-open STOMP sessions — a
- * participant who closes their tab without returning stays counted until their access grant
- * itself expires (aligned with the room's own expiry, US09.1.1). Real-time disconnect detection
- * would require wiring into {@link fr.pivot.agilite.ws.WsSessionRegistry}'s connect/disconnect
- * lifecycle, deliberately deferred (see the US09.2.1 backlog file, section "Hors périmètre") —
- * this is the smallest mechanism that makes the counter meaningful without that added complexity.
+ * <p><strong>Not a WebSocket-connection presence tracker.</strong> Membership is keyed on the
+ * participant's {@link PokerParticipantKey} (a hash of their room access token), not on a
+ * currently-open STOMP session: a participant who closes their tab stays listed until their
+ * access grant's window (the room's own expiry, US09.1.1) elapses — real-time disconnect
+ * detection is deliberately deferred (US09.2.1 backlog "Hors périmètre").
  *
- * <p>Backed by a single Redis {@code Set} per room (member = raw access token — the same value
- * already treated as an ephemeral secret by {@link RoomAccessGrantService}, no new exposure). The
- * set's TTL is refreshed to the caller-supplied value on every {@link #register}, so it survives
- * as long as at least one participant has (re)joined within that window; it is never read back
- * as a per-member expiry (Redis sets do not support that), only as a whole-key TTL.
+ * <p>Backed by a single Redis <em>hash</em> per room ({@code poker:room-roster:{roomId}}): field =
+ * {@link PokerParticipantKey} (never the raw token), value = {@code "ROLE:name"} (the role's enum
+ * name, then a colon, then the display name — the role has no colon, so a split on the first
+ * colon round-trips a name that itself contains colons). Keying on the participant key — the same
+ * value {@code PokerVoteService} stores on each vote — lets the roster correlate a participant
+ * with their vote without persisting or broadcasting any token. The hash's whole-key TTL is
+ * refreshed on every {@link #register}; Redis hashes have no per-field expiry.
  */
 @Service
 public class PokerParticipantRegistryService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PokerParticipantRegistryService.class);
 
-    /** Redis key prefix for a room's participant roster set. */
-    private static final String ROSTER_KEY_PREFIX = "poker:room-participants:";
+    /** Redis key prefix for a room's participant roster hash. */
+    private static final String ROSTER_KEY_PREFIX = "poker:room-roster:";
+
+    /** Separator between the role and the display name in a stored roster value. */
+    private static final char VALUE_SEPARATOR = ':';
 
     private final StringRedisTemplate redisTemplate;
 
     /**
      * Creates the service with the shared Redis client.
      *
-     * @param redisTemplate Redis client used to store the roster
+     * @param redisTemplate Redis client used to store the roster hash
      */
     public PokerParticipantRegistryService(final StringRedisTemplate redisTemplate) {
         this.redisTemplate = redisTemplate;
     }
 
     /**
-     * Registers a participant (facilitator or joiner) into a room's roster, refreshing the
-     * roster's overall TTL to {@code ttl} from now.
+     * Registers (or updates) a participant in a room's roster, refreshing the roster's overall
+     * TTL to {@code ttl} from now.
      *
-     * <p>Idempotent: registering the same {@code accessToken} again simply refreshes the TTL —
-     * the roster's size ({@link #countActive}) does not double-count it (Redis set semantics).
+     * <p>Idempotent by participant key: re-registering the same access token (e.g. the facilitator
+     * re-opening the tab) overwrites their entry rather than adding a duplicate, so {@link
+     * #countActive} never double-counts.
      *
      * @param roomId      the room's identifier
-     * @param accessToken the participant's room-scoped access token
-     * @param ttl         how long the roster entry remains valid
+     * @param accessToken the participant's room-scoped access token (hashed into the roster key)
+     * @param name        the participant's chosen display name
+     * @param role        the participant's role
+     * @param ttl         how long the roster remains valid
      */
-    public void register(final UUID roomId, final String accessToken, final Duration ttl) {
+    public void register(
+            final UUID roomId, final String accessToken, final String name,
+            final ParticipantRole role, final Duration ttl) {
         String key = rosterKey(roomId);
-        redisTemplate.opsForSet().add(key, accessToken);
+        String field = PokerParticipantKey.of(accessToken);
+        redisTemplate.opsForHash().put(key, field, role.name() + VALUE_SEPARATOR + name);
         redisTemplate.expire(key, ttl);
-        LOG.info("Room participant registered: room={} ttlSeconds={}", roomId, ttl.toSeconds());
+        LOG.info("Room participant registered: room={} role={} ttlSeconds={}", roomId, role, ttl.toSeconds());
+    }
+
+    /**
+     * Reads a room's current roster.
+     *
+     * @param roomId the room's identifier
+     * @return the roster members (name + role, keyed by participant key), or an empty list if the
+     *     room has no registered participant (or its roster has fully expired). Entries that are
+     *     malformed (missing the role/name separator) are skipped defensively.
+     */
+    public List<RosterMember> roster(final UUID roomId) {
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(rosterKey(roomId));
+        List<RosterMember> members = new ArrayList<>(entries.size());
+        for (Map.Entry<Object, Object> entry : entries.entrySet()) {
+            String stored = String.valueOf(entry.getValue());
+            int separator = stored.indexOf(VALUE_SEPARATOR);
+            if (separator < 0) {
+                LOG.warn("Skipping malformed roster entry for room={}", roomId);
+                continue;
+            }
+            ParticipantRole role = ParticipantRole.fromNullable(stored.substring(0, separator));
+            String name = stored.substring(separator + 1);
+            members.add(new RosterMember(String.valueOf(entry.getKey()), name, role));
+        }
+        return members;
     }
 
     /**
      * Counts the distinct participants currently registered for a room.
      *
      * @param roomId the room's identifier
-     * @return the roster size, or {@code 0} if the room has no registered participant (or its
-     *     roster has fully expired)
+     * @return the roster size, or {@code 0} if empty/expired
      */
     public long countActive(final UUID roomId) {
-        Long size = redisTemplate.opsForSet().size(rosterKey(roomId));
+        Long size = redisTemplate.opsForHash().size(rosterKey(roomId));
         return size != null ? size : 0L;
     }
 
@@ -84,5 +121,16 @@ public class PokerParticipantRegistryService {
      */
     private String rosterKey(final UUID roomId) {
         return ROSTER_KEY_PREFIX + roomId;
+    }
+
+    /**
+     * A resolved roster member (server-side view — includes the participant key so the roster can
+     * be correlated with the vote store; never broadcast verbatim).
+     *
+     * @param participantKey the participant's {@link PokerParticipantKey}
+     * @param name           the participant's display name
+     * @param role           the participant's role
+     */
+    public record RosterMember(String participantKey, String name, ParticipantRole role) {
     }
 }
