@@ -69,6 +69,17 @@ public record ModuleFlywayConfigurer(String schema, String migrationsPath) {
                 .defaultSchema(schema)
                 .locations(migrationsPath)
                 .createSchemas(true)
+                // EN53 — pre-BETA « fichier V1 unique » convention (pivot-core CLAUDE.md) : a
+                // module's applied history may reference a version whose script no longer exists
+                // in this build (e.g. a migration folded away / a feature re-homed to another
+                // schema when the module was absorbed into the modulith). On a long-lived
+                // database (recette, that carried a schema from the module's standalone-service
+                // era) that "applied but not resolved locally" state must NOT fail the boot —
+                // tolerate it. Combined with repair()+migrate() in the module runners, this makes
+                // module migrations self-heal against a persistent DB while the schema is still
+                // mutable pre-BETA. Post-BETA (numbered, immutable migrations) this pattern is a
+                // no-op because there is never a missing migration.
+                .ignoreMigrationPatterns("*:missing")
                 .load();
     }
 }

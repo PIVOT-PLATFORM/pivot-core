@@ -59,7 +59,7 @@ public class ModuleFlywayMigrationConfig {
             final Flyway agiliteFlyway =
                     new ModuleFlywayConfigurer("agilite", "classpath:db/migration/agilite")
                             .createFlyway(dataSource);
-            agiliteFlyway.migrate();
+            selfHealAndMigrate(agiliteFlyway);
             LOG.info("event=MODULE_SCHEMA_FLYWAY_MIGRATE_DONE schema=agilite");
         };
     }
@@ -80,8 +80,33 @@ public class ModuleFlywayMigrationConfig {
             final Flyway collaboratifFlyway =
                     new ModuleFlywayConfigurer("collaboratif", "classpath:db/migration/collaboratif")
                             .createFlyway(dataSource);
-            collaboratifFlyway.migrate();
+            selfHealAndMigrate(collaboratifFlyway);
             LOG.info("event=MODULE_SCHEMA_FLYWAY_MIGRATE_DONE schema=collaboratif");
         };
+    }
+
+    /**
+     * Repairs the module schema's Flyway history, then migrates.
+     *
+     * <p>EN53 — with the pre-BETA « fichier V1 unique » convention (pivot-core CLAUDE.md), the
+     * single {@code V1__schema_init.sql} of a module keeps changing as schema evolves. A
+     * long-lived database (recette carried its {@code collaboratif} schema over from the module's
+     * standalone-service era) therefore stores an <em>older</em> V1 checksum than the one this
+     * build resolves, and Flyway's {@code validate} (run implicitly by {@code migrate}) aborts
+     * with {@code FlywayValidateException: checksum mismatch}. {@link Flyway#repair()} realigns the
+     * stored checksums (and clears any failed entry) so {@code migrate()} then proceeds. Together
+     * with {@code ignoreMigrationPatterns("*:missing")} (see {@link ModuleFlywayConfigurer}) this
+     * lets module migrations self-heal against a persistent DB while the schema is still mutable.
+     *
+     * <p>{@code repair()} only touches the {@code flyway_schema_history} bookkeeping — it never
+     * re-runs or drops applied SQL — so it is a safe no-op when history is already consistent
+     * (fresh DBs, CI, tests). Once the schema stabilises at BETA (numbered immutable migrations),
+     * checksums no longer drift and repair becomes a pure no-op.
+     *
+     * @param flyway the module-schema {@link Flyway} instance to repair then migrate
+     */
+    private static void selfHealAndMigrate(final Flyway flyway) {
+        flyway.repair();
+        flyway.migrate();
     }
 }
