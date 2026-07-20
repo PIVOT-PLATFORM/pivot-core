@@ -8,6 +8,7 @@ import fr.pivot.agilite.poker.vote.PokerVoteRepository;
 import fr.pivot.agilite.poker.ws.dto.RosterParticipant;
 import fr.pivot.agilite.poker.ws.dto.RosterUpdatedEvent;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -70,6 +71,27 @@ public class PokerRosterService {
         messagingTemplate.convertAndSend(
                 PokerRoomDestinations.roomTopic(roomId),
                 (Object) RosterUpdatedEvent.of(roomId, participants));
+    }
+
+    /**
+     * Resolves the room's current roster as a {@code participantKey -> display name} map (E09 —
+     * attributed reveal). Used at reveal/recap time to attribute an otherwise anonymous {@code
+     * PokerVote} (which only stores the participant key, never a name) to the name the
+     * participant actually joined under.
+     *
+     * <p>Merges on a duplicate key (defensive — {@link PokerParticipantRegistryService#roster}
+     * already keys on participant key, so this can never actually happen) by keeping the first
+     * entry, never throwing.
+     *
+     * @param roomId the room's identifier
+     * @return the resolved map, empty if the room has no registered participant
+     */
+    public Map<String, String> namesByParticipantKey(final UUID roomId) {
+        return registryService.roster(roomId).stream()
+                .collect(Collectors.toMap(
+                        PokerParticipantRegistryService.RosterMember::participantKey,
+                        PokerParticipantRegistryService.RosterMember::name,
+                        (first, second) -> first));
     }
 
     /**

@@ -143,6 +143,42 @@ class PokerVoteSubmissionIT extends AbstractAgiliteIntegrationTest {
     }
 
     /**
+     * End-to-end proof of E09's attributed reveal — masked while voting (the pre-existing
+     * assertions above already cover that), but attributed to the REAL roster display name the
+     * participant joined under once revealed. Unlike {@code PokerTicketControllerIT}'s reveal
+     * tests (which write a raw {@code PokerVote} row with a synthetic, unregistered participant
+     * key and so only prove the unresolvable-participant placeholder fallback), this test joins
+     * for real (registering a genuine Redis roster entry) and votes over the real STOMP transport,
+     * so the name in the reveal response is resolved from the very same roster the join wrote.
+     */
+    @Test
+    void revealTicket_attributesVoteToTheRealRosterNameTheParticipantJoinedUnder() throws Exception {
+        JsonNode room = createRoom(facilitatorToken);
+        String roomId = room.get("id").asText();
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123").get("id").asText();
+        String participantAccessToken = joinRoom(roomId, facilitatorToken, "Alice").get("accessToken").asText();
+
+        StompSession participantWs = connect();
+        subscribeRawQueue(participantWs, roomId, participantAccessToken);
+        awaitSubscriptionEstablished();
+
+        sendVote(participantWs, roomId, participantAccessToken, ticketId, "8");
+        Thread.sleep(200); // let the fire-and-forget STOMP SEND land before revealing over REST.
+
+        MvcResult result = mockMvc.perform(
+                        post("/agilite/poker/rooms/" + roomId + "/tickets/" + ticketId + "/reveal")
+                                .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode revealed = objectMapper.readTree(result.getResponse().getContentAsString());
+
+        assertThat(revealed.get("attributedVotes")).hasSize(1);
+        JsonNode attributedVote = revealed.get("attributedVotes").get(0);
+        assertThat(attributedVote.get("name").asText()).isEqualTo("Alice");
+        assertThat(attributedVote.get("value").asText()).isEqualTo("8");
+    }
+
+    /**
      * Given two distinct participants (facilitator + one joiner) in the same room, when each
      * votes independently, then {@code votedCount} correctly reflects 2 distinct participants —
      * an upsert is keyed by participant, never by session/message.
@@ -253,6 +289,23 @@ class PokerVoteSubmissionIT extends AbstractAgiliteIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Authorization", "Bearer " + bearerToken)
                         .content("{\"code\": \"" + inviteCode + "\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    /**
+     * Joins a room with an explicit roster {@code displayName} (E09), for tests that need a real,
+     * predictable name attributed at reveal time — see {@link
+     * #revealTicket_attributesVoteToTheRealRosterNameTheParticipantJoinedUnder}.
+     */
+    private JsonNode joinRoom(final String roomId, final String bearerToken, final String displayName)
+            throws Exception {
+        String inviteCode = fetchInviteCode(roomId, bearerToken);
+        MvcResult result = mockMvc.perform(post("/agilite/poker/rooms/join")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + bearerToken)
+                        .content("{\"code\": \"" + inviteCode + "\", \"displayName\": \"" + displayName + "\"}"))
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());

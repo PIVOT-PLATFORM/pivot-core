@@ -1,5 +1,6 @@
 package fr.pivot.agilite.poker.ticket;
 
+import fr.pivot.agilite.poker.PokerCardDeck;
 import fr.pivot.agilite.poker.ticket.dto.ConsensusResponse;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +21,7 @@ class ConsensusCalculatorTest {
      */
     @Test
     void compute_oddCountRequiringRounding_roundsMeanToOneDecimal() {
-        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("1", "1", "2"));
+        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("1", "1", "2"), PokerCardDeck.FIBONACCI_VALUES);
 
         assertThat(consensus.mean()).isEqualTo(1.3);
         assertThat(consensus.median()).isEqualTo(1.0);
@@ -33,7 +34,7 @@ class ConsensusCalculatorTest {
      */
     @Test
     void compute_evenCount_medianIsAverageOfTwoMiddleValues() {
-        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("3", "5"));
+        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("3", "5"), PokerCardDeck.FIBONACCI_VALUES);
 
         assertThat(consensus.mean()).isEqualTo(4.0);
         assertThat(consensus.median()).isEqualTo(4.0);
@@ -45,7 +46,7 @@ class ConsensusCalculatorTest {
      */
     @Test
     void compute_oddCountWithDuplicates_computesMeanAndMedian() {
-        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("3", "5", "5", "8", "8"));
+        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("3", "5", "5", "8", "8"), PokerCardDeck.FIBONACCI_VALUES);
 
         assertThat(consensus.mean()).isEqualTo(5.8);
         assertThat(consensus.median()).isEqualTo(5.0);
@@ -59,7 +60,7 @@ class ConsensusCalculatorTest {
      */
     @Test
     void compute_mixedWithQuestionMark_excludesFromMeanMedianButCountsForMajority() {
-        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("3", "?", "?", "5"));
+        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("3", "?", "?", "5"), PokerCardDeck.FIBONACCI_VALUES);
 
         assertThat(consensus.mean()).isEqualTo(4.0);
         assertThat(consensus.median()).isEqualTo(4.0);
@@ -72,9 +73,24 @@ class ConsensusCalculatorTest {
      */
     @Test
     void compute_majorityTie_breaksByDeckOrder() {
-        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("5", "5", "8", "8", "3"));
+        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("5", "5", "8", "8", "3"), PokerCardDeck.FIBONACCI_VALUES);
 
         assertThat(consensus.majority()).isEqualTo("5");
+    }
+
+    /**
+     * Given a frequency tie in a NON-Fibonacci deck (T-shirt, E09 — deck choice), when the tie is
+     * broken, then it uses THAT deck's own order — not a hardcoded Fibonacci fallback (regression
+     * guard: T-shirt/simplified values never matched {@code FIBONACCI_VALUES}, so the tie-break
+     * loop previously found nothing and silently fell through to non-deterministic iteration
+     * order for every non-Fibonacci room).
+     */
+    @Test
+    void compute_majorityTie_inTshirtDeck_breaksByThatDecksOrder() {
+        ConsensusResponse consensus = ConsensusCalculator.compute(
+                List.of("M", "M", "L", "L", "S"), PokerCardDeck.TSHIRT_VALUES);
+
+        assertThat(consensus.majority()).isEqualTo("M");
     }
 
     /**
@@ -82,7 +98,7 @@ class ConsensusCalculatorTest {
      */
     @Test
     void compute_noVotes_returnsAllNull() {
-        ConsensusResponse consensus = ConsensusCalculator.compute(Collections.emptyList());
+        ConsensusResponse consensus = ConsensusCalculator.compute(Collections.emptyList(), PokerCardDeck.FIBONACCI_VALUES);
 
         assertThat(consensus.mean()).isNull();
         assertThat(consensus.median()).isNull();
@@ -95,7 +111,7 @@ class ConsensusCalculatorTest {
      */
     @Test
     void compute_allQuestionMarks_meanMedianNullButMajorityResolved() {
-        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("?", "?"));
+        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("?", "?"), PokerCardDeck.FIBONACCI_VALUES);
 
         assertThat(consensus.mean()).isNull();
         assertThat(consensus.median()).isNull();
@@ -108,7 +124,7 @@ class ConsensusCalculatorTest {
      */
     @Test
     void compute_singleVote_meanMedianMajorityAllEqualToIt() {
-        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("13"));
+        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("13"), PokerCardDeck.FIBONACCI_VALUES);
 
         assertThat(consensus.mean()).isEqualTo(13.0);
         assertThat(consensus.median()).isEqualTo(13.0);
@@ -121,7 +137,7 @@ class ConsensusCalculatorTest {
      */
     @Test
     void compute_noTie_majorityIsHighestFrequencyValue() {
-        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("1", "2", "2", "2", "3"));
+        ConsensusResponse consensus = ConsensusCalculator.compute(List.of("1", "2", "2", "2", "3"), PokerCardDeck.FIBONACCI_VALUES);
 
         assertThat(consensus.majority()).isEqualTo("2");
     }

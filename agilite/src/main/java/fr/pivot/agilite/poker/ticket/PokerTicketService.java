@@ -1,5 +1,6 @@
 package fr.pivot.agilite.poker.ticket;
 
+import fr.pivot.agilite.poker.PokerCardDeck;
 import fr.pivot.agilite.poker.PokerRoom;
 import fr.pivot.agilite.poker.PokerRoomRepository;
 import fr.pivot.agilite.poker.exception.ActiveTicketExistsException;
@@ -7,9 +8,12 @@ import fr.pivot.agilite.poker.exception.TicketAlreadyRevealedException;
 import fr.pivot.agilite.poker.exception.TicketFacilitatorOnlyException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
 import fr.pivot.agilite.poker.exception.TicketNotFoundException;
+import fr.pivot.agilite.poker.ticket.dto.AttributedVoteResponse;
 import fr.pivot.agilite.poker.ticket.dto.ConsensusResponse;
+import fr.pivot.agilite.poker.ticket.dto.RecapResponse;
 import fr.pivot.agilite.poker.ticket.dto.RevealResponse;
 import fr.pivot.agilite.poker.ticket.dto.TicketCreatedEvent;
+import fr.pivot.agilite.poker.ticket.dto.TicketRecapEntry;
 import fr.pivot.agilite.poker.ticket.dto.TicketResponse;
 import fr.pivot.agilite.poker.ticket.dto.VotesRevealedEvent;
 import fr.pivot.agilite.poker.vote.PokerVote;
@@ -22,15 +26,24 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Business logic for planning poker ticket creation, current-ticket lookup (US09.2.1), and
- * revelation/consensus calculation (US09.2.2).
+ * Business logic for planning poker ticket creation, current-ticket lookup (US09.2.1),
+ * revelation/consensus calculation (US09.2.2), and attributed reveal + end-of-session recap
+ * (E09 — classic parity).
  */
 @Service
 public class PokerTicketService {
+
+    /**
+     * Roster display name substituted for a vote whose participant key no longer resolves in the
+     * room's live roster at reveal/recap time (e.g. an anonymous guest session that expired
+     * between voting and reveal) — never a blank/null name.
+     */
+    private static final String UNKNOWN_PARTICIPANT_NAME = "Participant";
 
     private final PokerTicketRepository ticketRepository;
     private final PokerRoomRepository roomRepository;
@@ -120,16 +133,20 @@ public class PokerTicketService {
      * Reveals a ticket's votes, restricted to that room's facilitator (US09.2.2): computes the
      * consensus over every cast vote, transitions the ticket to {@code REVEALED}, and broadcasts
      * the {@code VOTES_REVEALED} event to every participant with the same content returned here.
+     * Each vote is attributed to the voting participant's roster display name (E09 — classic
+     * parity: replaces the pre-E09 anonymous {@code values} shape, letting the facilitator ask
+     * whoever cast an extreme value to explain it) — resolved from the room's live roster at this
+     * exact instant, never persisted as its own column.
      *
      * <p>No completeness gate — the facilitator may reveal at any {@code votedCount}, including
      * zero (Gate 1 decision, see the pivot-docs AC file): a ticket with no cast votes reveals with
-     * an empty {@code values} list and an all-{@code null} consensus.
+     * an empty {@code attributedVotes} list and an all-{@code null} consensus.
      *
      * @param roomId       the target room, scoped to the caller's tenant
      * @param ticketId     the ticket to reveal
      * @param callerUserId the caller's user id, resolved server-side from the bearer token
      * @param tenantId     the caller's tenant id, resolved server-side from the bearer token
-     * @return the revealed ticket, its raw vote values, and the computed consensus
+     * @return the revealed ticket, its attributed votes, and the computed consensus
      * @throws RoomNotFoundException            if the room does not exist for the caller's tenant
      * @throws TicketFacilitatorOnlyException    if the caller is not the room's facilitator
      * @throws TicketNotFoundException           if the ticket does not exist, or belongs to a
@@ -139,7 +156,7 @@ public class PokerTicketService {
     @Transactional
     public RevealResponse reveal(
             final UUID roomId, final UUID ticketId, final Long callerUserId, final Long tenantId) {
-        requireFacilitator(roomId, callerUserId, tenantId);
+        PokerRoom room = requireFacilitator(roomId, callerUserId, tenantId);
 
         PokerTicket ticket = ticketRepository.findById(ticketId)
                 .filter(candidate -> candidate.getRoomId().equals(roomId))
@@ -148,17 +165,19 @@ public class PokerTicketService {
             throw new TicketAlreadyRevealedException(ticketId);
         }
 
-        List<String> values = voteRepository.findByTicketId(ticketId).stream()
-                .map(PokerVote::getValue)
-                .toList();
-        ConsensusResponse consensus = ConsensusCalculator.compute(values);
+        List<PokerVote> votes = voteRepository.findByTicketId(ticketId);
+        List<String> values = votes.stream().map(PokerVote::getValue).toList();
+        ConsensusResponse consensus =
+                ConsensusCalculator.compute(values, PokerCardDeck.valuesFor(room.getSequence()));
+        List<AttributedVoteResponse> attributedVotes = attributeVotes(roomId, votes);
 
         ticket.reveal(clock.instant());
         PokerTicket saved = ticketRepository.save(ticket);
 
         messagingTemplate.convertAndSend(
                 PokerRoomDestinations.roomTopic(roomId),
-                (Object) VotesRevealedEvent.of(roomId, saved.getId(), values, consensus, saved.getRevealedAt()));
+                (Object) VotesRevealedEvent.of(
+                        roomId, saved.getId(), attributedVotes, consensus, saved.getRevealedAt()));
 
         return new RevealResponse(
                 saved.getId(),
@@ -167,8 +186,71 @@ public class PokerTicketService {
                 saved.getStatus().name(),
                 saved.getCreatedAt(),
                 saved.getRevealedAt(),
-                values,
+                attributedVotes,
                 consensus);
+    }
+
+    /**
+     * Lists every already-revealed ticket of a room, oldest first, each with its attributed votes
+     * and consensus (E09 — end-of-session recap). Accessible to any authenticated caller in the
+     * room's tenant, not facilitator-restricted — every ticket listed here was already broadcast
+     * to every participant at its own reveal time, so nothing is newly disclosed.
+     *
+     * @param roomId   the target room, scoped to the caller's tenant
+     * @param tenantId the caller's tenant id, resolved server-side from the bearer token
+     * @return the room's recap — empty {@code tickets} if none has been revealed yet
+     * @throws RoomNotFoundException if the room does not exist for the caller's tenant
+     */
+    @Transactional(readOnly = true)
+    public RecapResponse recap(final UUID roomId, final Long tenantId) {
+        PokerRoom room = roomRepository.findByIdAndTenantId(roomId, tenantId)
+                .orElseThrow(() -> new RoomNotFoundException(roomId));
+        List<String> deckValues = PokerCardDeck.valuesFor(room.getSequence());
+
+        List<TicketRecapEntry> entries = ticketRepository
+                .findByRoomIdAndStatusOrderByRevealedAtAsc(roomId, PokerTicketStatus.REVEALED)
+                .stream()
+                .map(ticket -> toRecapEntry(roomId, ticket, deckValues))
+                .toList();
+
+        return new RecapResponse(roomId, entries);
+    }
+
+    /**
+     * Builds a single recap entry for an already-revealed ticket.
+     *
+     * @param roomId     the owning room's identifier (for roster attribution)
+     * @param ticket     the revealed ticket
+     * @param deckValues the room's own deck values, for the consensus majority tie-break
+     * @return the corresponding {@link TicketRecapEntry}
+     */
+    private TicketRecapEntry toRecapEntry(
+            final UUID roomId, final PokerTicket ticket, final List<String> deckValues) {
+        List<PokerVote> votes = voteRepository.findByTicketId(ticket.getId());
+        List<String> values = votes.stream().map(PokerVote::getValue).toList();
+        return new TicketRecapEntry(
+                ticket.getId(),
+                ticket.getTitle(),
+                ticket.getRevealedAt(),
+                attributeVotes(roomId, votes),
+                ConsensusCalculator.compute(values, deckValues));
+    }
+
+    /**
+     * Attributes a list of votes to their voting participant's roster display name, resolved from
+     * the room's live roster at this exact instant.
+     *
+     * @param roomId the owning room's identifier
+     * @param votes  the votes to attribute
+     * @return the attributed votes, no defined order
+     */
+    private List<AttributedVoteResponse> attributeVotes(final UUID roomId, final List<PokerVote> votes) {
+        Map<String, String> namesByParticipantKey = rosterService.namesByParticipantKey(roomId);
+        return votes.stream()
+                .map(vote -> new AttributedVoteResponse(
+                        namesByParticipantKey.getOrDefault(vote.getParticipantKey(), UNKNOWN_PARTICIPANT_NAME),
+                        vote.getValue()))
+                .toList();
     }
 
     /**

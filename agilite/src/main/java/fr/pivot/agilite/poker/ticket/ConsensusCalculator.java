@@ -13,10 +13,9 @@ import java.util.stream.Collectors;
  * Pure computation of a revealed ticket's consensus (US09.2.2) from the raw list of cast vote
  * values — no persistence, no I/O, independently unit-testable.
  *
- * <p>ADR-026 §2 fixes the v1 scope: mean/median over the <strong>numeric</strong> subset of
- * {@code PokerCardDeck#FIBONACCI_VALUES} only ({@code "?"} excluded), and a majority value over
- * <strong>all</strong> cast values ({@code "?"} included). No dispersion/distribution statistics
- * — deferred to v2+.
+ * <p>ADR-026 §2 fixes the v1 scope: mean/median over the <strong>numeric</strong> subset of the
+ * room's deck values only ({@code "?"} excluded), and a majority value over <strong>all</strong>
+ * cast values ({@code "?"} included). No dispersion/distribution statistics — deferred to v2+.
  */
 public final class ConsensusCalculator {
 
@@ -29,12 +28,18 @@ public final class ConsensusCalculator {
     /**
      * Computes the consensus for a ticket's full set of cast vote values.
      *
-     * @param values every cast vote's raw value (including {@code "?"}), in any order
+     * @param values    every cast vote's raw value (including {@code "?"}), in any order
+     * @param deckOrder the room's own deck values, in play order (see {@link PokerCardDeck}) —
+     *                  used only to break a {@code majority} frequency tie deterministically
+     *                  (E09 — deck choice: a T-shirt/simplified-Fibonacci room's values never
+     *                  matched the previously hardcoded {@code FIBONACCI_VALUES} order, so a tie
+     *                  silently fell through to non-deterministic {@code HashMap} iteration order
+     *                  instead of ever breaking by deck order)
      * @return the computed {@link ConsensusResponse} — every field {@code null} if {@code values}
      *         is empty; {@code mean}/{@code median} additionally {@code null} if none of the
      *         values is numeric (e.g. every cast vote is {@code "?"})
      */
-    public static ConsensusResponse compute(final List<String> values) {
+    public static ConsensusResponse compute(final List<String> values, final List<String> deckOrder) {
         if (values.isEmpty()) {
             return new ConsensusResponse(null, null, null);
         }
@@ -49,7 +54,7 @@ public final class ConsensusCalculator {
 
         Double mean = numericValues.isEmpty() ? null : round(mean(numericValues));
         Double median = numericValues.isEmpty() ? null : round(median(numericValues));
-        String majority = computeMajority(values);
+        String majority = computeMajority(values, deckOrder);
 
         return new ConsensusResponse(mean, median, majority);
     }
@@ -112,24 +117,25 @@ public final class ConsensusCalculator {
 
     /**
      * Computes the most frequent value among all cast votes ({@code "?"} included), breaking any
-     * frequency tie deterministically by {@code PokerCardDeck#FIBONACCI_VALUES} order.
+     * frequency tie deterministically by {@code deckOrder}.
      *
-     * @param values every cast vote's raw value, non-empty
+     * @param values    every cast vote's raw value, non-empty
+     * @param deckOrder the room's own deck values, in play order
      * @return the majority value
      */
-    private static String computeMajority(final List<String> values) {
+    private static String computeMajority(final List<String> values, final List<String> deckOrder) {
         Map<String, Long> counts = values.stream()
                 .collect(Collectors.groupingBy(value -> value, Collectors.counting()));
         long maxCount = counts.values().stream().mapToLong(Long::longValue).max().orElseThrow();
 
-        for (String deckValue : PokerCardDeck.FIBONACCI_VALUES) {
+        for (String deckValue : deckOrder) {
             if (counts.getOrDefault(deckValue, 0L) == maxCount) {
                 return deckValue;
             }
         }
-        // Defensive fallback — every persisted vote value is validated against
-        // PokerCardDeck#FIBONACCI_VALUES at submission time (US09.2.1), so a value absent from
-        // the deck order should never actually reach this point.
+        // Defensive fallback — every persisted vote value is validated against the room's own
+        // deck at submission time (US09.2.1, E09), so a value absent from deckOrder should never
+        // actually reach this point.
         return counts.entrySet().stream()
                 .filter(entry -> entry.getValue() == maxCount)
                 .map(Map.Entry::getKey)
