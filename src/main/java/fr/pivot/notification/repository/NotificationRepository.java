@@ -65,7 +65,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
      * @param type   le type de notification recherché
      * @return les notifications correspondantes, dans un ordre non garanti
      */
-    List<Notification> findByUser_IdAndType(Long userId, NotificationType type);
+    List<Notification> findByUserIdAndType(Long userId, NotificationType type);
 
     /**
      * Marque en une seule requête toutes les notifications non lues d'un utilisateur comme lues

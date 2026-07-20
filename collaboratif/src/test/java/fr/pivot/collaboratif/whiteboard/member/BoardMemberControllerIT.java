@@ -451,6 +451,6 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
     }
 
     private List<Notification> notificationsFor(final long userId, final NotificationType type) {
-        return notificationRepository.findByUser_IdAndType(userId, type);
+        return notificationRepository.findByUserIdAndType(userId, type);
     }
 }
