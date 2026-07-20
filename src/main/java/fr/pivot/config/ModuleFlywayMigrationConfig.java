@@ -6,6 +6,7 @@ import org.flywaydb.core.Flyway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -26,9 +27,14 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p>Ce config ne déclare donc <strong>aucun</strong> bean {@link Flyway} : Boot garde la main sur
  * la migration du schéma {@code public}, exécutée pendant le refresh du contexte (via son
- * {@code FlywayMigrationInitializer}, avant l'{@code EntityManagerFactory}) exactement comme avant
- * l'absorption des modules. Les migrations {@code agilite} et {@code collaboratif} sont déclenchées
- * par les {@link ApplicationRunner}s ci-dessous, <strong>après</strong> le refresh (donc après que
+ * {@code FlywayMigrationInitializer}, avant l'{@code EntityManagerFactory}). La <em>seule</em>
+ * personnalisation de ce chemin est le {@link FlywayMigrationStrategy} ci-dessous, qui ajoute le
+ * même self-heal {@code repair()}→{@code migrate()} que les schémas de module (voir
+ * {@link #publicSchemaFlywayMigrationStrategy} et {@link #selfHealAndMigrate}) — un
+ * {@link FlywayMigrationStrategy} n'étant pas un bean {@link Flyway}, il ne déclenche pas la
+ * suppression décrite ci-dessus, il ne fait qu'envelopper l'invocation du bean public de Boot. Les
+ * migrations {@code agilite} et {@code collaboratif} sont déclenchées par les
+ * {@link ApplicationRunner}s ci-dessous, <strong>après</strong> le refresh (donc après que
  * {@code public.tenants}/{@code teams} existent) — sûr car {@code spring.jpa.hibernate.ddl-auto=none}
  * dans l'app agrégée (aucune validation de schéma à l'init de l'EMF). Chaque Flyway de module est
  * construit <em>inline</em> (jamais exposé en bean) précisément pour ne pas retomber dans la
@@ -82,6 +88,37 @@ public class ModuleFlywayMigrationConfig {
                             .createFlyway(dataSource);
             selfHealAndMigrate(collaboratifFlyway);
             LOG.info("event=MODULE_SCHEMA_FLYWAY_MIGRATE_DONE schema=collaboratif");
+        };
+    }
+
+    /**
+     * Overrides how Spring Boot invokes its own auto-configured (schema {@code public}) Flyway so
+     * that it too self-heals — {@code repair()} before {@code migrate()} — exactly like the module
+     * schemas above (see {@link #selfHealAndMigrate}).
+     *
+     * <p>Boot's {@code FlywayMigrationInitializer} normally just calls {@code flyway.migrate()} on
+     * its public-schema bean during context refresh; supplying a {@link FlywayMigrationStrategy}
+     * bean makes it call this instead. A {@link FlywayMigrationStrategy} is <strong>not</strong> a
+     * {@link Flyway} bean, so — unlike declaring a second {@code Flyway} (see class Javadoc) — it
+     * does not trip Boot's {@code @ConditionalOnMissingBean(Flyway.class)} and does not suppress
+     * the public-schema bean; it only wraps how that same bean is driven.
+     *
+     * <p>Why this is needed: the {@code public} schema is subject to the identical pre-BETA
+     * « fichier V1 unique » checksum-drift trap as the module schemas — a long-lived database
+     * (recette) stores an older {@code V1__schema_init.sql} checksum than the current build
+     * resolves, so Boot's plain {@code migrate()} aborts on {@code FlywayValidateException} before
+     * the {@code EntityManagerFactory} can build, cascading into an app that fails to start. This
+     * bit recette on 2026-07-20 when an unrelated PR widened a {@code CHECK} constraint in the
+     * public V1; the module-schema self-heal (added earlier) did not cover the shell schema.
+     *
+     * @return the strategy driving {@code repair()}-then-{@code migrate()} for the public schema
+     */
+    @Bean
+    public FlywayMigrationStrategy publicSchemaFlywayMigrationStrategy() {
+        return flyway -> {
+            LOG.info("event=PUBLIC_SCHEMA_FLYWAY_MIGRATE_START schema=public");
+            selfHealAndMigrate(flyway);
+            LOG.info("event=PUBLIC_SCHEMA_FLYWAY_MIGRATE_DONE schema=public");
         };
     }
 
