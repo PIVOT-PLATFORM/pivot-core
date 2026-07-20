@@ -40,6 +40,20 @@ spring:
     locations: classpath:db/migration/public
     baseline-on-migrate: true
     baseline-version: 0
+    # Recette outage 2026-07-20 postmortem (fix/recette-public-flyway-selfheal-v2): the failing
+    # cold-start boots log "HikariPool-1 - Starting..." and never reach "Start completed", then
+    # cascade into the EMF UnsatisfiedDependency failure — i.e. Boot's public-schema Flyway can't
+    # obtain its first DB connection, so migrate()/repair() never runs and the app exit(1)s.
+    # Successful boots of the same image DO log "Start completed" and start normally, so this is an
+    # intermittent cold-start connection failure, not the V1 checksum drift the rest of this branch
+    # fixes. Plausible mechanism (not asserted from logs): this service scales from zero with Direct
+    # VPC egress to the DB's private IP, and a fresh instance's very first outbound connection can
+    # race the network-interface attach before the private-IP path is reachable. Flyway defaults
+    # connectRetries to 0 (no retry at all), so one such race loses the boot outright. A short
+    # bounded retry absorbs it without masking a genuinely-down database (still fails after ~30s,
+    # well under Cloud Run's startup-probe budget).
+    connect-retries: 6
+    connect-retries-interval: 5
 
   data:
     redis:
