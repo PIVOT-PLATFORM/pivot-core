@@ -24,6 +24,14 @@ public record RosterUpdatedEvent(String type, UUID roomId, List<RosterParticipan
     public static final String TYPE = "ROSTER_UPDATED";
 
     /**
+     * Canonical constructor — defensively copies {@code participants} into an immutable list so
+     * neither the stored field nor the accessor can leak a mutable reference (SpotBugs EI_EXPOSE).
+     */
+    public RosterUpdatedEvent {
+        participants = participants == null ? List.of() : List.copyOf(participants);
+    }
+
+    /**
      * Builds the event with {@link #TYPE} as its discriminator.
      *
      * @param roomId       the room whose roster this describes
