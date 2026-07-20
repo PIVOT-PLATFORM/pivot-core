@@ -21,6 +21,9 @@ package fr.pivot.notification.service;
  *       documenté</li>
  *   <li>{@link #UNKNOWN_DEVICE} — US01.4.3a, <strong>pas encore câblé</strong> : même situation
  *       (core PR #151, branche {@code feat/us01-4-3a-alerte-connexion-suspecte})</li>
+ *   <li>{@link #BOARD_SHARED}, {@link #BOARD_ROLE_CHANGED}, {@link #BOARD_ACCESS_REVOKED} —
+ *       US08.2.5, câblés dans {@code fr.pivot.collaboratif.whiteboard.member.BoardMemberService}
+ *       — premier producteur porté par un module métier (collaboratif) plutôt que par le shell</li>
  * </ul>
  */
 public enum NotificationType {
@@ -41,7 +44,16 @@ public enum NotificationType {
      * US01.4.3a — connexion détectée depuis un appareil inconnu. Défini par anticipation — voir
      * JavaDoc de classe.
      */
-    UNKNOWN_DEVICE("notification.unknown-device.title", "notification.unknown-device.body");
+    UNKNOWN_DEVICE("notification.unknown-device.title", "notification.unknown-device.body"),
+
+    /** US08.2.5 — un tableau whiteboard a été partagé avec l'utilisateur pour la première fois. */
+    BOARD_SHARED("notification.board-shared.title", "notification.board-shared.body"),
+
+    /** US08.2.5 — le rôle de l'utilisateur sur un tableau whiteboard a été modifié. */
+    BOARD_ROLE_CHANGED("notification.board-role-changed.title", "notification.board-role-changed.body"),
+
+    /** US08.2.5 — l'accès de l'utilisateur à un tableau whiteboard a été révoqué. */
+    BOARD_ACCESS_REVOKED("notification.board-access-revoked.title", "notification.board-access-revoked.body");
 
     private final String titleKey;
     private final String bodyKey;

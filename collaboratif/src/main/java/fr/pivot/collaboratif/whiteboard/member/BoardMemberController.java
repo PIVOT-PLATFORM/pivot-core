@@ -2,6 +2,7 @@ package fr.pivot.collaboratif.whiteboard.member;
 
 import fr.pivot.collaboratif.context.CollaboratifRequestPrincipal;
 import fr.pivot.collaboratif.web.CollaboratifApiPaths;
+import fr.pivot.collaboratif.whiteboard.member.dto.InviteMemberRequest;
 import fr.pivot.collaboratif.whiteboard.member.dto.MemberResponse;
 import fr.pivot.collaboratif.whiteboard.member.dto.UpdateMemberRoleRequest;
 import jakarta.validation.Valid;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -58,6 +60,28 @@ public class BoardMemberController {
             final CollaboratifRequestPrincipal principal) {
         return boardMemberService.listMembers(
                 boardId, principal.userId(), principal.tenantId());
+    }
+
+    /**
+     * Invites a user by e-mail to the board, upserting their membership. Only the OWNER may
+     * invoke this (US08.2.5).
+     *
+     * <p>A re-invitation of an already-present member changes their role (or is a no-op if the
+     * requested role is unchanged) rather than creating a duplicate membership.
+     *
+     * @param boardId   the board UUID from the path
+     * @param request   the invitee's e-mail and requested role
+     * @param principal the resolved caller identity
+     * @return the created/updated member response with HTTP 201 Created
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public MemberResponse invite(
+            @PathVariable final UUID boardId,
+            @RequestBody @Valid final InviteMemberRequest request,
+            final CollaboratifRequestPrincipal principal) {
+        return boardMemberService.invite(
+                boardId, request.email(), request.role(), principal.userId(), principal.tenantId());
     }
 
     /**

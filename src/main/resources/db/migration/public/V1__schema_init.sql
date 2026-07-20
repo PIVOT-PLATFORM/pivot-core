@@ -642,6 +642,9 @@ CREATE TABLE IF NOT EXISTS notifications (
     -- encore émis : leurs producteurs respectifs (core PR #154 / #151) ne sont pas fusionnés
     -- sur main et ne publient pas encore d'événement consommable — voir
     -- fr.pivot.notification.listener (package-info.java) pour le point d'intégration documenté.
+    -- BOARD_SHARED / BOARD_ROLE_CHANGED / BOARD_ACCESS_REVOKED (US08.2.5) sont câblés dans
+    -- fr.pivot.collaboratif.whiteboard.share.BoardInviteService — la première utilisation de ce
+    -- canal partagé par un module métier (collaboratif) plutôt que par le shell.
     type        VARCHAR(30)  NOT NULL,
     title       VARCHAR(255) NOT NULL,
     body        TEXT         NOT NULL,
@@ -653,7 +656,8 @@ CREATE TABLE IF NOT EXISTS notifications (
     CONSTRAINT fk_notifications_user   FOREIGN KEY (user_id)   REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_notifications_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
     CONSTRAINT chk_notifications_type CHECK (
-        type IN ('ROLE_CHANGED', 'ACCOUNT_DEACTIVATED', 'SENSITIVE_ACTION', 'UNKNOWN_DEVICE')
+        type IN ('ROLE_CHANGED', 'ACCOUNT_DEACTIVATED', 'SENSITIVE_ACTION', 'UNKNOWN_DEVICE',
+                 'BOARD_SHARED', 'BOARD_ROLE_CHANGED', 'BOARD_ACCESS_REVOKED')
     )
 );
 

@@ -16,6 +16,11 @@ import java.time.Instant;
  * <p>The primary key is a composite of {@code boardId} and {@code userId},
  * ensuring each user appears at most once per board. The {@code joinedAt}
  * timestamp is set automatically on first persist.
+ *
+ * <p>This entity is also the concrete model behind the {@code BoardShare} concept of US08.2.5
+ * (no separate table): an e-mail invitation ({@code POST /whiteboard/boards/{boardId}/members},
+ * {@link fr.pivot.collaboratif.whiteboard.member.BoardMemberService#invite}) upserts a row here
+ * exactly like a share-link join does.
  */
 @Entity
 @Table(name = "board_member", schema = "collaboratif")
@@ -52,8 +57,7 @@ public class BoardMember {
     }
 
     /**
-     * Sets {@code joinedAt} to the current instant before the first insert
-     * if it has not already been set.
+     * Sets {@code joinedAt} to the current instant before the first insert.
      */
     @PrePersist
     public void prePersist() {

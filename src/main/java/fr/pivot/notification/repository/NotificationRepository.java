@@ -1,6 +1,7 @@
 package fr.pivot.notification.repository;
 
 import fr.pivot.notification.entity.Notification;
+import fr.pivot.notification.service.NotificationType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -9,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -51,6 +53,19 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
      * @return la notification si elle existe et appartient à {@code userId}, vide sinon
      */
     Optional<Notification> findByIdAndUserId(Long id, Long userId);
+
+    /**
+     * Liste les notifications d'un type donné reçues par un utilisateur, tous tenants confondus
+     * (le tenant est déjà implicite dans {@code userId}) — utilisé par les tests d'intégration
+     * pour vérifier qu'un producteur métier a bien émis la notification attendue (ex.
+     * {@code BOARD_SHARED} lors d'une invitation US08.2.5), sans dépendre de la pagination ni du
+     * tri de {@link #findByUserIdAndTenantId}.
+     *
+     * @param userId identifiant de l'utilisateur destinataire
+     * @param type   le type de notification recherché
+     * @return les notifications correspondantes, dans un ordre non garanti
+     */
+    List<Notification> findByUserIdAndType(Long userId, NotificationType type);
 
     /**
      * Marque en une seule requête toutes les notifications non lues d'un utilisateur comme lues

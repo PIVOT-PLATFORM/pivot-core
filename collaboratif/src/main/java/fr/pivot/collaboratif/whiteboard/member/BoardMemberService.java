@@ -3,24 +3,38 @@ package fr.pivot.collaboratif.whiteboard.member;
 import fr.pivot.collaboratif.exception.BoardAccessDeniedException;
 import fr.pivot.collaboratif.exception.BoardMemberNotFoundException;
 import fr.pivot.collaboratif.exception.BoardNotFoundException;
+import fr.pivot.collaboratif.exception.InvalidInvitationException;
+import fr.pivot.collaboratif.exception.InviteeNotFoundException;
 import fr.pivot.collaboratif.whiteboard.board.Board;
 import fr.pivot.collaboratif.whiteboard.board.BoardMember;
+import fr.pivot.collaboratif.whiteboard.board.BoardMemberId;
 import fr.pivot.collaboratif.whiteboard.board.BoardMemberRepository;
 import fr.pivot.collaboratif.whiteboard.board.BoardRepository;
 import fr.pivot.collaboratif.whiteboard.board.BoardRole;
 import fr.pivot.collaboratif.whiteboard.member.dto.MemberResponse;
+import fr.pivot.collaboratif.whiteboard.member.event.BoardMembershipNotificationRequestedEvent;
+import fr.pivot.collaboratif.whiteboard.member.event.BoardMembershipNotificationRequestedEvent.Kind;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Business logic for board member management operations.
+ * Business logic for board member management operations, including named e-mail invitations
+ * (US08.2.5, extends F08.2).
  *
- * <p>Enforces tenant isolation and role-based access control:
- * only the OWNER may change roles or remove members. Any caller with access
- * (OWNER, EDITOR, VIEWER) may list members.
+ * <p>Enforces tenant isolation and role-based access control: only the OWNER may invite, change
+ * roles, or remove members. Any caller with access (OWNER, EDITOR, VIEWER) may list members.
+ *
+ * <p><strong>Notification channel.</strong> State-changing operations publish {@link
+ * BoardMembershipNotificationRequestedEvent} rather than calling the shared platform-wide
+ * notification system directly — {@code fr.pivot.notification.*} lives in the {@code app} Maven
+ * module, which depends on this module, not the reverse, so a direct call would be a circular
+ * build dependency. See that event's Javadoc for the full rationale and the listener that bridges
+ * it (EN-NOTIF).
  */
 @Service
 @Transactional(readOnly = true)
@@ -28,18 +42,27 @@ public class BoardMemberService {
 
     private final BoardRepository boardRepository;
     private final BoardMemberRepository boardMemberRepository;
+    private final UserDirectoryRepository userDirectoryRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Creates the service with all required dependencies.
      *
-     * @param boardRepository       repository for board persistence
-     * @param boardMemberRepository repository for board membership persistence
+     * @param boardRepository         repository for board persistence
+     * @param boardMemberRepository   repository for board membership persistence
+     * @param userDirectoryRepository read-only e-mail resolution against {@code public.users}
+     * @param eventPublisher          publishes {@link BoardMembershipNotificationRequestedEvent}
+     *                                for the {@code app} module's notification listener
      */
     public BoardMemberService(
             final BoardRepository boardRepository,
-            final BoardMemberRepository boardMemberRepository) {
+            final BoardMemberRepository boardMemberRepository,
+            final UserDirectoryRepository userDirectoryRepository,
+            final ApplicationEventPublisher eventPublisher) {
         this.boardRepository = boardRepository;
         this.boardMemberRepository = boardMemberRepository;
+        this.userDirectoryRepository = userDirectoryRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -65,6 +88,80 @@ public class BoardMemberService {
                 .stream()
                 .map(MemberResponse::from)
                 .toList();
+    }
+
+    /**
+     * Invites a user named by e-mail with a role, upserting the {@code (boardId, userId)}
+     * membership; only the OWNER may invoke this (US08.2.5).
+     *
+     * <p>Refusal order: (1) caller not OWNER → 403/404 (see {@link #requireOwner}), (2) unknown
+     * e-mail → 404, (3) self-invitation → 400 — the only manager able to invite is the OWNER, so
+     * this single check also covers "e-mail of the board creator" (the two were distinct cases
+     * under the original EDITOR-can-manage design; collapsed here since {@link #requireOwner}
+     * already guarantees {@code callerId == board.getOwnerId()}), (4) {@code role == OWNER} →
+     * rejected (ownership transfer out of scope, matching {@link #updateRole}). On success: a
+     * brand-new membership emits {@code BOARD_SHARED}; an existing membership whose role changes
+     * emits {@code BOARD_ROLE_CHANGED}; a re-invitation with the same role is a functional no-op
+     * with no notification.
+     *
+     * @param boardId       the board UUID
+     * @param email         the invitee's e-mail
+     * @param requestedRole the requested role, or {@code null} to default to VIEWER
+     * @param callerId      the calling user's {@code public.users.id}
+     * @param tenantId      the calling tenant's {@code public.tenants.id}
+     * @return the created/updated member
+     * @throws BoardNotFoundException     if the board is inaccessible to the caller
+     * @throws BoardAccessDeniedException if the caller is not the OWNER
+     * @throws InviteeNotFoundException   if the e-mail resolves to no active user of the tenant
+     * @throws InvalidInvitationException on self-invitation (the caller inviting their own e-mail)
+     * @throws IllegalArgumentException   if the requested role is OWNER
+     */
+    @Transactional
+    public MemberResponse invite(
+            final UUID boardId,
+            final String email,
+            final BoardRole requestedRole,
+            final Long callerId,
+            final Long tenantId) {
+        Board board = boardRepository.findByIdAndTenantId(boardId, tenantId)
+                .orElseThrow(() -> new BoardNotFoundException(boardId));
+        requireOwner(boardId, callerId, board.getOwnerId());
+        BoardRole role = requestedRole != null ? requestedRole : BoardRole.VIEWER;
+        if (role == BoardRole.OWNER) {
+            throw new IllegalArgumentException("Cannot invite a member as OWNER");
+        }
+
+        UserDirectoryEntry invitee = userDirectoryRepository
+                .findByEmailIgnoreCaseAndTenantIdAndActiveTrue(email, tenantId)
+                .orElseThrow(InviteeNotFoundException::new);
+        Long inviteeId = invitee.getId();
+        if (inviteeId.equals(callerId)) {
+            throw new InvalidInvitationException(
+                    "SELF_INVITE", "Vous ne pouvez pas vous inviter vous-même");
+        }
+
+        BoardMember existing = boardMemberRepository
+                .findByIdBoardIdAndIdUserId(boardId, inviteeId)
+                .orElse(null);
+        if (existing == null) {
+            BoardMember created = boardMemberRepository.save(
+                    new BoardMember(new BoardMemberId(boardId, inviteeId), role, Instant.now()));
+            eventPublisher.publishEvent(new BoardMembershipNotificationRequestedEvent(
+                    inviteeId, Kind.SHARED, boardId, board.getTitle(), role.name()));
+            logAuditEvent("MemberInvited", boardId, callerId,
+                    "invitee=" + inviteeId + " role=" + role);
+            return MemberResponse.from(created);
+        }
+        if (existing.getRole() != role) {
+            existing.setRole(role);
+            BoardMember saved = boardMemberRepository.save(existing);
+            eventPublisher.publishEvent(new BoardMembershipNotificationRequestedEvent(
+                    inviteeId, Kind.ROLE_CHANGED, boardId, board.getTitle(), role.name()));
+            logAuditEvent("MemberInviteRoleChanged", boardId, callerId,
+                    "invitee=" + inviteeId + " role=" + role);
+            return MemberResponse.from(saved);
+        }
+        return MemberResponse.from(existing);
     }
 
     /**
@@ -104,6 +201,8 @@ public class BoardMemberService {
                 .orElseThrow(() -> new BoardMemberNotFoundException(boardId, targetUserId));
         member.setRole(newRole);
         BoardMember saved = boardMemberRepository.save(member);
+        eventPublisher.publishEvent(new BoardMembershipNotificationRequestedEvent(
+                targetUserId, Kind.ROLE_CHANGED, boardId, board.getTitle(), newRole.name()));
         logAuditEvent("MemberRoleUpdated", boardId, callerId,
                 "targetUser=" + targetUserId + " newRole=" + newRole);
         return MemberResponse.from(saved);
@@ -139,6 +238,8 @@ public class BoardMemberService {
                 .findByIdBoardIdAndIdUserId(boardId, targetUserId)
                 .orElseThrow(() -> new BoardMemberNotFoundException(boardId, targetUserId));
         boardMemberRepository.delete(member);
+        eventPublisher.publishEvent(new BoardMembershipNotificationRequestedEvent(
+                targetUserId, Kind.ACCESS_REVOKED, boardId, board.getTitle(), null));
         logAuditEvent("MemberRemoved", boardId, callerId, "targetUser=" + targetUserId);
     }
 
