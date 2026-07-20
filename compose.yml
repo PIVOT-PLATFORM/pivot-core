@@ -162,6 +162,11 @@ services:
       SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       PIVOT_MAIL_FROM: ${MAIL_FROM:-pivot@localhost}
       PIVOT_APP_URL: ${APP_URL:-http://localhost}
+      # Whiteboard invitation links (US08.2.x). Same source of truth as PIVOT_APP_URL on purpose:
+      # both are "the public origin of the front end", and letting them drift would mean e-mails
+      # and share links pointing at different hosts. Never leave this implicit — a link built
+      # from `localhost` resolves on the *recipient's* machine, not on the server.
+      PIVOT_SHARE_BASE_URL: ${APP_URL:-http://localhost}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost}
       OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
