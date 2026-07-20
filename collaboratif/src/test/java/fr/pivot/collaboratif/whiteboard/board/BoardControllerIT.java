@@ -3,10 +3,16 @@ package fr.pivot.collaboratif.whiteboard.board;
 import fr.pivot.collaboratif.AbstractCollaboratifIntegrationTest;
 import fr.pivot.collaboratif.testsupport.PlatformAuthTestSupport;
 import fr.pivot.collaboratif.testsupport.PlatformAuthTestSupport.AuthFixture;
+import fr.pivot.collaboratif.whiteboard.canvas.BoardField;
+import fr.pivot.collaboratif.whiteboard.canvas.BoardFieldRepository;
+import fr.pivot.collaboratif.whiteboard.canvas.Card;
 import fr.pivot.collaboratif.whiteboard.canvas.CanvasEvent;
 import fr.pivot.collaboratif.whiteboard.canvas.CanvasEventRepository;
-import fr.pivot.collaboratif.whiteboard.canvas.CanvasEventType;
+import fr.pivot.collaboratif.whiteboard.canvas.CardFieldValueRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.CardRepository;
+import fr.pivot.collaboratif.whiteboard.canvas.CardType;
+import fr.pivot.collaboratif.whiteboard.canvas.Frame;
+import fr.pivot.collaboratif.whiteboard.canvas.FrameRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,6 +67,15 @@ class BoardControllerIT extends AbstractCollaboratifIntegrationTest {
     @Autowired
     private CardRepository cardRepository;
 
+    @Autowired
+    private FrameRepository frameRepository;
+
+    @Autowired
+    private BoardFieldRepository boardFieldRepository;
+
+    @Autowired
+    private CardFieldValueRepository cardFieldValueRepository;
+
     private MockMvc mockMvc;
 
     /** UUID of the "Brainstorm" template, fixed in the Flyway seed data (US08.4.1). */
@@ -74,7 +89,6 @@ class BoardControllerIT extends AbstractCollaboratifIntegrationTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private long tenantA;
-    private long userA;
     private String tokenA;
     private long tenantB;
     private String tokenB;
@@ -90,7 +104,6 @@ class BoardControllerIT extends AbstractCollaboratifIntegrationTest {
         AuthFixture fixtureA = PlatformAuthTestSupport.seedActiveUserWithToken(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
         tenantA = fixtureA.tenantId();
-        userA = fixtureA.userId();
         tokenA = fixtureA.rawToken();
 
         AuthFixture fixtureB = PlatformAuthTestSupport.seedActiveUserWithToken(
@@ -154,13 +167,16 @@ class BoardControllerIT extends AbstractCollaboratifIntegrationTest {
     // -------------------------------------------------------------------------
 
     /**
-     * Given a valid templateId resolving to the "Brainstorm" global template,
-     * when POST /whiteboard/boards?templateId=... is called,
-     * then it returns HTTP 201 and the new board's canvas contains one persisted DRAW
-     * event per template element (5 for Brainstorm), each a valid JSON payload.
+     * Given a valid templateId resolving to the "Brainstorm" global template, when
+     * POST /whiteboard/boards?templateId=... is called, then it returns HTTP 201 and the new
+     * board is materialized as real, live-model rows (4 cards, 3 frames) — the exact entities
+     * {@code board:state} serves to the routed board surface (EN08.x re-platform regression
+     * guard: the pre-re-platform design instead wrote legacy {@code canvas_event} DRAW rows the
+     * live board never reads, so this assertion on {@link CardRepository}/{@link
+     * FrameRepository} — not {@link CanvasEventRepository} — is the point of the test).
      */
     @Test
-    void createBoard_withValidTemplateId_returns201AndInitializesCanvasFromTemplate() throws Exception {
+    void createBoard_withValidTemplateId_returns201AndMaterializesLiveCardsAndFrames() throws Exception {
         MvcResult result = mockMvc.perform(post(BASE_PATH)
                         .queryParam("templateId", BRAINSTORM_TEMPLATE_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -172,26 +188,33 @@ class BoardControllerIT extends AbstractCollaboratifIntegrationTest {
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         UUID boardId = UUID.fromString(body.get("id").asText());
 
-        List<CanvasEvent> events = canvasEventRepository
-                .findAllByBoardIdAndTenantIdOrderByCreatedAtAsc(boardId, tenantA);
+        List<Card> cards = cardRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, tenantA);
+        List<Frame> frames =
+                frameRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, tenantA);
 
-        assertThat(events).hasSize(5);
-        assertThat(events).allSatisfy(event -> {
-            assertThat(event.getEventType()).isEqualTo(CanvasEventType.DRAW);
-            assertThat(event.getUserId()).isEqualTo(userA);
-            assertThat(event.getTenantId()).isEqualTo(tenantA);
-            assertThat(event.getPayload()).isNotBlank();
+        assertThat(cards).hasSize(4);
+        assertThat(cards).allSatisfy(card -> {
+            assertThat(card.getBoardId()).isEqualTo(boardId);
+            assertThat(card.getTenantId()).isEqualTo(tenantA);
+            assertThat(card.getContent()).isNotBlank();
         });
+        assertThat(frames).hasSize(3);
+        assertThat(frames).extracting(Frame::getTitle)
+                .containsExactlyInAnyOrder("Idées", "Regrouper", "Top idées");
+
+        assertThat(canvasEventRepository.findAllByBoardIdAndTenantIdOrderByCreatedAtAsc(boardId, tenantA))
+                .as("the re-platformed template engine no longer writes to the legacy canvas_event table")
+                .isEmpty();
     }
 
     /**
-     * Given a valid templateId resolving to the "Retrospective" global template,
-     * when POST /whiteboard/boards?templateId=... is called,
-     * then the new board's canvas contains one persisted DRAW event per template element
-     * (7 for Retrospective).
+     * Given a valid templateId resolving to the "Retrospective" global template, when
+     * POST /whiteboard/boards?templateId=... is called, then the new board is materialized
+     * with 4 cards, 3 frames, 2 board fields, and 1 field value (US08.10 custom fields
+     * demonstrated by the enriched Retrospective template).
      */
     @Test
-    void createBoard_withRetrospectiveTemplateId_initializesSevenElements() throws Exception {
+    void createBoard_withRetrospectiveTemplateId_materializesCardsFramesAndFields() throws Exception {
         MvcResult result = mockMvc.perform(post(BASE_PATH)
                         .queryParam("templateId", RETROSPECTIVE_TEMPLATE_ID.toString())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -202,10 +225,31 @@ class BoardControllerIT extends AbstractCollaboratifIntegrationTest {
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         UUID boardId = UUID.fromString(body.get("id").asText());
 
-        List<CanvasEvent> events = canvasEventRepository
-                .findAllByBoardIdAndTenantIdOrderByCreatedAtAsc(boardId, tenantA);
+        List<Card> cards = cardRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, tenantA);
+        List<Frame> frames =
+                frameRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, tenantA);
+        List<BoardField> fields = boardFieldRepository.findAllByBoardIdOrderByOrderAscCreatedAtAsc(boardId);
 
-        assertThat(events).hasSize(7);
+        assertThat(cards).hasSize(4);
+        assertThat(frames).hasSize(3);
+        assertThat(frames).extracting(Frame::getTitle)
+                .containsExactlyInAnyOrder("Bien 🙂", "À améliorer 😕", "Actions ✅");
+        assertThat(fields).extracting(BoardField::getName)
+                .containsExactlyInAnyOrder("Responsable", "Échéance");
+
+        Card actionCard = cards.stream()
+                .filter(c -> c.getType() == CardType.TEXT && c.getContent().startsWith("Exemple : fixer"))
+                .findFirst()
+                .orElseThrow();
+        BoardField responsableField = fields.stream()
+                .filter(f -> "Responsable".equals(f.getName()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(cardFieldValueRepository.findByCardId(actionCard.getId()))
+                .anySatisfy(value -> {
+                    assertThat(value.getFieldId()).isEqualTo(responsableField.getId());
+                    assertThat(value.getValue()).isEqualTo("À définir");
+                });
     }
 
     /**
