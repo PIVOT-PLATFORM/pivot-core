@@ -92,16 +92,45 @@ class WhiteboardTemplateServiceTest {
     private static final Long USER_A = 1L;
     private static final UUID BOARD_A = UUID.randomUUID();
 
-    /** Initialises the service under test with mocked dependencies and a real Jackson mapper. */
+    /**
+     * Initialises the service under test with mocked dependencies and a real Jackson mapper.
+     *
+     * <p>The default save() stubs assign a random id via reflection (mirroring the real
+     * {@code @GeneratedValue} behaviour a JPA repository provides) whenever the entity being
+     * saved doesn't already carry one — {@code initializeBoard} relies on the generated id to
+     * resolve {@code CONNECTION}/{@code FIELD_VALUE} {@code localKey} references, so a stub that
+     * merely echoed the argument back (leaving {@code id == null}) would make every such
+     * resolution fail with "unknown local key", not because the key is genuinely missing but
+     * because the mocked id never existed. Individual tests may still override these stubs
+     * (e.g. to assert against a specific, test-chosen id).
+     */
     @BeforeEach
     void setUp() {
         templateService = new WhiteboardTemplateService(
                 templateRepository, templateElementRepository, templateElementValidator,
                 shapeStyleSanitizer, frameRepository, cardRepository, cardConnectionRepository,
                 boardFieldRepository, cardFieldValueRepository, moduleCheck, new ObjectMapper());
-        lenient().when(frameRepository.save(any(Frame.class))).thenAnswer(inv -> inv.getArgument(0));
-        lenient().when(cardRepository.save(any(Card.class))).thenAnswer(inv -> inv.getArgument(0));
-        lenient().when(boardFieldRepository.save(any(BoardField.class))).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(frameRepository.save(any(Frame.class))).thenAnswer(inv -> {
+            Frame frame = inv.getArgument(0);
+            if (frame.getId() == null) {
+                setId(frame, UUID.randomUUID());
+            }
+            return frame;
+        });
+        lenient().when(cardRepository.save(any(Card.class))).thenAnswer(inv -> {
+            Card card = inv.getArgument(0);
+            if (card.getId() == null) {
+                setId(card, UUID.randomUUID());
+            }
+            return card;
+        });
+        lenient().when(boardFieldRepository.save(any(BoardField.class))).thenAnswer(inv -> {
+            BoardField field = inv.getArgument(0);
+            if (field.getId() == null) {
+                setFieldId(field, UUID.randomUUID());
+            }
+            return field;
+        });
     }
 
     // -------------------------------------------------------------------------
