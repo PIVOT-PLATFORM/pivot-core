@@ -10,6 +10,7 @@ import fr.pivot.collaboratif.whiteboard.canvas.BoardFieldRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.Card;
 import fr.pivot.collaboratif.whiteboard.canvas.CardConnection;
 import fr.pivot.collaboratif.whiteboard.canvas.CardConnectionRepository;
+import fr.pivot.collaboratif.whiteboard.canvas.CardFieldValue;
 import fr.pivot.collaboratif.whiteboard.canvas.CardFieldValueRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.CardRepository;
 import fr.pivot.collaboratif.whiteboard.canvas.CardType;
@@ -42,6 +43,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -354,6 +356,99 @@ class WhiteboardTemplateServiceTest {
     }
 
     /**
+     * Given two CARD elements sharing the same {@code groupKey}, when initializeBoard() is
+     * called, then both cards are assigned the same server-generated {@code groupId}, with
+     * {@code groupColor} set to each card's own color.
+     */
+    @Test
+    void initializeBoard_cardsWithSameGroupKey_shareGeneratedGroupId() {
+        UUID templateId = UUID.randomUUID();
+        WhiteboardTemplate template = mockTemplate(templateId, "BRAINSTORM", "Brainstorm");
+        WhiteboardTemplateElement cardA = mockElement(
+                TemplateElementType.CARD, null,
+                "{\"type\":\"TEXT\",\"content\":\"Idée A\",\"posX\":0,\"posY\":0,\"width\":100,"
+                        + "\"height\":80,\"color\":\"#FEF08A\",\"groupKey\":\"cluster1\"}");
+        WhiteboardTemplateElement cardB = mockElement(
+                TemplateElementType.CARD, null,
+                "{\"type\":\"TEXT\",\"content\":\"Idée B\",\"posX\":150,\"posY\":0,\"width\":100,"
+                        + "\"height\":80,\"color\":\"#BBF7D0\",\"groupKey\":\"cluster1\"}");
+        when(templateElementRepository.findAllByTemplateIdOrderByDisplayOrderAsc(templateId))
+                .thenReturn(List.of(cardA, cardB));
+
+        templateService.initializeBoard(template, BOARD_A, TENANT_A, USER_A);
+
+        ArgumentCaptor<Card> captor = ArgumentCaptor.forClass(Card.class);
+        verify(cardRepository, times(2)).save(captor.capture());
+        List<Card> saved = captor.getAllValues();
+        assertThat(saved.get(0).getGroupId()).isNotNull().isEqualTo(saved.get(1).getGroupId());
+        assertThat(saved.get(0).getGroupColor()).isEqualTo("#FEF08A");
+        assertThat(saved.get(1).getGroupColor()).isEqualTo("#BBF7D0");
+    }
+
+    /**
+     * Given a CONNECTION element specifying the optional {@code label}/{@code color}/
+     * {@code width} fields, when initializeBoard() is called, then the materialized
+     * {@link CardConnection} carries all three.
+     */
+    @Test
+    void initializeBoard_connectionWithOptionalStyling_appliesLabelColorAndWidth() {
+        UUID templateId = UUID.randomUUID();
+        WhiteboardTemplate template = mockTemplate(templateId, "MINDMAP", "Mindmap");
+        WhiteboardTemplateElement cardA = mockElement(
+                TemplateElementType.CARD, "a",
+                "{\"type\":\"LABEL\",\"content\":\"A\",\"posX\":0,\"posY\":0,\"width\":100,\"height\":60}");
+        WhiteboardTemplateElement cardB = mockElement(
+                TemplateElementType.CARD, "b",
+                "{\"type\":\"LABEL\",\"content\":\"B\",\"posX\":200,\"posY\":0,\"width\":100,\"height\":60}");
+        WhiteboardTemplateElement connection = mockElement(
+                TemplateElementType.CONNECTION, null,
+                "{\"fromKey\":\"a\",\"toKey\":\"b\",\"label\":\"relie à\",\"color\":\"#000000\","
+                        + "\"shape\":\"straight\",\"lineStyle\":\"dotted\",\"startCap\":\"circle\","
+                        + "\"endCap\":\"diamond\",\"width\":5}");
+        when(templateElementRepository.findAllByTemplateIdOrderByDisplayOrderAsc(templateId))
+                .thenReturn(List.of(cardA, cardB, connection));
+
+        templateService.initializeBoard(template, BOARD_A, TENANT_A, USER_A);
+
+        ArgumentCaptor<CardConnection> captor = ArgumentCaptor.forClass(CardConnection.class);
+        verify(cardConnectionRepository).save(captor.capture());
+        CardConnection saved = captor.getValue();
+        assertThat(saved.getLabel()).isEqualTo("relie à");
+        assertThat(saved.getColor()).isEqualTo("#000000");
+        assertThat(saved.getWidth()).isEqualTo(5);
+        assertThat(saved.getShape()).isEqualTo("straight");
+        assertThat(saved.getLineStyle()).isEqualTo("dotted");
+        assertThat(saved.getStartCap()).isEqualTo("circle");
+        assertThat(saved.getEndCap()).isEqualTo("diamond");
+    }
+
+    /**
+     * Given a FIELD element specifying {@code emoji} and a SELECT {@code options} array, when
+     * initializeBoard() is called, then the materialized {@link BoardField} carries both.
+     */
+    @Test
+    void initializeBoard_fieldWithEmojiAndOptions_materializesBoth() {
+        UUID templateId = UUID.randomUUID();
+        WhiteboardTemplate template = mockTemplate(templateId, "VISUAL_MANAGEMENT", "Visual management");
+        WhiteboardTemplateElement fieldElement = mockElement(
+                TemplateElementType.FIELD, null,
+                "{\"name\":\"Statut\",\"emoji\":\"🚦\",\"type\":\"SELECT\","
+                        + "\"options\":[\"À faire\",\"En cours\"],\"order\":0}");
+        when(templateElementRepository.findAllByTemplateIdOrderByDisplayOrderAsc(templateId))
+                .thenReturn(List.of(fieldElement));
+
+        templateService.initializeBoard(template, BOARD_A, TENANT_A, USER_A);
+
+        ArgumentCaptor<BoardField> captor = ArgumentCaptor.forClass(BoardField.class);
+        verify(boardFieldRepository).save(captor.capture());
+        BoardField saved = captor.getValue();
+        assertThat(saved.getName()).isEqualTo("Statut");
+        assertThat(saved.getEmoji()).isEqualTo("🚦");
+        assertThat(saved.getType()).isEqualTo(FieldType.SELECT);
+        assertThat(saved.getOptions()).contains("À faire", "En cours");
+    }
+
+    /**
      * Given a template with no elements, when initializeBoard() is called,
      * then no materialization repository is invoked.
      */
@@ -411,6 +506,78 @@ class WhiteboardTemplateServiceTest {
         assertThat(captor.getValue().get(0).getLocalKey()).isEqualTo(frame.getId().toString());
         assertThat(captor.getValue().get(1).getElementType()).isEqualTo(TemplateElementType.CARD);
         assertThat(captor.getValue().get(1).getLocalKey()).isEqualTo(card.getId().toString());
+    }
+
+    /**
+     * Given a board with a custom field, a connection between two cards, and a card field
+     * value, when createFromBoard() is called, then one FIELD, one CONNECTION, and one
+     * FIELD_VALUE element are captured, each payload carrying the source entity's data verbatim
+     * (including a SELECT field's {@code options} and a styled connection's {@code label}/
+     * {@code color}).
+     */
+    @Test
+    void createFromBoard_capturesFieldsConnectionsAndFieldValues() {
+        when(templateRepository.save(any(WhiteboardTemplate.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        Card fromCard = new Card(BOARD_A, TENANT_A, CardType.TEXT, "De", 0, 0, Instant.now());
+        setId(fromCard, UUID.randomUUID());
+        Card toCard = new Card(BOARD_A, TENANT_A, CardType.TEXT, "Vers", 100, 0, Instant.now());
+        setId(toCard, UUID.randomUUID());
+
+        CardConnection connection =
+                new CardConnection(BOARD_A, TENANT_A, fromCard.getId(), toCard.getId(), Instant.now());
+        connection.setLabel("relie à");
+        connection.setColor("#000000");
+
+        BoardField field = new BoardField(
+                BOARD_A, TENANT_A, "Statut", null, FieldType.SELECT,
+                "[\"À faire\",\"En cours\"]", 0, Instant.now());
+        setFieldId(field, UUID.randomUUID());
+
+        CardFieldValue value =
+                new CardFieldValue(
+                        fromCard.getId(), field.getId(), "En cours");
+
+        when(frameRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(BOARD_A, TENANT_A))
+                .thenReturn(List.of());
+        when(cardRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(BOARD_A, TENANT_A))
+                .thenReturn(List.of(fromCard, toCard));
+        when(boardFieldRepository.findAllByBoardIdOrderByOrderAscCreatedAtAsc(BOARD_A))
+                .thenReturn(List.of(field));
+        when(cardConnectionRepository.findAllByBoardIdAndTenantId(BOARD_A, TENANT_A))
+                .thenReturn(List.of(connection));
+        when(cardFieldValueRepository.findByCardId(fromCard.getId())).thenReturn(List.of(value));
+        when(cardFieldValueRepository.findByCardId(toCard.getId())).thenReturn(List.of());
+
+        templateService.createFromBoard(BOARD_A, TENANT_A, "With relations", null);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<WhiteboardTemplateElement>> captor = ArgumentCaptor.forClass(List.class);
+        verify(templateElementRepository).saveAll(captor.capture());
+        List<WhiteboardTemplateElement> elements = captor.getValue();
+
+        WhiteboardTemplateElement fieldElement = elements.stream()
+                .filter(e -> e.getElementType() == TemplateElementType.FIELD).findFirst().orElseThrow();
+        assertThat(fieldElement.getPayload())
+                .contains("\"name\":\"Statut\"")
+                .contains("À faire")
+                .contains("En cours");
+
+        WhiteboardTemplateElement connectionElement = elements.stream()
+                .filter(e -> e.getElementType() == TemplateElementType.CONNECTION).findFirst().orElseThrow();
+        assertThat(connectionElement.getPayload())
+                .contains("\"fromKey\":\"" + fromCard.getId() + "\"")
+                .contains("\"toKey\":\"" + toCard.getId() + "\"")
+                .contains("relie à")
+                .contains("#000000");
+
+        WhiteboardTemplateElement fieldValueElement = elements.stream()
+                .filter(e -> e.getElementType() == TemplateElementType.FIELD_VALUE).findFirst().orElseThrow();
+        assertThat(fieldValueElement.getPayload())
+                .contains("\"cardKey\":\"" + fromCard.getId() + "\"")
+                .contains("\"fieldKey\":\"" + field.getId() + "\"")
+                .contains("En cours");
     }
 
     /**
