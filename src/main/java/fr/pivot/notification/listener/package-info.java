@@ -12,6 +12,14 @@
  *       ici : {@code fr.pivot.auth.service.AdminUserService} appelle directement
  *       {@code NotificationService#create} (déjà fusionné sur {@code main}, pas d'événement à
  *       écouter — voir {@link fr.pivot.notification.service.NotificationType}).</li>
+ *   <li>{@link fr.pivot.notification.listener.BoardMembershipNotificationListener} (US08.2.5) —
+ *       consomme {@code fr.pivot.collaboratif.whiteboard.member.event.BoardMembershipNotificationRequestedEvent},
+ *       publié par {@code BoardMemberService} (module {@code collaboratif}). Ici l'événement
+ *       n'est pas un choix stylistique parmi d'autres (cf. option 2 ci-dessous pour US01.5.1/
+ *       US01.4.3a) : {@code collaboratif} ne peut pas appeler {@code NotificationService}
+ *       directement — ce module {@code app} dépend de {@code collaboratif} dans le reactor
+ *       Maven, jamais l'inverse, donc un appel direct casserait le build (dépendance
+ *       circulaire).</li>
  * </ul>
  *
  * <p><strong>Points d'intégration documentés, non câblés — voir EN-NOTIF AC « producteurs

@@ -12,9 +12,9 @@ import fr.pivot.collaboratif.whiteboard.board.BoardMemberRepository;
 import fr.pivot.collaboratif.whiteboard.board.BoardRepository;
 import fr.pivot.collaboratif.whiteboard.board.BoardRole;
 import fr.pivot.collaboratif.whiteboard.member.dto.MemberResponse;
-import fr.pivot.notification.service.NotificationPayload;
-import fr.pivot.notification.service.NotificationService;
-import fr.pivot.notification.service.NotificationType;
+import fr.pivot.collaboratif.whiteboard.member.event.BoardMembershipNotificationRequestedEvent;
+import fr.pivot.collaboratif.whiteboard.member.event.BoardMembershipNotificationRequestedEvent.Kind;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,10 +29,12 @@ import java.util.UUID;
  * <p>Enforces tenant isolation and role-based access control: only the OWNER may invite, change
  * roles, or remove members. Any caller with access (OWNER, EDITOR, VIEWER) may list members.
  *
- * <p><strong>Notification channel.</strong> State-changing operations emit
- * {@link NotificationType#BOARD_SHARED}/{@code BOARD_ROLE_CHANGED}/{@code BOARD_ACCESS_REVOKED}
- * through the shared platform-wide {@link NotificationService} (EN-NOTIF) — STOMP push, i18n via
- * {@code MessageSource}, {@code GET /notifications} — rather than a whiteboard-local duplicate.
+ * <p><strong>Notification channel.</strong> State-changing operations publish {@link
+ * BoardMembershipNotificationRequestedEvent} rather than calling the shared platform-wide
+ * notification system directly — {@code fr.pivot.notification.*} lives in the {@code app} Maven
+ * module, which depends on this module, not the reverse, so a direct call would be a circular
+ * build dependency. See that event's Javadoc for the full rationale and the listener that bridges
+ * it (EN-NOTIF).
  */
 @Service
 @Transactional(readOnly = true)
@@ -41,7 +43,7 @@ public class BoardMemberService {
     private final BoardRepository boardRepository;
     private final BoardMemberRepository boardMemberRepository;
     private final UserDirectoryRepository userDirectoryRepository;
-    private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Creates the service with all required dependencies.
@@ -49,17 +51,18 @@ public class BoardMemberService {
      * @param boardRepository         repository for board persistence
      * @param boardMemberRepository   repository for board membership persistence
      * @param userDirectoryRepository read-only e-mail resolution against {@code public.users}
-     * @param notificationService     shared platform in-app notification emitter (EN-NOTIF)
+     * @param eventPublisher          publishes {@link BoardMembershipNotificationRequestedEvent}
+     *                                for the {@code app} module's notification listener
      */
     public BoardMemberService(
             final BoardRepository boardRepository,
             final BoardMemberRepository boardMemberRepository,
             final UserDirectoryRepository userDirectoryRepository,
-            final NotificationService notificationService) {
+            final ApplicationEventPublisher eventPublisher) {
         this.boardRepository = boardRepository;
         this.boardMemberRepository = boardMemberRepository;
         this.userDirectoryRepository = userDirectoryRepository;
-        this.notificationService = notificationService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -143,8 +146,8 @@ public class BoardMemberService {
         if (existing == null) {
             BoardMember created = boardMemberRepository.save(
                     new BoardMember(new BoardMemberId(boardId, inviteeId), role, Instant.now()));
-            notificationService.create(inviteeId, NotificationType.BOARD_SHARED,
-                    NotificationPayload.of(board.getTitle(), role.name()));
+            eventPublisher.publishEvent(new BoardMembershipNotificationRequestedEvent(
+                    inviteeId, Kind.SHARED, boardId, board.getTitle(), role.name()));
             logAuditEvent("MemberInvited", boardId, callerId,
                     "invitee=" + inviteeId + " role=" + role);
             return MemberResponse.from(created);
@@ -152,8 +155,8 @@ public class BoardMemberService {
         if (existing.getRole() != role) {
             existing.setRole(role);
             BoardMember saved = boardMemberRepository.save(existing);
-            notificationService.create(inviteeId, NotificationType.BOARD_ROLE_CHANGED,
-                    NotificationPayload.of(board.getTitle(), role.name()));
+            eventPublisher.publishEvent(new BoardMembershipNotificationRequestedEvent(
+                    inviteeId, Kind.ROLE_CHANGED, boardId, board.getTitle(), role.name()));
             logAuditEvent("MemberInviteRoleChanged", boardId, callerId,
                     "invitee=" + inviteeId + " role=" + role);
             return MemberResponse.from(saved);
@@ -198,8 +201,8 @@ public class BoardMemberService {
                 .orElseThrow(() -> new BoardMemberNotFoundException(boardId, targetUserId));
         member.setRole(newRole);
         BoardMember saved = boardMemberRepository.save(member);
-        notificationService.create(targetUserId, NotificationType.BOARD_ROLE_CHANGED,
-                NotificationPayload.of(board.getTitle(), newRole.name()));
+        eventPublisher.publishEvent(new BoardMembershipNotificationRequestedEvent(
+                targetUserId, Kind.ROLE_CHANGED, boardId, board.getTitle(), newRole.name()));
         logAuditEvent("MemberRoleUpdated", boardId, callerId,
                 "targetUser=" + targetUserId + " newRole=" + newRole);
         return MemberResponse.from(saved);
@@ -235,8 +238,8 @@ public class BoardMemberService {
                 .findByIdBoardIdAndIdUserId(boardId, targetUserId)
                 .orElseThrow(() -> new BoardMemberNotFoundException(boardId, targetUserId));
         boardMemberRepository.delete(member);
-        notificationService.create(targetUserId, NotificationType.BOARD_ACCESS_REVOKED,
-                NotificationPayload.of(board.getTitle()));
+        eventPublisher.publishEvent(new BoardMembershipNotificationRequestedEvent(
+                targetUserId, Kind.ACCESS_REVOKED, boardId, board.getTitle(), null));
         logAuditEvent("MemberRemoved", boardId, callerId, "targetUser=" + targetUserId);
     }
 

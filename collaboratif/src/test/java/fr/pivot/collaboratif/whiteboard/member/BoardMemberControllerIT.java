@@ -7,14 +7,15 @@ import fr.pivot.collaboratif.whiteboard.board.BoardMember;
 import fr.pivot.collaboratif.whiteboard.board.BoardMemberId;
 import fr.pivot.collaboratif.whiteboard.board.BoardMemberRepository;
 import fr.pivot.collaboratif.whiteboard.board.BoardRole;
-import fr.pivot.notification.entity.Notification;
-import fr.pivot.notification.repository.NotificationRepository;
-import fr.pivot.notification.service.NotificationType;
+import fr.pivot.collaboratif.whiteboard.member.event.BoardMembershipNotificationRequestedEvent;
+import fr.pivot.collaboratif.whiteboard.member.event.BoardMembershipNotificationRequestedEvent.Kind;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
@@ -40,10 +41,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>Covers US08.2.3 acceptance criteria: listing members (GET), changing roles (PATCH),
  * and removing members (DELETE); and US08.2.5 (named e-mail invitations, POST), including
- * OWNER-only access control, 404/403/400 cases, and the shared {@code fr.pivot.notification}
- * side effects ({@code BOARD_SHARED}/{@code BOARD_ROLE_CHANGED}/{@code BOARD_ACCESS_REVOKED}).
+ * OWNER-only access control, 404/403/400 cases, and the {@link BoardMembershipNotificationRequestedEvent}
+ * side effects this module publishes towards the shared notification system (verified here as
+ * published events, not as persisted {@code fr.pivot.notification} rows — this module cannot
+ * depend on that package, see the event's own Javadoc).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@RecordApplicationEvents
 class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
 
     private static final String BOARDS_PATH = "/collaboratif/whiteboard/boards";
@@ -55,7 +59,7 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
     private BoardMemberRepository boardMemberRepository;
 
     @Autowired
-    private NotificationRepository notificationRepository;
+    private ApplicationEvents events;
 
     private MockMvc mockMvc;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -261,7 +265,7 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isNoContent());
 
-        assertThat(notificationsFor(editorId, NotificationType.BOARD_ACCESS_REVOKED)).hasSize(1);
+        assertThat(notificationsFor(editorId, Kind.ACCESS_REVOKED)).hasSize(1);
     }
 
     @Test
@@ -272,7 +276,7 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                         .content("{\"role\": \"VIEWER\"}"))
                 .andExpect(status().isOk());
 
-        assertThat(notificationsFor(editorId, NotificationType.BOARD_ROLE_CHANGED)).hasSize(1);
+        assertThat(notificationsFor(editorId, Kind.ROLE_CHANGED)).hasSize(1);
     }
 
     // -------------------------------------------------------------------------
@@ -294,7 +298,7 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                 .andExpect(jsonPath("$.userId").value(inviteeId))
                 .andExpect(jsonPath("$.role").value("VIEWER"));
 
-        assertThat(notificationsFor(inviteeId, NotificationType.BOARD_SHARED)).hasSize(1);
+        assertThat(notificationsFor(inviteeId, Kind.SHARED)).hasSize(1);
     }
 
     @Test
@@ -322,7 +326,7 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                 .andExpect(jsonPath("$.userId").value(editorId))
                 .andExpect(jsonPath("$.role").value("VIEWER"));
 
-        assertThat(notificationsFor(editorId, NotificationType.BOARD_ROLE_CHANGED)).hasSize(1);
+        assertThat(notificationsFor(editorId, Kind.ROLE_CHANGED)).hasSize(1);
         assertThat(boardMemberRepository.findByIdBoardIdAndIdUserId(boardId, editorId))
                 .isPresent()
                 .get()
@@ -339,8 +343,8 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.role").value("EDITOR"));
 
-        assertThat(notificationsFor(editorId, NotificationType.BOARD_ROLE_CHANGED)).isEmpty();
-        assertThat(notificationsFor(editorId, NotificationType.BOARD_SHARED)).isEmpty();
+        assertThat(notificationsFor(editorId, Kind.ROLE_CHANGED)).isEmpty();
+        assertThat(notificationsFor(editorId, Kind.SHARED)).isEmpty();
     }
 
     @Test
@@ -450,7 +454,10 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                 : "{\"email\": \"" + email + "\", \"role\": \"" + role + "\"}";
     }
 
-    private List<Notification> notificationsFor(final long userId, final NotificationType type) {
-        return notificationRepository.findByUserIdAndType(userId, type);
+    private List<BoardMembershipNotificationRequestedEvent> notificationsFor(
+            final long userId, final Kind kind) {
+        return events.stream(BoardMembershipNotificationRequestedEvent.class)
+                .filter(e -> e.recipientUserId() == userId && e.kind() == kind)
+                .toList();
     }
 }
