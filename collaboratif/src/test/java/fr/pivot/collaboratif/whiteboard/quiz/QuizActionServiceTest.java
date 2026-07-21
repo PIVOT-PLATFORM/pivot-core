@@ -219,7 +219,7 @@ class QuizActionServiceTest {
 
         service.handle(BOARD_ID, new CanvasActionMessage("quiz:start", validStartPayload()), principal());
 
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     // =========================================================================
@@ -308,7 +308,7 @@ class QuizActionServiceTest {
         service.handle(BOARD_ID, new CanvasActionMessage("quiz:answer", data), principal());
 
         verify(answerRepository, never()).save(any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     @Test
@@ -323,7 +323,7 @@ class QuizActionServiceTest {
         service.handle(BOARD_ID, new CanvasActionMessage("quiz:answer", data), principal());
 
         verify(answerRepository, never()).save(any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
         verify(questionRepository, never()).findBySessionIdAndPosition(any(), anyInt());
     }
 
@@ -340,7 +340,7 @@ class QuizActionServiceTest {
         service.handle(BOARD_ID, new CanvasActionMessage("quiz:answer", data), principal());
 
         verify(answerRepository, never()).save(any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     @Test
@@ -359,7 +359,7 @@ class QuizActionServiceTest {
 
         verify(answerRepository, never()).save(any());
         verify(choiceRepository, never()).countByIdAndQuestionId(any(), any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     // =========================================================================
@@ -402,7 +402,7 @@ class QuizActionServiceTest {
 
         assertThat(session.getCurrentQuestionIndex()).isEqualTo(0);
         verify(quizSessionRepository, never()).save(any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     @Test
@@ -413,7 +413,7 @@ class QuizActionServiceTest {
         service.handle(BOARD_ID, new CanvasActionMessage("quiz:next", data), principal());
 
         verify(quizSessionRepository, never()).findForUpdate(any(), any(), any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     // =========================================================================
@@ -465,7 +465,7 @@ class QuizActionServiceTest {
         service.handle(BOARD_ID, new CanvasActionMessage("quiz:reveal", data), principal());
 
         verify(quizSessionRepository, never()).findForUpdate(any(), any(), any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     @Test
@@ -479,7 +479,7 @@ class QuizActionServiceTest {
         service.handle(BOARD_ID, new CanvasActionMessage("quiz:reveal", data), principal());
 
         verify(quizSessionRepository, never()).save(any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     // =========================================================================
@@ -526,7 +526,7 @@ class QuizActionServiceTest {
         service.handle(BOARD_ID, new CanvasActionMessage("quiz:stop", data), principal());
 
         verify(quizSessionRepository, never()).findForUpdate(any(), any(), any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     // =========================================================================
@@ -547,7 +547,7 @@ class QuizActionServiceTest {
 
     private void verifyNoStartSideEffects() {
         verify(quizSessionRepository, never()).save(any());
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     private void stubManager(final BoardRole role) {
@@ -622,8 +622,9 @@ class QuizActionServiceTest {
      */
     private static void assertNoCorrectKeyAnywhere(final Object node) {
         if (node instanceof Map<?, ?> map) {
-            assertThat(map).as("broadcast payload must never carry a 'correct' key before reveal")
-                    .doesNotContainKey("correct");
+            assertThat(map.containsKey("correct"))
+                    .as("broadcast payload must never carry a 'correct' key before reveal")
+                    .isFalse();
             map.values().forEach(QuizActionServiceTest::assertNoCorrectKeyAnywhere);
         } else if (node instanceof List<?> list) {
             list.forEach(QuizActionServiceTest::assertNoCorrectKeyAnywhere);
