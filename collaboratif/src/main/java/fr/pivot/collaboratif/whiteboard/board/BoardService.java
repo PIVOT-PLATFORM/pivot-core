@@ -203,7 +203,7 @@ public class BoardService {
         }
         WhiteboardTemplate template = null;
         if (templateId != null && !templateId.isBlank()) {
-            template = templateService.resolveGlobalTemplate(templateId);
+            template = templateService.resolveInstantiableTemplate(templateId, userId, tenantId);
         }
         Instant now = Instant.now();
         Board newBoard = new Board(title, tenantId, userId, now);

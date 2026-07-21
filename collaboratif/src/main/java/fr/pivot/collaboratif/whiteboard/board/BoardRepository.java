@@ -119,4 +119,28 @@ public interface BoardRepository extends JpaRepository<Board, UUID> {
               AND (b.ownerId = :userId OR bm.id.userId = :userId)
             """)
     List<UUID> findAccessibleBoardIds(@Param("userId") Long userId, @Param("tenantId") Long tenantId);
+
+    /**
+     * Finds the caller's editing draft for a template, if one is open (US08.13.2).
+     *
+     * <p>At most one draft can exist per (user, template) pair — the spec reuses an existing draft
+     * rather than opening a second one, so this returns an {@link Optional} rather than a list.
+     *
+     * @param ownerId         the draft owner's {@code public.users.id}
+     * @param templateDraftOf the drafted template's UUID
+     * @return the open draft, or empty if none
+     */
+    Optional<Board> findByOwnerIdAndTemplateDraftOf(Long ownerId, UUID templateDraftOf);
+
+    /**
+     * Deletes the caller's draft for a template, if any (US08.13.2).
+     *
+     * <p>Idempotent by construction: deleting nothing is a valid outcome, which is what lets
+     * {@code discard-draft} answer 204 without a prior read.
+     *
+     * @param ownerId         the draft owner's {@code public.users.id}
+     * @param templateDraftOf the drafted template's UUID
+     * @return the number of boards deleted (0 or 1)
+     */
+    long deleteByOwnerIdAndTemplateDraftOf(Long ownerId, UUID templateDraftOf);
 }
