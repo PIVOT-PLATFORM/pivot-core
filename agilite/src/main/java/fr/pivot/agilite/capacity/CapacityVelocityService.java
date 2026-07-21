@@ -78,7 +78,9 @@ public class CapacityVelocityService {
      * @return the upserted velocity snapshot
      * @throws CapacityEventNotFoundException if the event does not exist, belongs to another
      *                                         tenant, or the caller is not a member of its team
-     * @throws CapacityValidationException    if the event is not a {@link CapacityEventType#SPRINT}
+     * @throws CapacityValidationException    if the event is not a {@link CapacityEventType#SPRINT},
+     *                                         or {@code pointsEngages}/{@code pointsLivres} is
+     *                                         missing
      * @throws CapacityAccessDeniedException  if the caller is a {@link TeamMember#ROLE_MEMBRE}
      *                                         (VIEWER) of the event's team
      */
@@ -93,8 +95,14 @@ public class CapacityVelocityService {
             velocityRepository.flush();
         });
 
-        CapacityVelocity created = new CapacityVelocity(
-                eventId, request.pointsEngages(), request.pointsLivres(), Instant.now());
+        Double pointsEngages = request.pointsEngages();
+        Double pointsLivres = request.pointsLivres();
+        if (pointsEngages == null || pointsLivres == null) {
+            throw new CapacityValidationException(
+                    "INVALID_POINTS", "pointsEngages and pointsLivres are required");
+        }
+
+        CapacityVelocity created = new CapacityVelocity(eventId, pointsEngages, pointsLivres, Instant.now());
         return CapacityVelocityResponse.from(velocityRepository.save(created));
     }
 

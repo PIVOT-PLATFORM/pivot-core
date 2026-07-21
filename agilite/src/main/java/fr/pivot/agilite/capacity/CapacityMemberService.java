@@ -72,8 +72,8 @@ public class CapacityMemberService {
      * @throws CapacityEventNotFoundException if the event does not exist, belongs to another
      *                                         tenant, or the caller is not a member of its team
      * @throws CapacityAccessDeniedException  if the caller lacks a write-capable role
-     * @throws CapacityValidationException    if {@code quotite}/{@code focusFactor} are out of
-     *                                         range
+     * @throws CapacityValidationException    if {@code quotite} is missing or out of range, or
+     *                                         {@code focusFactor} is out of range
      */
     public CapacityMemberResponse addMember(
             final UUID eventId, final CapacityMemberRequest request,
@@ -81,7 +81,7 @@ public class CapacityMemberService {
         CapacityEvent event = eventRepository.findByIdAndTenantId(eventId, tenantId)
                 .orElseThrow(() -> new CapacityEventNotFoundException(eventId));
         requireWriteAccess(event, callerId);
-        validateQuotite(request.quotite());
+        double quotite = validateQuotite(request.quotite());
         validateFocusFactor(request.focusFactor());
 
         CapacityEventMember member = new CapacityEventMember(
@@ -89,7 +89,7 @@ public class CapacityMemberService {
                 request.teamMemberRef(),
                 request.name(),
                 request.role(),
-                request.quotite(),
+                quotite,
                 request.position() != null ? request.position() : 0);
         member.setFocusFactor(request.focusFactor());
         member.setLocality(request.locality());
@@ -112,8 +112,9 @@ public class CapacityMemberService {
      *                                               belongs to another tenant, or the caller is
      *                                               not a member of its team
      * @throws CapacityAccessDeniedException         if the caller lacks a write-capable role
-     * @throws CapacityValidationException           if {@code quotite}/{@code focusFactor} are
-     *                                                out of range
+     * @throws CapacityValidationException           if {@code quotite} is missing or out of
+     *                                                range, or {@code focusFactor} is out of
+     *                                                range
      */
     public CapacityMemberResponse updateMember(
             final UUID memberId, final CapacityMemberRequest request,
@@ -123,12 +124,12 @@ public class CapacityMemberService {
         CapacityEvent event = eventRepository.findByIdAndTenantId(member.getEventId(), tenantId)
                 .orElseThrow(() -> new CapacityEventMemberNotFoundException(memberId));
         requireWriteAccess(event, callerId, () -> new CapacityEventMemberNotFoundException(memberId));
-        validateQuotite(request.quotite());
+        double quotite = validateQuotite(request.quotite());
         validateFocusFactor(request.focusFactor());
 
         member.setName(request.name());
         member.setRole(request.role());
-        member.setQuotite(request.quotite());
+        member.setQuotite(quotite);
         member.setFocusFactor(request.focusFactor());
         member.setLocality(request.locality());
         if (request.excluded() != null) {
@@ -176,7 +177,7 @@ public class CapacityMemberService {
      *                                               not a member of its team
      * @throws CapacityAccessDeniedException         if the caller lacks a write-capable role
      * @throws CapacityValidationException           if the date range, absence window, or
-     *                                                fraction are invalid
+     *                                                fraction are invalid or missing
      */
     public CapacityAbsenceResponse addAbsence(
             final UUID memberId, final CapacityAbsenceRequest request,
@@ -196,12 +197,14 @@ public class CapacityMemberService {
             throw new CapacityValidationException(
                     "ABSENCE_OUT_OF_RANGE", "Absence must fall within its event's date window");
         }
-        double fraction = request.fraction();
-        if (Double.compare(fraction, CapacityAbsence.FRACTION_FULL_DAY) != 0
-                && Double.compare(fraction, CapacityAbsence.FRACTION_HALF_DAY) != 0) {
+        Double requestedFraction = request.fraction();
+        if (requestedFraction == null
+                || (Double.compare(requestedFraction, CapacityAbsence.FRACTION_FULL_DAY) != 0
+                        && Double.compare(requestedFraction, CapacityAbsence.FRACTION_HALF_DAY) != 0)) {
             throw new CapacityValidationException(
                     "INVALID_FRACTION", "Absence fraction must be 1 or 0.5");
         }
+        double fraction = requestedFraction;
         String source = request.source() != null ? request.source() : CapacityAbsence.SOURCE_MANUAL;
 
         CapacityAbsence absence = new CapacityAbsence(
@@ -271,15 +274,17 @@ public class CapacityMemberService {
     }
 
     /**
-     * Validates {@code quotite} is in {@code (0, 1]}.
+     * Validates {@code quotite} is present and in {@code (0, 1]}.
      *
-     * @param quotite the value to validate
-     * @throws CapacityValidationException if out of range
+     * @param quotite the value to validate, may be {@code null}
+     * @return the validated, non-null quotite
+     * @throws CapacityValidationException if missing or out of range
      */
-    private void validateQuotite(final double quotite) {
-        if (quotite <= 0 || quotite > 1) {
+    private double validateQuotite(final Double quotite) {
+        if (quotite == null || quotite <= 0 || quotite > 1) {
             throw new CapacityValidationException("INVALID_QUOTITE", "quotite must be in (0, 1]");
         }
+        return quotite;
     }
 
     /**
