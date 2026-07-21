@@ -16,6 +16,10 @@ import jakarta.persistence.Table;
  * and {@code is_active}. Resolution is always tenant-scoped: a match must belong to the inviting
  * caller's tenant, so an e-mail from another tenant is treated as unknown (404), preventing
  * cross-tenant e-mail enumeration.
+ *
+ * <p>Also maps {@code first_name}, {@code last_name} and {@code avatar_url} (all nullable) so the
+ * share panel can display a member's identity instead of a raw numeric id. These are read the same
+ * tenant-scoped way, exposed only to callers already granted board access.
  */
 @Entity
 @Table(schema = "public", name = "users")
@@ -32,6 +36,15 @@ public class UserDirectoryEntry {
 
     @Column(name = "is_active", nullable = false)
     private boolean active;
+
+    @Column(name = "first_name")
+    private String firstName;
+
+    @Column(name = "last_name")
+    private String lastName;
+
+    @Column(name = "avatar_url")
+    private String avatarUrl;
 
     /** No-argument constructor required by JPA. */
     protected UserDirectoryEntry() {
@@ -71,5 +84,34 @@ public class UserDirectoryEntry {
      */
     public boolean isActive() {
         return active;
+    }
+
+    /**
+     * Returns the user's first name.
+     *
+     * @return the {@code first_name}, or {@code null} if never set (local account, or OIDC
+     *         provider that omitted the {@code given_name} claim)
+     */
+    public String getFirstName() {
+        return firstName;
+    }
+
+    /**
+     * Returns the user's last name.
+     *
+     * @return the {@code last_name}, or {@code null} if never set
+     */
+    public String getLastName() {
+        return lastName;
+    }
+
+    /**
+     * Returns the user's avatar URL.
+     *
+     * @return the {@code avatar_url} (an IdP {@code picture} claim or a locally served
+     *         {@code /api/avatars/...} path), or {@code null} if none
+     */
+    public String getAvatarUrl() {
+        return avatarUrl;
     }
 }

@@ -88,9 +88,9 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
         ownerToken = ownerFixture.rawToken();
 
         editorEmail = "editor-" + UUID.randomUUID() + "@pivot.invalid";
-        editorId = PlatformAuthTestSupport.seedUserWithEmail(
+        editorId = PlatformAuthTestSupport.seedUserWithName(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
-                tenantId, editorEmail, true);
+                tenantId, editorEmail, "Marie", "Dupont");
         editorToken = PlatformAuthTestSupport.issueToken(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
                 editorId, "active", Instant.now().plusSeconds(3600));
@@ -125,7 +125,44 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].role").value("OWNER"))
                 .andExpect(jsonPath("$[1].userId").value(editorId))
-                .andExpect(jsonPath("$[1].role").value("EDITOR"));
+                .andExpect(jsonPath("$[1].role").value("EDITOR"))
+                .andExpect(jsonPath("$[1].email").value(editorEmail))
+                .andExpect(jsonPath("$[1].firstName").value("Marie"))
+                .andExpect(jsonPath("$[1].lastName").value("Dupont"));
+    }
+
+    @Test
+    void listMembers_memberFromAnotherTenant_returnsNullIdentity() throws Exception {
+        // FK board_member.user_id -> public.users : l'utilisateur DOIT exister, mais dans un
+        // autre tenant. La résolution d'annuaire est tenant-scopée => identité non résolue (null),
+        // exactement le cas « compte hors tenant » du design.
+        long otherTenantId = PlatformAuthTestSupport.seedTenant(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(), null);
+        long foreignUserId = PlatformAuthTestSupport.seedUserWithName(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
+                otherTenantId, "foreign-" + UUID.randomUUID() + "@pivot.invalid", "Ghost", "User");
+        boardMemberRepository.save(new BoardMember(
+                new BoardMemberId(boardId, foreignUserId), BoardRole.VIEWER, Instant.now()));
+
+        String body = mockMvc.perform(get(BOARDS_PATH + "/" + boardId + "/members")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(3)))
+                .andReturn()
+                .getResponse().getContentAsString();
+
+        JsonNode foreign = null;
+        for (JsonNode node : mapper.readTree(body)) {
+            if (node.get("userId").asLong() == foreignUserId) {
+                foreign = node;
+                break;
+            }
+        }
+        assertThat(foreign).as("foreign-tenant member present in list").isNotNull();
+        assertThat(foreign.get("role").asText()).isEqualTo("VIEWER");
+        assertThat(foreign.get("email").isNull()).isTrue();
+        assertThat(foreign.get("firstName").isNull()).isTrue();
+        assertThat(foreign.get("lastName").isNull()).isTrue();
     }
 
     @Test
@@ -296,7 +333,8 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                         .content("{\"email\": \"" + email + "\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.userId").value(inviteeId))
-                .andExpect(jsonPath("$.role").value("VIEWER"));
+                .andExpect(jsonPath("$.role").value("VIEWER"))
+                .andExpect(jsonPath("$.email").value(email));
 
         assertThat(notificationsFor(inviteeId, Kind.SHARED)).hasSize(1);
     }
