@@ -2,8 +2,11 @@ package fr.pivot.agilite.poker.ticket;
 
 import fr.pivot.agilite.context.RequestPrincipal;
 import fr.pivot.agilite.poker.ticket.dto.CreateTicketRequest;
+import fr.pivot.agilite.poker.ticket.dto.FinalizeTicketRequest;
 import fr.pivot.agilite.poker.ticket.dto.RecapResponse;
 import fr.pivot.agilite.poker.ticket.dto.RevealResponse;
+import fr.pivot.agilite.poker.ticket.dto.TicketFinalizedResponse;
+import fr.pivot.agilite.poker.ticket.dto.TicketResetResponse;
 import fr.pivot.agilite.poker.ticket.dto.TicketResponse;
 import fr.pivot.agilite.web.AgiliteApiPaths;
 import jakarta.validation.Valid;
@@ -20,7 +23,8 @@ import java.util.UUID;
 
 /**
  * REST controller exposing planning poker ticket operations under {@code
- * /poker/rooms/{roomId}/tickets} (US09.2.1 creation/lookup, US09.2.2 revelation, E09 recap).
+ * /poker/rooms/{roomId}/tickets} (US09.2.1 creation/lookup, US09.2.2 revelation, E09 recap,
+ * US09.2.3 reset/finalization).
  *
  * <p>All endpoints require a valid {@code Authorization: Bearer <token>} header, resolved into a
  * {@link RequestPrincipal} by {@code RequestPrincipalResolver}. Missing, malformed, or rejected
@@ -90,6 +94,46 @@ public class PokerTicketController {
             @PathVariable final UUID ticketId,
             final RequestPrincipal principal) {
         return service.reveal(roomId, ticketId, principal.userId(), principal.tenantId());
+    }
+
+    /**
+     * Relaunches a round of voting on an already-revealed ticket, restricted to that room's
+     * facilitator (US09.2.3). A transition of an existing resource — HTTP 200, not 201.
+     *
+     * @param roomId    the target room
+     * @param ticketId  the ticket to reset
+     * @param principal the resolved caller identity (user + tenant)
+     * @return the reset ticket, back to {@code VOTING} with {@code revealedAt == null}, HTTP 200 OK
+     */
+    @PostMapping("/{ticketId}/reset")
+    public TicketResetResponse reset(
+            @PathVariable final UUID roomId,
+            @PathVariable final UUID ticketId,
+            final RequestPrincipal principal) {
+        return service.reset(roomId, ticketId, principal.userId(), principal.tenantId());
+    }
+
+    /**
+     * Persists the facilitator's chosen final estimate on an already-revealed ticket, restricted
+     * to that room's facilitator (US09.2.3). A transition of an existing resource — HTTP 200, not
+     * 201. Named {@code finalizeTicket} rather than {@code finalize} (SonarCloud java:S1175) to
+     * avoid any possible confusion with {@link Object#finalize()}.
+     *
+     * @param roomId    the target room
+     * @param ticketId  the ticket to finalize
+     * @param request   the facilitator's chosen final estimate
+     * @param principal the resolved caller identity (user + tenant)
+     * @return the finalized ticket, still {@code REVEALED}, with {@code finalEstimate} set, HTTP
+     *     200 OK
+     */
+    @PostMapping("/{ticketId}/finalize")
+    public TicketFinalizedResponse finalizeTicket(
+            @PathVariable final UUID roomId,
+            @PathVariable final UUID ticketId,
+            @RequestBody @Valid final FinalizeTicketRequest request,
+            final RequestPrincipal principal) {
+        return service.finalizeEstimate(
+                roomId, ticketId, request.finalEstimate(), principal.userId(), principal.tenantId());
     }
 
     /**

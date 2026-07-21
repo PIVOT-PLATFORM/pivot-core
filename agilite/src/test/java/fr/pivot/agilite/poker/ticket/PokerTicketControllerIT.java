@@ -28,8 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Integration tests for {@link PokerTicketController} exercising the full Spring context against
- * a real PostgreSQL database (Testcontainers) — covers US09.2.1 ticket creation/lookup
- * acceptance criteria.
+ * a real PostgreSQL database (Testcontainers) — covers US09.2.1 ticket creation/lookup, US09.2.2
+ * revelation, and US09.2.3 reset/finalization acceptance criteria.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class PokerTicketControllerIT extends AbstractAgiliteIntegrationTest {
@@ -393,6 +393,348 @@ class PokerTicketControllerIT extends AbstractAgiliteIntegrationTest {
     }
 
     // -------------------------------------------------------------------------
+    // POST /poker/rooms/{roomId}/tickets/{ticketId}/reset (US09.2.3)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Security: given a revealed ticket with cast votes, when {@code POST .../reset} is called
+     * by the facilitator, then it returns HTTP 200 with {@code status == "VOTING"} and {@code
+     * revealedAt == null}, and every {@link PokerVote} row for that ticket is actually deleted
+     * from the database (test TI obligatoire, AC Sécurité).
+     */
+    @Test
+    void resetTicket_asFacilitatorOnRevealedTicket_deletesVotesAndReturnsVoting() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        seedVote(ticketId, "3");
+        seedVote(ticketId, "5");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+        assertThat(voteRepository.findByTicketId(UUID.fromString(ticketId))).hasSize(2);
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reset")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ticketId))
+                .andExpect(jsonPath("$.status").value("VOTING"))
+                .andExpect(jsonPath("$.revealedAt").doesNotExist());
+
+        assertThat(voteRepository.findByTicketId(UUID.fromString(ticketId))).isEmpty();
+        PokerTicket persisted = ticketRepository.findById(UUID.fromString(ticketId)).orElseThrow();
+        assertThat(persisted.getStatus()).isEqualTo(PokerTicketStatus.VOTING);
+        assertThat(persisted.getRevealedAt()).isNull();
+    }
+
+    /**
+     * Given a ticket reset then revoted, when it is revealed again, then the consensus reflects
+     * only the current round's votes — no trace of the votes erased by the reset.
+     */
+    @Test
+    void resetTicket_thenRevoteAndReveal_consensusOnlyReflectsPostResetVotes() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        seedVote(ticketId, "1");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reset")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+        seedVote(ticketId, "8");
+        seedVote(ticketId, "8");
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.attributedVotes[*].value", org.hamcrest.Matchers.containsInAnyOrder("8", "8")))
+                .andExpect(jsonPath("$.consensus.mean").value(8.0));
+    }
+
+    /**
+     * Error case: given a ticket still {@code VOTING} (never revealed), when {@code
+     * POST .../reset} is called, then it returns HTTP 409 with code {@code TICKET_NOT_REVEALED}.
+     */
+    @Test
+    void resetTicket_ticketStillVoting_returns409() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reset")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TICKET_NOT_REVEALED"));
+    }
+
+    /**
+     * Error case: given a ticket already finalized, when {@code POST .../reset} is called, then
+     * it returns HTTP 409 with code {@code TICKET_ALREADY_FINALIZED} and the persisted final
+     * estimate is left unchanged (test TI obligatoire, AC Sécurité).
+     */
+    @Test
+    void resetTicket_ticketAlreadyFinalized_returns409AndLeavesFinalEstimateUnchanged() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + facilitatorToken)
+                        .content("{\"finalEstimate\": \"5\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reset")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TICKET_ALREADY_FINALIZED"));
+
+        assertThat(ticketRepository.findById(UUID.fromString(ticketId)).orElseThrow().getFinalEstimate())
+                .isEqualTo("5");
+    }
+
+    /**
+     * Security AC: given an authenticated, same-tenant caller who is not the room's facilitator,
+     * when {@code POST .../reset} is called, then it returns HTTP 403 with code {@code
+     * FACILITATOR_ONLY} and the ticket is left unchanged (test TI obligatoire, AC Sécurité).
+     */
+    @Test
+    void resetTicket_notFacilitator_returns403AndLeavesTicketUnchanged() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reset")
+                        .header("Authorization", "Bearer " + otherUserToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FACILITATOR_ONLY"));
+
+        PokerTicket persisted = ticketRepository.findById(UUID.fromString(ticketId)).orElseThrow();
+        assertThat(persisted.getStatus()).isEqualTo(PokerTicketStatus.REVEALED);
+    }
+
+    /**
+     * Security: given a room belonging to another tenant, when {@code POST .../reset} is called,
+     * then it returns HTTP 404 — never confirms cross-tenant existence.
+     */
+    @Test
+    void resetTicket_crossTenantRoom_returns404() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reset")
+                        .header("Authorization", "Bearer " + otherTenantToken))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Error case: given a ticket that exists but belongs to a different room than the one in the
+     * request path, when {@code POST .../reset} is called, then it returns HTTP 404 — never
+     * confirms cross-room existence.
+     */
+    @Test
+    void resetTicket_crossRoomTicket_returns404() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+        String otherRoomId = createRoom(facilitatorToken);
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + otherRoomId + "/tickets/" + ticketId + "/reset")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Error case: given the Authorization bearer header is absent, when {@code
+     * POST .../reset} is called, then it returns HTTP 401.
+     */
+    @Test
+    void resetTicket_missingAuthorization_returns401() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reset"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // -------------------------------------------------------------------------
+    // POST /poker/rooms/{roomId}/tickets/{ticketId}/finalize (US09.2.3)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Given the room's facilitator and a revealed ticket, when {@code POST .../finalize} is
+     * called with a value from the room's deck, then it returns HTTP 200 with {@code status ==
+     * "REVEALED"} and the persisted {@code finalEstimate}.
+     */
+    @Test
+    void finalizeTicket_asFacilitatorWithValidValue_persistsAndReturnsIt() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + facilitatorToken)
+                        .content("{\"finalEstimate\": \"5\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ticketId))
+                .andExpect(jsonPath("$.status").value("REVEALED"))
+                .andExpect(jsonPath("$.finalEstimate").value("5"));
+
+        PokerTicket persisted = ticketRepository.findById(UUID.fromString(ticketId)).orElseThrow();
+        assertThat(persisted.getFinalEstimate()).isEqualTo("5");
+    }
+
+    /**
+     * Error case: given a {@code finalEstimate} absent from the room's own deck, when {@code
+     * POST .../finalize} is called, then it returns HTTP 400 with a message listing the accepted
+     * values.
+     */
+    @Test
+    void finalizeTicket_valueNotInDeck_returns400WithAcceptedValues() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + facilitatorToken)
+                        .content("{\"finalEstimate\": \"999\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail", org.hamcrest.Matchers.containsString("3")));
+    }
+
+    /**
+     * Error case: given an absent/blank {@code finalEstimate}, when {@code POST .../finalize} is
+     * called, then it returns HTTP 400 with code {@code INVALID_FINAL_ESTIMATE}.
+     */
+    @Test
+    void finalizeTicket_blankValue_returns400() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + facilitatorToken)
+                        .content("{\"finalEstimate\": \"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_FINAL_ESTIMATE"));
+    }
+
+    /**
+     * Error case: given a ticket still {@code VOTING}, when {@code POST .../finalize} is called,
+     * then it returns HTTP 409 with code {@code TICKET_NOT_REVEALED}.
+     */
+    @Test
+    void finalizeTicket_ticketStillVoting_returns409() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + facilitatorToken)
+                        .content("{\"finalEstimate\": \"5\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TICKET_NOT_REVEALED"));
+    }
+
+    /**
+     * Error case: given a ticket already finalized, when a second {@code POST .../finalize} is
+     * called, then it returns HTTP 409 with code {@code TICKET_ALREADY_FINALIZED} and the
+     * originally persisted value is left unchanged (test TI obligatoire, AC Sécurité).
+     */
+    @Test
+    void finalizeTicket_alreadyFinalized_returns409AndLeavesValueUnchanged() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + facilitatorToken)
+                        .content("{\"finalEstimate\": \"5\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + facilitatorToken)
+                        .content("{\"finalEstimate\": \"8\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("TICKET_ALREADY_FINALIZED"));
+
+        assertThat(ticketRepository.findById(UUID.fromString(ticketId)).orElseThrow().getFinalEstimate())
+                .isEqualTo("5");
+    }
+
+    /**
+     * Security AC: given an authenticated, same-tenant caller who is not the room's facilitator,
+     * when {@code POST .../finalize} is called, then it returns HTTP 403 with code {@code
+     * FACILITATOR_ONLY} and nothing is persisted (test TI obligatoire, AC Sécurité).
+     */
+    @Test
+    void finalizeTicket_notFacilitator_returns403() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + otherUserToken)
+                        .content("{\"finalEstimate\": \"5\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FACILITATOR_ONLY"));
+
+        assertThat(ticketRepository.findById(UUID.fromString(ticketId)).orElseThrow().getFinalEstimate())
+                .isNull();
+    }
+
+    /**
+     * Security: given a room belonging to another tenant, when {@code POST .../finalize} is
+     * called, then it returns HTTP 404 — never confirms cross-tenant existence.
+     */
+    @Test
+    void finalizeTicket_crossTenantRoom_returns404() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + otherTenantToken)
+                        .content("{\"finalEstimate\": \"5\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Error case: given the Authorization bearer header is absent, when {@code
+     * POST .../finalize} is called, then it returns HTTP 401.
+     */
+    @Test
+    void finalizeTicket_missingAuthorization_returns401() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"finalEstimate\": \"5\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // -------------------------------------------------------------------------
     // GET /poker/rooms/{roomId}/tickets/recap (E09 — end-of-session recap)
     // -------------------------------------------------------------------------
 
@@ -424,6 +766,30 @@ class PokerTicketControllerIT extends AbstractAgiliteIntegrationTest {
                         "$.tickets[0].attributedVotes[*].value",
                         org.hamcrest.Matchers.containsInAnyOrder("3", "5")))
                 .andExpect(jsonPath("$.tickets[0].consensus.mean").value(4.0));
+    }
+
+    /**
+     * Given a room with one finalized ticket, when the recap is fetched, then its entry carries
+     * the persisted {@code finalEstimate} (US09.2.3) — a finalized ticket remains consultable
+     * indefinitely with its retained value via this same read endpoint.
+     */
+    @Test
+    void recap_ticketFinalized_entryCarriesFinalEstimate() throws Exception {
+        String roomId = createRoom(facilitatorToken);
+        String ticketId = createTicket(roomId, facilitatorToken, "Estimate JIRA-123");
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/reveal")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(ROOMS_PATH + "/" + roomId + "/tickets/" + ticketId + "/finalize")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + facilitatorToken)
+                        .content("{\"finalEstimate\": \"5\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(ROOMS_PATH + "/" + roomId + "/tickets/recap")
+                        .header("Authorization", "Bearer " + facilitatorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tickets[0].finalEstimate").value("5"));
     }
 
     /**

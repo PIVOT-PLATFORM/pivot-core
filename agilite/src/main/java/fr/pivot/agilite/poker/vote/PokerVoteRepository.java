@@ -39,4 +39,14 @@ public interface PokerVoteRepository extends JpaRepository<PokerVote, UUID> {
      * @return every vote cast on the ticket, in no particular order
      */
     List<PokerVote> findByTicketId(UUID ticketId);
+
+    /**
+     * Deletes every vote cast on a ticket — used by {@code
+     * fr.pivot.agilite.poker.ticket.PokerTicketService#reset} (US09.2.3): a reset is a fresh
+     * round of voting, and a participant must never see a previous round's value pre-filled
+     * (masked-until-reveal, same posture as US09.2.1).
+     *
+     * @param ticketId the ticket's identifier
+     */
+    void deleteByTicketId(UUID ticketId);
 }

@@ -4,8 +4,10 @@ import fr.pivot.agilite.poker.PokerCardDeck;
 import fr.pivot.agilite.poker.PokerRoom;
 import fr.pivot.agilite.poker.PokerRoomRepository;
 import fr.pivot.agilite.poker.exception.ActiveTicketExistsException;
+import fr.pivot.agilite.poker.exception.TicketAlreadyFinalizedException;
 import fr.pivot.agilite.poker.exception.TicketAlreadyRevealedException;
 import fr.pivot.agilite.poker.exception.TicketFacilitatorOnlyException;
+import fr.pivot.agilite.poker.exception.TicketNotRevealedException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
 import fr.pivot.agilite.poker.exception.TicketNotFoundException;
 import fr.pivot.agilite.poker.ticket.dto.AttributedVoteResponse;
@@ -13,7 +15,11 @@ import fr.pivot.agilite.poker.ticket.dto.ConsensusResponse;
 import fr.pivot.agilite.poker.ticket.dto.RecapResponse;
 import fr.pivot.agilite.poker.ticket.dto.RevealResponse;
 import fr.pivot.agilite.poker.ticket.dto.TicketCreatedEvent;
+import fr.pivot.agilite.poker.ticket.dto.TicketFinalizedEvent;
+import fr.pivot.agilite.poker.ticket.dto.TicketFinalizedResponse;
 import fr.pivot.agilite.poker.ticket.dto.TicketRecapEntry;
+import fr.pivot.agilite.poker.ticket.dto.TicketResetEvent;
+import fr.pivot.agilite.poker.ticket.dto.TicketResetResponse;
 import fr.pivot.agilite.poker.ticket.dto.TicketResponse;
 import fr.pivot.agilite.poker.ticket.dto.VotesRevealedEvent;
 import fr.pivot.agilite.poker.vote.PokerVote;
@@ -32,8 +38,8 @@ import java.util.UUID;
 
 /**
  * Business logic for planning poker ticket creation, current-ticket lookup (US09.2.1),
- * revelation/consensus calculation (US09.2.2), and attributed reveal + end-of-session recap
- * (E09 — classic parity).
+ * revelation/consensus calculation (US09.2.2), attributed reveal + end-of-session recap
+ * (E09 — classic parity), and reset/finalization of a ticket's estimate (US09.2.3).
  */
 @Service
 public class PokerTicketService {
@@ -157,10 +163,7 @@ public class PokerTicketService {
     public RevealResponse reveal(
             final UUID roomId, final UUID ticketId, final Long callerUserId, final Long tenantId) {
         PokerRoom room = requireFacilitator(roomId, callerUserId, tenantId);
-
-        PokerTicket ticket = ticketRepository.findById(ticketId)
-                .filter(candidate -> candidate.getRoomId().equals(roomId))
-                .orElseThrow(() -> new TicketNotFoundException(ticketId));
+        PokerTicket ticket = findTicketInRoom(roomId, ticketId);
         if (ticket.getStatus() != PokerTicketStatus.VOTING) {
             throw new TicketAlreadyRevealedException(ticketId);
         }
@@ -188,6 +191,105 @@ public class PokerTicketService {
                 saved.getRevealedAt(),
                 attributedVotes,
                 consensus);
+    }
+
+    /**
+     * Relaunches a round of voting on an already-revealed ticket, restricted to that room's
+     * facilitator (US09.2.3): deletes every vote cast in the previous round, transitions the
+     * ticket back to {@code VOTING}, and broadcasts {@code TICKET_RESET} plus a fresh roster
+     * (every "has voted" square must clear, same treatment as a brand-new ticket).
+     *
+     * <p>Two independent capabilities (Gate 1 decision, see the pivot-docs AC file) — reset and
+     * {@link #finalizeEstimate finalization} may be combined on the same ticket in any order, any
+     * number of times, until finalized. A finalized ticket is a terminal state: neither this
+     * method nor {@link #finalizeEstimate} may be called on it again.
+     *
+     * @param roomId       the target room, scoped to the caller's tenant
+     * @param ticketId     the ticket to reset
+     * @param callerUserId the caller's user id, resolved server-side from the bearer token
+     * @param tenantId     the caller's tenant id, resolved server-side from the bearer token
+     * @return the reset ticket, back to {@code VOTING} with {@code revealedAt == null}
+     * @throws RoomNotFoundException           if the room does not exist for the caller's tenant
+     * @throws TicketFacilitatorOnlyException  if the caller is not the room's facilitator
+     * @throws TicketNotFoundException         if the ticket does not exist, or belongs to a
+     *                                          different room than {@code roomId}
+     * @throws TicketNotRevealedException      if the ticket is still {@code VOTING} (never
+     *                                          revealed yet — nothing to reset)
+     * @throws TicketAlreadyFinalizedException if the ticket already has a persisted final
+     *                                         estimate (terminal state)
+     */
+    @Transactional
+    public TicketResetResponse reset(
+            final UUID roomId, final UUID ticketId, final Long callerUserId, final Long tenantId) {
+        requireFacilitator(roomId, callerUserId, tenantId);
+        PokerTicket ticket = findTicketInRoom(roomId, ticketId);
+        requireRevealedAndNotFinalized(ticket);
+
+        voteRepository.deleteByTicketId(ticketId);
+        ticket.reset();
+        PokerTicket saved = ticketRepository.save(ticket);
+
+        messagingTemplate.convertAndSend(
+                PokerRoomDestinations.roomTopic(roomId), TicketResetEvent.of(roomId, saved.getId()));
+        rosterService.broadcast(roomId);
+
+        return new TicketResetResponse(
+                saved.getId(), saved.getRoomId(), saved.getTitle(), saved.getStatus().name(),
+                saved.getCreatedAt(), saved.getRevealedAt());
+    }
+
+    /**
+     * Persists the facilitator's chosen final estimate on an already-revealed ticket, restricted
+     * to that room's facilitator (US09.2.3) — a deliberate choice among the room's own deck
+     * values, not automatically the computed consensus ({@link ConsensusResponse#mean}/{@link
+     * ConsensusResponse#median}/{@link ConsensusResponse#majority} are never persisted as-is;
+     * see the pivot-docs AC file). Broadcasts {@code TICKET_FINALIZED} to every subscriber.
+     *
+     * <p>A terminal, one-time transition (Gate 1 decision) — once finalized, neither this method
+     * nor {@link #reset} may be applied to the ticket again.
+     *
+     * @param roomId        the target room, scoped to the caller's tenant
+     * @param ticketId      the ticket to finalize
+     * @param finalEstimate the facilitator-chosen value — validated against the room's own deck
+     *                      (E09 — {@link PokerCardDeck}), not a hardcoded one
+     * @param callerUserId  the caller's user id, resolved server-side from the bearer token
+     * @param tenantId      the caller's tenant id, resolved server-side from the bearer token
+     * @return the finalized ticket, still {@code REVEALED}, with {@code finalEstimate} set
+     * @throws RoomNotFoundException           if the room does not exist for the caller's tenant
+     * @throws TicketFacilitatorOnlyException  if the caller is not the room's facilitator
+     * @throws TicketNotFoundException         if the ticket does not exist, or belongs to a
+     *                                          different room than {@code roomId}
+     * @throws TicketNotRevealedException      if the ticket is still {@code VOTING}
+     * @throws TicketAlreadyFinalizedException if the ticket already has a persisted final
+     *                                         estimate (terminal state)
+     * @throws IllegalArgumentException        if {@code finalEstimate} is not one of the room's
+     *                                          own deck values — mapped to HTTP 400, message lists
+     *                                          the accepted values (AC requirement)
+     */
+    @Transactional
+    public TicketFinalizedResponse finalizeEstimate(
+            final UUID roomId, final UUID ticketId, final String finalEstimate,
+            final Long callerUserId, final Long tenantId) {
+        PokerRoom room = requireFacilitator(roomId, callerUserId, tenantId);
+        PokerTicket ticket = findTicketInRoom(roomId, ticketId);
+        requireRevealedAndNotFinalized(ticket);
+
+        List<String> deckValues = PokerCardDeck.valuesFor(room.getSequence());
+        if (!deckValues.contains(finalEstimate)) {
+            throw new IllegalArgumentException(
+                    "Invalid final estimate, accepted values: " + deckValues);
+        }
+
+        ticket.finalizeEstimate(finalEstimate);
+        PokerTicket saved = ticketRepository.save(ticket);
+
+        messagingTemplate.convertAndSend(
+                PokerRoomDestinations.roomTopic(roomId),
+                TicketFinalizedEvent.of(roomId, saved.getId(), finalEstimate));
+
+        return new TicketFinalizedResponse(
+                saved.getId(), saved.getRoomId(), saved.getTitle(), saved.getStatus().name(),
+                saved.getCreatedAt(), saved.getRevealedAt(), saved.getFinalEstimate());
     }
 
     /**
@@ -233,7 +335,44 @@ public class PokerTicketService {
                 ticket.getTitle(),
                 ticket.getRevealedAt(),
                 attributeVotes(roomId, votes),
-                ConsensusCalculator.compute(values, deckValues));
+                ConsensusCalculator.compute(values, deckValues),
+                ticket.getFinalEstimate());
+    }
+
+    /**
+     * Resolves a ticket by id, scoped to a room — shared by every ticket action that addresses an
+     * existing ticket ({@link #reveal}, {@link #reset}, {@link #finalizeEstimate}). Collapses an
+     * unknown ticket id and a ticket belonging to a different room into the same exception,
+     * mirroring {@link #requireFacilitator}'s anti-enumeration posture.
+     *
+     * @param roomId   the room the ticket must belong to
+     * @param ticketId the ticket to resolve
+     * @return the resolved ticket
+     * @throws TicketNotFoundException if the ticket does not exist, or belongs to a different
+     *                                  room than {@code roomId}
+     */
+    private PokerTicket findTicketInRoom(final UUID roomId, final UUID ticketId) {
+        return ticketRepository.findById(ticketId)
+                .filter(candidate -> candidate.getRoomId().equals(roomId))
+                .orElseThrow(() -> new TicketNotFoundException(ticketId));
+    }
+
+    /**
+     * Asserts a ticket is eligible for {@link #reset}/{@link #finalizeEstimate} — already
+     * revealed, and not yet finalized (terminal state) — shared by both actions (US09.2.3).
+     *
+     * @param ticket the ticket to check
+     * @throws TicketNotRevealedException      if the ticket is still {@code VOTING}
+     * @throws TicketAlreadyFinalizedException if the ticket already has a persisted final
+     *                                         estimate
+     */
+    private void requireRevealedAndNotFinalized(final PokerTicket ticket) {
+        if (ticket.getStatus() != PokerTicketStatus.REVEALED) {
+            throw new TicketNotRevealedException(ticket.getId());
+        }
+        if (ticket.isFinalized()) {
+            throw new TicketAlreadyFinalizedException(ticket.getId());
+        }
     }
 
     /**
@@ -255,7 +394,8 @@ public class PokerTicketService {
 
     /**
      * Resolves a room for the caller's tenant and asserts the caller is its facilitator — shared
-     * by every facilitator-only ticket action ({@link #create}, {@link #reveal}).
+     * by every facilitator-only ticket action ({@link #create}, {@link #reveal}, {@link #reset},
+     * {@link #finalizeEstimate}).
      *
      * @param roomId       the target room, scoped to the caller's tenant
      * @param callerUserId the caller's user id

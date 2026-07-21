@@ -17,13 +17,17 @@ import java.util.UUID;
  * @param revealedAt      when this ticket was revealed
  * @param attributedVotes every cast vote, attributed to the voting participant's roster name
  * @param consensus       the computed mean/median/majority
+ * @param finalEstimate   the facilitator-validated final estimate (US09.2.3), or {@code null} if
+ *                        this ticket has not been finalized — a finalized ticket remains
+ *                        consultable indefinitely with its retained value via this same endpoint
  */
 public record TicketRecapEntry(
         UUID id,
         String title,
         Instant revealedAt,
         List<AttributedVoteResponse> attributedVotes,
-        ConsensusResponse consensus) {
+        ConsensusResponse consensus,
+        String finalEstimate) {
 
     /**
      * Canonical constructor — defensively copies {@code attributedVotes} into an immutable list
