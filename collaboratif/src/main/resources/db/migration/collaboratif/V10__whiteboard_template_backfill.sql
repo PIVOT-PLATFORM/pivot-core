@@ -1,11 +1,11 @@
--- V9: idempotent backfill of V7's whiteboard-template payload, for databases that recorded V7 as
+-- V10: idempotent backfill of V7's whiteboard-template payload, for databases that recorded V7 as
 -- applied without ever actually running its body (issue #248).
 --
 -- Convention note (see CLAUDE.md, "Migrations Flyway — fichier V1 unique avant la BETA", and the
--- headers of V2..V8 for the precedent this follows): V1..V8 have already been applied against the
+-- headers of V2..V9 for the precedent this follows): V1..V9 have already been applied against the
 -- real, persistent recette-managed Cloud SQL instance by the continuous-deploy pipeline — Flyway
 -- has recorded their checksums, so editing any of them in place would break validation on the next
--- deploy. V7 therefore cannot be edited in place, and V9 replays its content additively and
+-- deploy. V7 therefore cannot be edited in place, and V10 replays its content additively and
 -- idempotently instead.
 --
 -- On the maintainer sign-off the convention requires: the fix itself was approved on issue #248,
@@ -31,7 +31,7 @@
 -- `SHAPE`/`TEXT`/`IMAGE` at all, initializing a board from any of these 3 templates on such a
 -- database does not just render invisible content — it throws (`IllegalArgumentException`: no
 -- enum constant) the moment `WhiteboardTemplateService#initializeBoard` reads that element back.
--- V9 therefore backfills the *entire* V7 delta, not only the 7 new templates: the schema change,
+-- V10 therefore backfills the *entire* V7 delta, not only the 7 new templates: the schema change,
 -- the 3 re-authored templates' elements, and the 7 new global templates with their elements.
 --
 -- Idempotence strategy: `whiteboard_template` has a fixed `id` primary key, so its header INSERT
