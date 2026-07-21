@@ -125,6 +125,17 @@
             <Package name="fr.pivot.agilite.wheel.ws"/>
             <Package name="fr.pivot.agilite.retro.action"/>
             <Package name="fr.pivot.agilite.retro.action.dto"/>
+            <!-- E10 Daily Standup (US10.1.1/US10.1.2/US10.2.1/US10.2.2/US10.3.1) :
+                 StandupSession/StandupParticipant are JPA entities (mutable getters/setters
+                 required by Hibernate); StandupSessionService/StandupStatsService/
+                 StandupSessionController/StandupStatsController/StandupTimerScheduler/
+                 StandupChannelInterceptor store constructor-injected singleton beans
+                 (repositories, TeamMembershipService, SimpMessagingTemplate, Clock,
+                 AuthenticatedPrincipalResolver); DTO records expose mutable List for JSON
+                 transport (same rationale as the wheel/poker/retro dto packages above). -->
+            <Package name="fr.pivot.agilite.standup"/>
+            <Package name="fr.pivot.agilite.standup.dto"/>
+            <Package name="fr.pivot.agilite.standup.ws"/>
         </Or>
     </Match>
 

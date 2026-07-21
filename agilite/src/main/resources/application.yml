@@ -19,6 +19,7 @@
 #   - pivot.agilite.poker.room.default-expiration-hours   (PokerRoomService — has an inline
 #     ":24" @Value fallback too, so this entry is redundant-but-harmless documentation)
 #   - pivot.agilite.retro.phase-scheduler.fixed-delay-ms  (RetroPhaseScheduler)
+#   - pivot.agilite.standup.timer-scheduler.fixed-delay-ms  (StandupTimerScheduler)
 #
 # CARRIED OVER FOR MODULE-LEVEL TEST SELF-SUFFICIENCY ONLY (pivot.activemq.*, pivot.cors.*):
 #   WebSocketConfig's constructor binds `pivot.activemq.relay-host`, `pivot.activemq.relay-port`
@@ -52,3 +53,6 @@ pivot:
     retro:
       phase-scheduler:
         fixed-delay-ms: ${PIVOT_RETRO_PHASE_SCHEDULER_FIXED_DELAY_MS:2000}
+    standup:
+      timer-scheduler:
+        fixed-delay-ms: ${PIVOT_STANDUP_TIMER_SCHEDULER_FIXED_DELAY_MS:2000}

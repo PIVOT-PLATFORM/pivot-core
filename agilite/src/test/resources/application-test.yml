@@ -87,3 +87,7 @@ pivot:
         # Much shorter than the production default (2000ms) so RetroPhaseSchedulerIT's
         # timer-expiry assertions converge quickly via Awaitility.
         fixed-delay-ms: 200
+    standup:
+      timer-scheduler:
+        # Same rationale as retro.phase-scheduler above, for StandupTimerSchedulerIT.
+        fixed-delay-ms: 200
