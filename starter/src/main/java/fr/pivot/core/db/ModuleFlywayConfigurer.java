@@ -83,6 +83,19 @@ public record ModuleFlywayConfigurer(String schema, String migrationsPath) {
                 // (numbered, immutable migrations) these patterns are a no-op — there is never an
                 // orphan applied migration.
                 .ignoreMigrationPatterns("*:missing", "*:future")
+                // Recette outage 2026-07-20 postmortem — same reasoning as the public-schema
+                // Flyway's spring.flyway.connect-retries (application.yml): the failing cold-start
+                // boots never got a first DB connection (HikariPool "Starting..." with no "Start
+                // completed"), and Flyway's default of zero retries turns one such intermittent
+                // failure into a hard boot failure. Plausible mechanism: a scale-from-zero instance
+                // racing its own Direct VPC egress interface attach against the very first
+                // connection to the DB's private IP. Applied here too for symmetry — module schemas
+                // migrate later (post context-refresh, via the ApplicationRunners in
+                // ModuleFlywayMigrationConfig), so by then the public schema's own migration has
+                // typically already proven connectivity, but a cold network path is not guaranteed
+                // to stay warm and the retry is a no-op cost when unneeded.
+                .connectRetries(6)
+                .connectRetriesInterval(5)
                 .load();
     }
 }
