@@ -125,6 +125,23 @@
             <Package name="fr.pivot.agilite.wheel.ws"/>
             <Package name="fr.pivot.agilite.retro.action"/>
             <Package name="fr.pivot.agilite.retro.action.dto"/>
+            <!-- E11 Capacity Planning : CapacityEvent est une entité JPA (getters/setters
+                 mutables requis par Hibernate, y compris working_days Integer[]) ; les DTO
+                 records (CapacityEventInput, CapacityMemberInput, EventCapacityResult) exposent
+                 des List/Set/Map déjà considérées immuables côté appelant. Même justification
+                 centralisée que les packages agilite ci-dessus (ADR-022, CLAUDE.md). -->
+            <Package name="fr.pivot.agilite.capacity"/>
+            <Package name="fr.pivot.agilite.capacity.dto"/>
+            <!-- E11 Capacity Planning (Vague 2 enablers) : mêmes justifications — DTO records
+                 exposant List/Map (KpiResponse, CapacityRgpdExportResponse), contrôleurs REST
+                 stockant des services singleton constructeur-injectés (CapacityRgpdController),
+                 connecteurs/événements/cadence. Exclusion centralisée (ADR-022, CLAUDE.md). -->
+            <Package name="fr.pivot.agilite.capacity.connector"/>
+            <Package name="fr.pivot.agilite.capacity.kpi"/>
+            <Package name="fr.pivot.agilite.capacity.kpi.dto"/>
+            <Package name="fr.pivot.agilite.capacity.event"/>
+            <Package name="fr.pivot.agilite.capacity.rgpd"/>
+            <Package name="fr.pivot.agilite.capacity.cadence"/>
         </Or>
     </Match>
 

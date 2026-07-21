@@ -260,3 +260,116 @@ CREATE TABLE IF NOT EXISTS agilite.wheel_draw (
     drawn_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_wheel_draw_wheel_id_drawn_at ON agilite.wheel_draw(wheel_id, drawn_at DESC);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- E11 Capacity Planning — Wave 0 foundations (schema, entities, repos, pure
+-- calculator). Ported from the PouetPouet POC (apps/api's CapacityEvent/
+-- CapacityEventMember/CapacityAbsence Prisma models + apps/web/src/lib/capacity.ts),
+-- adapted to this repo's BIGINT tenant/team FK + UUID resource-id conventions.
+-- Controllers/services are a later wave — this migration and its entities/
+-- repositories are the only thing this US delivers.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+-- capacity_event: PI/sprint/release/custom event. team_id is NOT NULL + ON DELETE
+-- CASCADE, same "team owns the resource" convention as agilite.wheel(team_id).
+-- parent_id is a nullable self-FK (PI -> sprints): app layer enforces the depth-2
+-- limit (a sprint's parent must itself have no parent) — not expressible as a
+-- simple CHECK, so left to CapacityCalculator/the future service layer.
+-- is_ip_sprint marks a SAFe Innovation & Planning sprint, excluded from a PI's
+-- consolidated capacity (CapacityCalculator.consolidatePi).
+-- maturity_level/focus_factor/marge_securite/points_per_day are all nullable
+-- overrides: null means "use CapacityCalculator's built-in default" (maturity
+-- table default profile, no margin, no points conversion).
+CREATE TABLE IF NOT EXISTS agilite.capacity_event (
+    id                    UUID             NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    tenant_id             BIGINT           NOT NULL REFERENCES public.tenants(id),
+    team_id               BIGINT           NOT NULL REFERENCES public.teams(id) ON DELETE CASCADE,
+    type                  VARCHAR(20)      NOT NULL DEFAULT 'SPRINT'
+                              CHECK (type IN ('PI_PLANNING', 'SPRINT', 'RELEASE', 'CUSTOM')),
+    status                VARCHAR(20)      NOT NULL DEFAULT 'PLANNING'
+                              CHECK (status IN ('PLANNING', 'ACTIVE', 'DONE')),
+    name                  VARCHAR(200)     NOT NULL,
+    start_date            DATE             NOT NULL,
+    end_date              DATE             NOT NULL,
+    parent_id             UUID             REFERENCES agilite.capacity_event(id) ON DELETE SET NULL,
+    is_ip_sprint          BOOLEAN          NOT NULL DEFAULT FALSE,
+    maturity_level        VARCHAR(20)      CHECK (maturity_level IN ('FORMING', 'NORMING', 'PERFORMING')),
+    focus_factor          DOUBLE PRECISION CHECK (focus_factor IS NULL OR (focus_factor >= 0 AND focus_factor <= 1)),
+    marge_securite        DOUBLE PRECISION CHECK (marge_securite IS NULL OR (marge_securite >= 0 AND marge_securite <= 1)),
+    points_per_day        DOUBLE PRECISION,
+    committed_points      DOUBLE PRECISION,
+    completed_points      DOUBLE PRECISION,
+    working_days          INTEGER[]        NOT NULL DEFAULT ARRAY[1, 2, 3, 4, 5],
+    notes                 TEXT,
+    created_at            TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    CONSTRAINT chk_capacity_event_dates CHECK (end_date >= start_date)
+);
+CREATE INDEX IF NOT EXISTS idx_capacity_event_tenant_id ON agilite.capacity_event(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_capacity_event_team_id   ON agilite.capacity_event(team_id);
+CREATE INDEX IF NOT EXISTS idx_capacity_event_parent_id ON agilite.capacity_event(parent_id);
+
+-- capacity_event_member: a member's participation in one event (roster snapshot —
+-- name/role are copied at add-time, not re-derived by joining public.team_members,
+-- same "denormalized snapshot" rationale as agilite.wheel_draw.entry_label).
+-- team_member_ref is ON DELETE SET NULL: removing the underlying PIVOT team member
+-- must not delete the capacity history of events they already participated in.
+CREATE TABLE IF NOT EXISTS agilite.capacity_event_member (
+    id               UUID             NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    event_id         UUID             NOT NULL REFERENCES agilite.capacity_event(id) ON DELETE CASCADE,
+    team_member_ref  BIGINT           REFERENCES public.team_members(id) ON DELETE SET NULL,
+    name             VARCHAR(150)     NOT NULL,
+    role             VARCHAR(60),
+    quotite          DOUBLE PRECISION NOT NULL DEFAULT 1,
+    focus_factor     DOUBLE PRECISION CHECK (focus_factor IS NULL OR (focus_factor >= 0 AND focus_factor <= 1)),
+    locality         VARCHAR(60),
+    excluded         BOOLEAN          NOT NULL DEFAULT FALSE,
+    -- `position`, not `order` (reserved word) — same naming choice already made for
+    -- agilite.retro_format_columns.position.
+    position         INTEGER          NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_capacity_event_member_event_id ON agilite.capacity_event_member(event_id);
+
+-- capacity_absence: working-day (or half-day) absence of an event member.
+-- RGPD: deliberately NO motif/reason column, and no health-data field of any kind
+-- — same "structural guarantee over app-only discipline" posture as
+-- agilite.retro_cards' anonymity CHECK (US20.1.1): there is no column to leak.
+-- source is free-form beyond 'MANUAL' (e.g. 'IMPORT:teams', 'IMPORT:jira') — a
+-- future import connector prefixes its own key, not a fixed enum.
+CREATE TABLE IF NOT EXISTS agilite.capacity_absence (
+    id               UUID             NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    event_member_id  UUID             NOT NULL REFERENCES agilite.capacity_event_member(id) ON DELETE CASCADE,
+    start_date       DATE             NOT NULL,
+    end_date         DATE             NOT NULL,
+    fraction         DOUBLE PRECISION NOT NULL DEFAULT 1 CHECK (fraction IN (1, 0.5)),
+    source           VARCHAR(60)      NOT NULL DEFAULT 'MANUAL'
+                         CHECK (source = 'MANUAL' OR source LIKE 'IMPORT:%'),
+    created_at       TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    CONSTRAINT chk_capacity_absence_dates CHECK (end_date >= start_date)
+);
+CREATE INDEX IF NOT EXISTS idx_capacity_absence_event_member_id ON agilite.capacity_absence(event_member_id);
+
+-- capacity_velocity: one row per finished sprint, feeding CapacityCalculator's
+-- rolling-N-1 velocity/CV forecast. Denormalized from capacity_event's own
+-- committed_points/completed_points at sprint-close time (a later wave's
+-- responsibility) rather than re-derived by a join, so the velocity history
+-- remains stable even if the source event is later edited.
+CREATE TABLE IF NOT EXISTS agilite.capacity_velocity (
+    id                UUID             NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    sprint_event_id   UUID             NOT NULL REFERENCES agilite.capacity_event(id) ON DELETE CASCADE,
+    points_engages    DOUBLE PRECISION NOT NULL,
+    points_livres     DOUBLE PRECISION NOT NULL,
+    created_at        TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    CONSTRAINT uq_capacity_velocity_sprint_event_id UNIQUE (sprint_event_id)
+);
+
+-- capacity_burndown_point: one row per (event, day) burndown reading.
+CREATE TABLE IF NOT EXISTS agilite.capacity_burndown_point (
+    id                UUID             NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+    event_id          UUID             NOT NULL REFERENCES agilite.capacity_event(id) ON DELETE CASCADE,
+    date              DATE             NOT NULL,
+    points_restants   DOUBLE PRECISION NOT NULL,
+    created_at        TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    CONSTRAINT uq_capacity_burndown_point_event_date UNIQUE (event_id, date)
+);
+CREATE INDEX IF NOT EXISTS idx_capacity_burndown_point_event_id ON agilite.capacity_burndown_point(event_id);
