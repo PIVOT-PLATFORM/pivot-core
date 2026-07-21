@@ -159,4 +159,38 @@ public class Answer {
     public Instant getAnsweredAt() {
         return answeredAt;
     }
+
+    /**
+     * Sets the selected choice — the sole mutation this otherwise insert-only entity exposes.
+     *
+     * <p>⚠️ Lot B1 addition (repositories + DTO, quiz activity): unlike {@code Vote} (which
+     * genuinely never mutates — dot-voting stacks rows instead of replacing them), a quiz answer
+     * is unique per {@code (sessionId, questionId, userId)} (see class Javadoc,
+     * {@code uq_quiz_answer_once}), and the MVP allows a participant to change their selection
+     * while the question is still {@code OPEN}. That upsert is implemented by the service layer
+     * (lot C1, {@code QuizActionService}) as "load-existing, replace choice, save" rather than
+     * "delete, reinsert" — this setter is the minimal surface that makes the replace-in-place
+     * path possible without opening up the rest of the entity (no setters on {@code sessionId},
+     * {@code questionId} or {@code userId}, which remain immutable for the answer's lifetime).
+     *
+     * @param choiceId the newly selected choice's UUID
+     */
+    public void setChoiceId(final UUID choiceId) {
+        this.choiceId = choiceId;
+    }
+
+    /**
+     * Sets the timestamp used for the speed-bonus scoring.
+     *
+     * <p>⚠️ Lot B1 addition (repositories + DTO, quiz activity) — see {@link #setChoiceId(UUID)}
+     * Javadoc for the rationale. Not wired by the MVP scoring (score at reveal is computed purely
+     * from correctness), but provisioned alongside {@code setChoiceId} so the service-layer upsert
+     * can refresh it consistently once the speed-bonus (phase 2) is implemented, without a further
+     * entity edit.
+     *
+     * @param answeredAt the new {@code answeredAt} instant, or {@code null}
+     */
+    public void setAnsweredAt(final Instant answeredAt) {
+        this.answeredAt = answeredAt;
+    }
 }
