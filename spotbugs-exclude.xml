@@ -186,6 +186,13 @@
                  List for JSON transport (same rationale as the canvas.dto package above). -->
             <Package name="fr.pivot.collaboratif.whiteboard.vote"/>
             <Package name="fr.pivot.collaboratif.whiteboard.vote.dto"/>
+            <!-- Quiz activity — QuizActionService/QuizQueryService/QuizController store
+                 constructor-injected singleton beans (repositories, SimpMessagingTemplate,
+                 ObjectMapper); QuizSession/Question/Choice/Answer are JPA entities (mutable state
+                 required by Hibernate); QuizSessionResponse/QuestionResponse/… are DTO records that
+                 expose mutable List for JSON transport (same rationale as the vote package above). -->
+            <Package name="fr.pivot.collaboratif.whiteboard.quiz"/>
+            <Package name="fr.pivot.collaboratif.whiteboard.quiz.dto"/>
             <!-- US08.13.1 — Klaxoon import + undo: WhiteboardImportService/WhiteboardImportController/
                  ImportRateLimitService/ImportBodySizeLimitFilter store constructor-injected singleton
                  beans (repositories, StringRedisTemplate, SimpMessagingTemplate via WhiteboardBroadcastService,

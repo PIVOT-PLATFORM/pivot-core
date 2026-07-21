@@ -1,6 +1,7 @@
 package fr.pivot.collaboratif.whiteboard.canvas;
 
 import fr.pivot.collaboratif.whiteboard.canvas.dto.CanvasActionMessage;
+import fr.pivot.collaboratif.whiteboard.quiz.QuizActionService;
 import fr.pivot.collaboratif.whiteboard.vote.VoteActionService;
 import fr.pivot.collaboratif.whiteboard.ws.StompPrincipal;
 import org.slf4j.Logger;
@@ -37,6 +38,12 @@ import java.util.UUID;
  * receive the same authenticated, board-authorised, non-rate-limited frame (the upstream
  * {@link fr.pivot.collaboratif.whiteboard.ws.WhiteboardChannelInterceptor} gates by destination,
  * which is identical for both).
+ *
+ * <p><strong>Quiz routing.</strong> Every {@code quiz:*} action ({@code quiz:start},
+ * {@code quiz:answer}, {@code quiz:next}, {@code quiz:reveal}, {@code quiz:stop}) is delegated to
+ * {@link QuizActionService} — symmetric with the vote routing above, the quiz feature owns its own
+ * dispatcher for the same reason. This is the module's sole coupling point from {@code canvas} into
+ * {@code quiz} (see {@code QUIZ-ACTIVITY-DESIGN.md} §3.7/§9).
  */
 @Controller
 public class WhiteboardActionController {
@@ -46,20 +53,27 @@ public class WhiteboardActionController {
     /** Prefix identifying dot-voting actions routed to {@link VoteActionService}. */
     private static final String VOTE_TYPE_PREFIX = "vote:";
 
+    /** Prefix identifying quiz actions routed to {@link QuizActionService}. */
+    private static final String QUIZ_TYPE_PREFIX = "quiz:";
+
     private final CanvasActionService canvasActionService;
     private final VoteActionService voteActionService;
+    private final QuizActionService quizActionService;
 
     /**
      * Creates the controller.
      *
      * @param canvasActionService the canvas action service handling all canvas business logic
      * @param voteActionService   the vote action service handling all {@code vote:*} business logic
+     * @param quizActionService   the quiz action service handling all {@code quiz:*} business logic
      */
     public WhiteboardActionController(
             final CanvasActionService canvasActionService,
-            final VoteActionService voteActionService) {
+            final VoteActionService voteActionService,
+            final QuizActionService quizActionService) {
         this.canvasActionService = canvasActionService;
         this.voteActionService = voteActionService;
+        this.quizActionService = quizActionService;
     }
 
     /**
@@ -88,6 +102,10 @@ public class WhiteboardActionController {
         }
         if (message.type() != null && message.type().startsWith(VOTE_TYPE_PREFIX)) {
             voteActionService.handle(boardId, message, stompPrincipal);
+            return;
+        }
+        if (message.type() != null && message.type().startsWith(QUIZ_TYPE_PREFIX)) {
+            quizActionService.handle(boardId, message, stompPrincipal);
             return;
         }
         canvasActionService.handle(boardId, message, stompPrincipal, sessionId);
