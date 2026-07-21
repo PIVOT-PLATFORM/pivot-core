@@ -135,7 +135,7 @@ class BoardServiceTest {
 
         boardService.create("My Board", USER_A, TENANT_A);
 
-        verify(templateService, never()).resolveGlobalTemplate(anyString());
+        verify(templateService, never()).resolveInstantiableTemplate(anyString(), any(), any());
         verify(templateService, never()).initializeBoard(any(), any(), any(), any());
     }
 
@@ -144,7 +144,7 @@ class BoardServiceTest {
         UUID templateUuid = UUID.randomUUID();
         WhiteboardTemplate template = mock(WhiteboardTemplate.class);
         when(moduleCheck.isEnabled(TENANT_A)).thenReturn(true);
-        when(templateService.resolveGlobalTemplate(templateUuid.toString())).thenReturn(template);
+        when(templateService.resolveInstantiableTemplate(templateUuid.toString(), USER_A, TENANT_A)).thenReturn(template);
         Board savedBoard = boardWithOwner(UUID.randomUUID(), "My Board", USER_A, TENANT_A);
         when(boardRepository.save(any(Board.class))).thenReturn(savedBoard);
         when(boardMemberRepository.save(any(BoardMember.class)))
@@ -161,7 +161,7 @@ class BoardServiceTest {
     void create_withUnknownTemplateId_propagatesTemplateNotFoundAndDoesNotPersistBoard() {
         UUID templateUuid = UUID.randomUUID();
         when(moduleCheck.isEnabled(TENANT_A)).thenReturn(true);
-        when(templateService.resolveGlobalTemplate(templateUuid.toString()))
+        when(templateService.resolveInstantiableTemplate(templateUuid.toString(), USER_A, TENANT_A))
                 .thenThrow(new TemplateNotFoundException(templateUuid));
 
         assertThatThrownBy(() ->
@@ -918,17 +918,17 @@ class BoardServiceTest {
         UUID boardId = UUID.randomUUID();
         Board board = boardWithOwner(boardId, "B", USER_A, TENANT_A);
         WhiteboardTemplate template = new WhiteboardTemplate(
-                UUID.randomUUID(), TENANT_A, "My Template", "desc", null);
+                UUID.randomUUID(), TENANT_A, USER_A, "My Template", "desc", null);
         when(boardRepository.findByIdAndTenantIdAndDeletedAtIsNull(boardId, TENANT_A))
                 .thenReturn(Optional.of(board));
-        when(templateService.createFromBoard(boardId, TENANT_A, "My Template", "desc"))
+        when(templateService.createFromBoard(boardId, TENANT_A, USER_A, "My Template", "desc"))
                 .thenReturn(template);
 
         var response = boardService.saveAsTemplate(
                 boardId, new SaveAsTemplateRequest("My Template", "desc"), USER_A, TENANT_A);
 
         assertThat(response.name()).isEqualTo("My Template");
-        verify(templateService).createFromBoard(boardId, TENANT_A, "My Template", "desc");
+        verify(templateService).createFromBoard(boardId, TENANT_A, USER_A, "My Template", "desc");
     }
 
     @Test
@@ -947,7 +947,7 @@ class BoardServiceTest {
         assertThatThrownBy(() -> boardService.saveAsTemplate(
                 boardId, new SaveAsTemplateRequest("T", null), editorId, TENANT_A))
                 .isInstanceOf(BoardAccessDeniedException.class);
-        verify(templateService, never()).createFromBoard(any(), any(), any(), any());
+        verify(templateService, never()).createFromBoard(any(), any(), any(), any(), any());
     }
 
     // -------------------------------------------------------------------------
