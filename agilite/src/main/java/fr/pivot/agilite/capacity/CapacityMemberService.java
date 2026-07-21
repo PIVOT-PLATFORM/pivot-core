@@ -197,7 +197,8 @@ public class CapacityMemberService {
                     "ABSENCE_OUT_OF_RANGE", "Absence must fall within its event's date window");
         }
         double fraction = request.fraction();
-        if (fraction != CapacityAbsence.FRACTION_FULL_DAY && fraction != CapacityAbsence.FRACTION_HALF_DAY) {
+        if (Double.compare(fraction, CapacityAbsence.FRACTION_FULL_DAY) != 0
+                && Double.compare(fraction, CapacityAbsence.FRACTION_HALF_DAY) != 0) {
             throw new CapacityValidationException(
                     "INVALID_FRACTION", "Absence fraction must be 1 or 0.5");
         }
