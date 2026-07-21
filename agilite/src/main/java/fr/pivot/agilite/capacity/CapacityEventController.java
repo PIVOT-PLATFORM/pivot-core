@@ -1,5 +1,7 @@
 package fr.pivot.agilite.capacity;
 
+import fr.pivot.agilite.capacity.cadence.CadenceRequest;
+import fr.pivot.agilite.capacity.cadence.CadenceSprintResponse;
 import fr.pivot.agilite.capacity.dto.CapacityEventChildResponse;
 import fr.pivot.agilite.capacity.dto.CapacityEventRequest;
 import fr.pivot.agilite.capacity.dto.CapacityEventResponse;
@@ -141,5 +143,26 @@ public class CapacityEventController {
             @PathVariable final UUID piId,
             final RequestPrincipal principal) {
         return eventService.children(piId, principal.userId(), principal.tenantId());
+    }
+
+    /**
+     * Auto-generates a PI's child sprints from a cadence spec (F11.5 — PI/SAFe cadence, the
+     * "auto" side of the period auto|manual distinction). "Manuel" is simply not calling this
+     * endpoint and creating each {@code SPRINT} event individually via {@code POST
+     * /capacity/events} (F11.1).
+     *
+     * @param piId      the parent PI event's UUID from the path
+     * @param request   the cadence spec — sprint length (days or weeks), sprint count, and
+     *                  whether to append a trailing SAFe Innovation &amp; Planning sprint
+     * @param principal the resolved caller identity
+     * @return the generated sprints, in chronological order, with HTTP 201 Created
+     */
+    @PostMapping("/{piId}/cadence")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<CadenceSprintResponse> generateCadence(
+            @PathVariable final UUID piId,
+            @RequestBody @Valid final CadenceRequest request,
+            final RequestPrincipal principal) {
+        return eventService.generateCadence(piId, request, principal.userId(), principal.tenantId());
     }
 }

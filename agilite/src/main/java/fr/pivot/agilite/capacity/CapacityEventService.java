@@ -1,5 +1,9 @@
 package fr.pivot.agilite.capacity;
 
+import fr.pivot.agilite.capacity.cadence.CadencePlanner;
+import fr.pivot.agilite.capacity.cadence.CadenceRequest;
+import fr.pivot.agilite.capacity.cadence.CadenceSprintResponse;
+import fr.pivot.agilite.capacity.cadence.SprintPlan;
 import fr.pivot.agilite.capacity.dto.CapacityEventChildResponse;
 import fr.pivot.agilite.capacity.dto.CapacityEventRequest;
 import fr.pivot.agilite.capacity.dto.CapacityEventResponse;
@@ -226,6 +230,54 @@ public class CapacityEventService {
         resolveForRead(piId, tenantId, callerId);
         return eventRepository.findByParentIdAndTenantId(piId, tenantId).stream()
                 .map(CapacityEventChildResponse::from)
+                .toList();
+    }
+
+    /**
+     * Auto-generates a PI's child sprints from a cadence spec (F11.5 — the "auto" side of the
+     * period auto|manual distinction; "manuel" is simply creating each {@code SPRINT} event
+     * individually via {@link #create(CapacityEventRequest, Long, Long)}).
+     *
+     * @param piId     the parent PI event's UUID from the path
+     * @param request  the cadence spec
+     * @param callerId the authenticated caller's {@code public.users.id}
+     * @param tenantId the authenticated caller's {@code public.tenants.id}
+     * @return the generated sprints, in chronological order, persisted as children of {@code
+     *         piId}
+     * @throws CapacityEventNotFoundException if the PI does not exist, belongs to another tenant,
+     *                                         or the caller is not a member of its team
+     * @throws CapacityAccessDeniedException  if the caller is a member without write privileges
+     * @throws CapacityValidationException    with code {@code NOT_A_PI} if {@code piId} does not
+     *                                         resolve to a {@link CapacityEventType#PI_PLANNING}
+     *                                         event; with code {@code HIERARCHY_TOO_DEEP} if the
+     *                                         PI itself is nested (its generated children would
+     *                                         exceed the 2-level depth limit); with code {@code
+     *                                         INVALID_CADENCE} or {@code CADENCE_OVERFLOW} per
+     *                                         {@link CadencePlanner#plan(LocalDate, LocalDate,
+     *                                         CadenceRequest)}
+     */
+    public List<CadenceSprintResponse> generateCadence(
+            final UUID piId, final CadenceRequest request, final Long callerId, final Long tenantId) {
+        CapacityEvent pi = resolveForWrite(piId, tenantId, callerId);
+        if (pi.getType() != CapacityEventType.PI_PLANNING) {
+            throw new CapacityValidationException("NOT_A_PI", "Event " + piId + " is not a PI_PLANNING event");
+        }
+        if (pi.getParentId() != null) {
+            throw new CapacityValidationException(
+                    "HIERARCHY_TOO_DEEP", "PI " + piId + " is itself nested; cadence sprints would exceed depth 2");
+        }
+
+        List<SprintPlan> plans = CadencePlanner.plan(pi.getStartDate(), pi.getEndDate(), request);
+
+        return plans.stream()
+                .map(planItem -> {
+                    CapacityEvent sprint = new CapacityEvent(
+                            tenantId, pi.getTeamId(), CapacityEventType.SPRINT, planItem.name(),
+                            planItem.startDate(), planItem.endDate(), pi.getWorkingDays());
+                    sprint.setParentId(pi.getId());
+                    sprint.setIpSprint(planItem.ipSprint());
+                    return CadenceSprintResponse.from(eventRepository.save(sprint));
+                })
                 .toList();
     }
 
