@@ -116,7 +116,8 @@ public class PokerTicketController {
     /**
      * Persists the facilitator's chosen final estimate on an already-revealed ticket, restricted
      * to that room's facilitator (US09.2.3). A transition of an existing resource — HTTP 200, not
-     * 201.
+     * 201. Named {@code finalizeTicket} rather than {@code finalize} (SonarCloud java:S1175) to
+     * avoid any possible confusion with {@link Object#finalize()}.
      *
      * @param roomId    the target room
      * @param ticketId  the ticket to finalize
@@ -126,7 +127,7 @@ public class PokerTicketController {
      *     200 OK
      */
     @PostMapping("/{ticketId}/finalize")
-    public TicketFinalizedResponse finalize(
+    public TicketFinalizedResponse finalizeTicket(
             @PathVariable final UUID roomId,
             @PathVariable final UUID ticketId,
             @RequestBody @Valid final FinalizeTicketRequest request,

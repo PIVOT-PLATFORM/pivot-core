@@ -18,11 +18,15 @@ import java.util.UUID;
  */
 public record TicketFinalizedEvent(String type, UUID roomId, UUID ticketId, String finalEstimate) {
 
-    /** Discriminator value for this event type. */
-    public static final String TYPE = "TICKET_FINALIZED";
+    /**
+     * Discriminator value for this event type. Named {@code EVENT_TYPE} rather than {@code TYPE}
+     * (SonarCloud java:S1845) to avoid any case-only clash with the record component {@link
+     * #type()}.
+     */
+    public static final String EVENT_TYPE = "TICKET_FINALIZED";
 
     /**
-     * Builds the event with {@link #TYPE} as its discriminator.
+     * Builds the event with {@link #EVENT_TYPE} as its discriminator.
      *
      * @param roomId        the room this ticket belongs to
      * @param ticketId      the finalized ticket's id
@@ -31,6 +35,6 @@ public record TicketFinalizedEvent(String type, UUID roomId, UUID ticketId, Stri
      */
     public static TicketFinalizedEvent of(
             final UUID roomId, final UUID ticketId, final String finalEstimate) {
-        return new TicketFinalizedEvent(TYPE, roomId, ticketId, finalEstimate);
+        return new TicketFinalizedEvent(EVENT_TYPE, roomId, ticketId, finalEstimate);
     }
 }

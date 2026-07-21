@@ -230,8 +230,7 @@ public class PokerTicketService {
         PokerTicket saved = ticketRepository.save(ticket);
 
         messagingTemplate.convertAndSend(
-                PokerRoomDestinations.roomTopic(roomId),
-                (Object) TicketResetEvent.of(roomId, saved.getId()));
+                PokerRoomDestinations.roomTopic(roomId), TicketResetEvent.of(roomId, saved.getId()));
         rosterService.broadcast(roomId);
 
         return new TicketResetResponse(
@@ -286,7 +285,7 @@ public class PokerTicketService {
 
         messagingTemplate.convertAndSend(
                 PokerRoomDestinations.roomTopic(roomId),
-                (Object) TicketFinalizedEvent.of(roomId, saved.getId(), finalEstimate));
+                TicketFinalizedEvent.of(roomId, saved.getId(), finalEstimate));
 
         return new TicketFinalizedResponse(
                 saved.getId(), saved.getRoomId(), saved.getTitle(), saved.getStatus().name(),
