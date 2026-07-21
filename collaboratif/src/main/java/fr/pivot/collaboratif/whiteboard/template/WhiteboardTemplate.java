@@ -56,9 +56,27 @@ public class WhiteboardTemplate {
     @Column(name = "display_order", nullable = false)
     private int displayOrder;
 
+    /**
+     * Owner of a personal template (US08.13.2), or {@code null} for a seeded global template.
+     *
+     * <p>Nullable rather than mandatory because the 10 global templates shipped with the product
+     * have no author. A {@code null} owner therefore means "belongs to everyone", never "orphaned".
+     */
+    @Column(name = "owner_id", updatable = false)
+    private Long ownerId;
+
     /** Server-side creation timestamp. */
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    /**
+     * Last content or metadata change (US08.13.2).
+     *
+     * <p>Distinct from {@link #createdAt}: {@code save-from-draft} rewrites a template's content
+     * without creating it, and the gallery orders personal templates by most-recently-edited.
+     */
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;
 
     /** No-arg constructor required by JPA. */
     protected WhiteboardTemplate() {
@@ -80,17 +98,69 @@ public class WhiteboardTemplate {
     public WhiteboardTemplate(
             final UUID id,
             final Long tenantId,
+            final Long ownerId,
             final String name,
             final String description,
             final String thumbnailUrl) {
         this.id = id;
         this.tenantId = tenantId;
+        this.ownerId = ownerId;
         this.code = "CUSTOM_" + id;
         this.name = name;
         this.description = description;
         this.thumbnailUrl = thumbnailUrl;
         this.displayOrder = 0;
         this.createdAt = OffsetDateTime.now();
+        this.updatedAt = this.createdAt;
+    }
+
+    /**
+     * Returns the personal owner of this template, or {@code null} for a global one.
+     *
+     * @return the owner's {@code public.users.id}, or {@code null}
+     */
+    public Long getOwnerId() {
+        return ownerId;
+    }
+
+    /**
+     * Returns the last time this template's content or metadata changed.
+     *
+     * @return the update timestamp
+     */
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    /**
+     * Renames the template and stamps it as updated.
+     *
+     * @param name the new display name
+     */
+    public void rename(final String name) {
+        this.name = name;
+        touch();
+    }
+
+    /**
+     * Replaces the optional short description and stamps the template as updated.
+     *
+     * @param description the new description, or {@code null} to clear it
+     */
+    public void setDescription(final String description) {
+        this.description = description;
+        touch();
+    }
+
+    /**
+     * Marks the template as changed now.
+     *
+     * <p>Called explicitly rather than through a JPA lifecycle callback: rewriting a template's
+     * elements does not touch the template row itself, so {@code @PreUpdate} would never fire for
+     * the very operation ({@code save-from-draft}) the timestamp exists to record.
+     */
+    public void touch() {
+        this.updatedAt = OffsetDateTime.now();
     }
 
     /**

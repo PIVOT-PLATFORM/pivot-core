@@ -128,21 +128,33 @@ public class WhiteboardTemplateService {
     }
 
     /**
-     * Resolves a raw {@code templateId} request parameter to an existing global template.
+     * Resolves a raw {@code templateId} request parameter to a template the caller may instantiate
+     * — a global one, or one they own (US08.13.2).
+     *
+     * <p>Personal templates were previously unresolvable: lookup went exclusively through
+     * {@code tenant_id IS NULL}, so a template captured by "save as template" was stored faithfully
+     * and then replayable by nobody, including its own author. That gap is what this method's
+     * widening closes.
+     *
+     * <p>A template owned by someone else resolves to {@link TemplateNotFoundException}, not an
+     * access error: answering "forbidden" would confirm the id exists.
      *
      * @param rawTemplateId the raw, caller-supplied {@code templateId} string
-     * @return the resolved global template
+     * @param userId        the caller's {@code public.users.id}
+     * @param tenantId      the caller's {@code public.tenants.id}
+     * @return the resolved template
      * @throws InvalidTemplateIdException if the value is not a syntactically valid UUID
-     * @throws TemplateNotFoundException  if no global template exists for that UUID
+     * @throws TemplateNotFoundException  if no template the caller may use exists for that UUID
      */
-    public WhiteboardTemplate resolveGlobalTemplate(final String rawTemplateId) {
+    public WhiteboardTemplate resolveInstantiableTemplate(
+            final String rawTemplateId, final Long userId, final Long tenantId) {
         UUID templateId;
         try {
             templateId = UUID.fromString(rawTemplateId);
         } catch (IllegalArgumentException e) {
             throw new InvalidTemplateIdException(rawTemplateId);
         }
-        return templateRepository.findByIdAndTenantIdIsNull(templateId)
+        return templateRepository.findInstantiable(templateId, userId, tenantId)
                 .orElseThrow(() -> new TemplateNotFoundException(templateId));
     }
 
@@ -216,6 +228,13 @@ public class WhiteboardTemplateService {
         }
         if (node.has("layer")) {
             frame.setLayer(node.get("layer").asInt());
+        }
+        // US08.13.2 — `active` was never read here, in either cloning path. The §6 registry
+        // (constat 13) recorded the omission on the template->draft path only; it was in fact
+        // missing from both, so every frame materialized from a template fell back to the
+        // column default of `false` regardless of what the template authored.
+        if (node.has("active")) {
+            frame.setActive(node.get("active").asBoolean());
         }
         Frame saved = frameRepository.save(frame);
         if (localKey != null) {
@@ -327,8 +346,10 @@ public class WhiteboardTemplateService {
      *
      * @param boardId     the source board UUID (already resolved tenant-scoped and
      *                    OWNER-authorized by the caller)
-     * @param tenantId    the owning tenant's {@code public.tenants.id} — the new template is
-     *                    private to this tenant (non-null {@code tenant_id})
+     * @param tenantId    the owning tenant's {@code public.tenants.id}
+     * @param ownerId     the author's {@code public.users.id} — the template is personal to them
+     *                    (US08.13.2); sharing it with the tenant or with named people is
+     *                    US08.13.5's concern, not this method's
      * @param name        the template name (validated at the controller layer)
      * @param description the optional template description
      * @return the newly persisted template header
@@ -337,10 +358,37 @@ public class WhiteboardTemplateService {
     public WhiteboardTemplate createFromBoard(
             final UUID boardId,
             final Long tenantId,
+            final Long ownerId,
             final String name,
             final String description) {
         WhiteboardTemplate template = templateRepository.save(
-                new WhiteboardTemplate(UUID.randomUUID(), tenantId, name, description, null));
+                new WhiteboardTemplate(UUID.randomUUID(), tenantId, ownerId, name, description, null));
+        captureBoardInto(template.getId(), boardId, tenantId);
+        return template;
+    }
+
+    /**
+     * Replaces a template's elements with a capture of a board's live content (US08.13.2).
+     *
+     * <p>Extracted from {@link #createFromBoard} so that {@code save-from-draft} reuses the exact
+     * same capture rather than a parallel implementation that could drift from it — the two must
+     * produce byte-identical elements for the same board, or a template would change shape
+     * depending on how it was saved.
+     *
+     * <p>Reads the **live** entities, never the template's previous payloads: the whole point of
+     * the draft cycle is that what the user sees on the canvas is what gets stored.
+     *
+     * <p>Each element's {@code localKey} is the source entity's own UUID, which is what lets
+     * connections and field values reference their targets after {@link #initializeBoard} remaps
+     * everything to fresh ids.
+     *
+     * @param templateId the template whose elements are replaced
+     * @param boardId    the board to capture
+     * @param tenantId   the owning tenant's {@code public.tenants.id}
+     */
+    @Transactional
+    public void captureBoardInto(final UUID templateId, final UUID boardId, final Long tenantId) {
+        templateElementRepository.deleteAllByTemplateId(templateId);
 
         List<Frame> frames =
                 frameRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, tenantId);
@@ -353,33 +401,32 @@ public class WhiteboardTemplateService {
         int order = 0;
         for (Frame frame : frames) {
             elements.add(new WhiteboardTemplateElement(
-                    UUID.randomUUID(), template.getId(), TemplateElementType.FRAME,
+                    UUID.randomUUID(), templateId, TemplateElementType.FRAME,
                     frame.getId().toString(), frameToPayload(frame), order++));
         }
         for (Card card : cards) {
             elements.add(new WhiteboardTemplateElement(
-                    UUID.randomUUID(), template.getId(), TemplateElementType.CARD,
+                    UUID.randomUUID(), templateId, TemplateElementType.CARD,
                     card.getId().toString(), cardToPayload(card), order++));
         }
         for (BoardField field : fields) {
             elements.add(new WhiteboardTemplateElement(
-                    UUID.randomUUID(), template.getId(), TemplateElementType.FIELD,
+                    UUID.randomUUID(), templateId, TemplateElementType.FIELD,
                     field.getId().toString(), fieldToPayload(field), order++));
         }
         for (CardConnection connection : connections) {
             elements.add(new WhiteboardTemplateElement(
-                    UUID.randomUUID(), template.getId(), TemplateElementType.CONNECTION,
+                    UUID.randomUUID(), templateId, TemplateElementType.CONNECTION,
                     null, connectionToPayload(connection), order++));
         }
         for (Card card : cards) {
             for (CardFieldValue value : cardFieldValueRepository.findByCardId(card.getId())) {
                 elements.add(new WhiteboardTemplateElement(
-                        UUID.randomUUID(), template.getId(), TemplateElementType.FIELD_VALUE,
+                        UUID.randomUUID(), templateId, TemplateElementType.FIELD_VALUE,
                         null, fieldValueToPayload(card.getId(), value), order++));
             }
         }
         templateElementRepository.saveAll(elements);
-        return template;
     }
 
     private String frameToPayload(final Frame frame) {

@@ -167,46 +167,46 @@ class WhiteboardTemplateServiceTest {
     }
 
     // -------------------------------------------------------------------------
-    // resolveGlobalTemplate()
+    // resolveInstantiableTemplate()
     // -------------------------------------------------------------------------
 
     /**
-     * Given a malformed UUID string, when resolveGlobalTemplate() is called,
+     * Given a malformed UUID string, when resolveInstantiableTemplate() is called,
      * then it throws {@link InvalidTemplateIdException} (mapped to HTTP 400
      * INVALID_TEMPLATE_ID) without querying the repository.
      */
     @Test
-    void resolveGlobalTemplate_withMalformedUuid_throwsInvalidTemplateIdException() {
-        assertThatThrownBy(() -> templateService.resolveGlobalTemplate("not-a-uuid"))
+    void resolveInstantiableTemplate_withMalformedUuid_throwsInvalidTemplateIdException() {
+        assertThatThrownBy(() -> templateService.resolveInstantiableTemplate("not-a-uuid", 1L, 1L))
                 .isInstanceOf(InvalidTemplateIdException.class);
     }
 
     /**
      * Given a well-formed UUID that does not match any global template, when
-     * resolveGlobalTemplate() is called, then it throws {@link TemplateNotFoundException}
+     * resolveInstantiableTemplate() is called, then it throws {@link TemplateNotFoundException}
      * (mapped to HTTP 404, no existence leak).
      */
     @Test
-    void resolveGlobalTemplate_withUnknownUuid_throwsTemplateNotFoundException() {
+    void resolveInstantiableTemplate_withUnknownUuid_throwsTemplateNotFoundException() {
         UUID templateId = UUID.randomUUID();
-        when(templateRepository.findByIdAndTenantIdIsNull(templateId)).thenReturn(Optional.empty());
+        when(templateRepository.findInstantiable(templateId, 1L, 1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> templateService.resolveGlobalTemplate(templateId.toString()))
+        assertThatThrownBy(() -> templateService.resolveInstantiableTemplate(templateId.toString(), 1L, 1L))
                 .isInstanceOf(TemplateNotFoundException.class);
     }
 
     /**
      * Given a well-formed UUID matching an existing global template, when
-     * resolveGlobalTemplate() is called, then it returns that template.
+     * resolveInstantiableTemplate() is called, then it returns that template.
      */
     @Test
-    void resolveGlobalTemplate_withValidUuid_returnsTemplate() {
+    void resolveInstantiableTemplate_withValidUuid_returnsTemplate() {
         UUID templateId = UUID.randomUUID();
         WhiteboardTemplate template = mockTemplate(templateId, "RETROSPECTIVE", "Retrospective");
-        when(templateRepository.findByIdAndTenantIdIsNull(templateId))
+        when(templateRepository.findInstantiable(templateId, 1L, 1L))
                 .thenReturn(Optional.of(template));
 
-        WhiteboardTemplate resolved = templateService.resolveGlobalTemplate(templateId.toString());
+        WhiteboardTemplate resolved = templateService.resolveInstantiableTemplate(templateId.toString(), 1L, 1L);
 
         assertThat(resolved.getId()).isEqualTo(templateId);
     }
@@ -251,6 +251,53 @@ class WhiteboardTemplateServiceTest {
         assertThat(cardCaptor.getValue().getBoardId()).isEqualTo(BOARD_A);
         assertThat(cardCaptor.getValue().getType()).isEqualTo(CardType.TEXT);
         assertThat(cardCaptor.getValue().getContent()).isEqualTo("Idée 1");
+    }
+
+    /**
+     * Given a FRAME element whose payload carries {@code "active": true}, when initializeBoard()
+     * is called, then the materialized {@link Frame} has {@code active == true} (US08.13.2 fix:
+     * {@code active} was previously never read here on either cloning path, so every frame
+     * materialized from a template silently fell back to the column default of {@code false}
+     * regardless of what the template authored).
+     */
+    @Test
+    void initializeBoard_frameWithActiveTrue_materializesActiveFrame() {
+        UUID templateId = UUID.randomUUID();
+        WhiteboardTemplate template = mockTemplate(templateId, "BRAINSTORM", "Brainstorm");
+        WhiteboardTemplateElement frameElement = mockElement(
+                TemplateElementType.FRAME, null,
+                "{\"title\":\"Idées\",\"posX\":0,\"posY\":0,\"width\":300,\"height\":200,"
+                        + "\"active\":true}");
+        when(templateElementRepository.findAllByTemplateIdOrderByDisplayOrderAsc(templateId))
+                .thenReturn(List.of(frameElement));
+
+        templateService.initializeBoard(template, BOARD_A, TENANT_A, USER_A);
+
+        ArgumentCaptor<Frame> captor = ArgumentCaptor.forClass(Frame.class);
+        verify(frameRepository).save(captor.capture());
+        assertThat(captor.getValue().isActive()).isTrue();
+    }
+
+    /**
+     * Given a FRAME element whose payload carries no {@code "active"} field, when
+     * initializeBoard() is called, then the materialized {@link Frame} defaults to
+     * {@code active == false}.
+     */
+    @Test
+    void initializeBoard_frameWithoutActiveField_defaultsToInactive() {
+        UUID templateId = UUID.randomUUID();
+        WhiteboardTemplate template = mockTemplate(templateId, "BRAINSTORM", "Brainstorm");
+        WhiteboardTemplateElement frameElement = mockElement(
+                TemplateElementType.FRAME, null,
+                "{\"title\":\"Idées\",\"posX\":0,\"posY\":0,\"width\":300,\"height\":200}");
+        when(templateElementRepository.findAllByTemplateIdOrderByDisplayOrderAsc(templateId))
+                .thenReturn(List.of(frameElement));
+
+        templateService.initializeBoard(template, BOARD_A, TENANT_A, USER_A);
+
+        ArgumentCaptor<Frame> captor = ArgumentCaptor.forClass(Frame.class);
+        verify(frameRepository).save(captor.capture());
+        assertThat(captor.getValue().isActive()).isFalse();
     }
 
     /**
@@ -523,7 +570,7 @@ class WhiteboardTemplateServiceTest {
         when(cardFieldValueRepository.findByCardId(card.getId())).thenReturn(List.of());
 
         WhiteboardTemplate template =
-                templateService.createFromBoard(BOARD_A, TENANT_A, "My Template", "desc");
+                templateService.createFromBoard(BOARD_A, TENANT_A, USER_A, "My Template", "desc");
 
         assertThat(template.getTenantId()).isEqualTo(TENANT_A);
         assertThat(template.getName()).isEqualTo("My Template");
@@ -579,7 +626,7 @@ class WhiteboardTemplateServiceTest {
         when(cardFieldValueRepository.findByCardId(fromCard.getId())).thenReturn(List.of(value));
         when(cardFieldValueRepository.findByCardId(toCard.getId())).thenReturn(List.of());
 
-        templateService.createFromBoard(BOARD_A, TENANT_A, "With relations", null);
+        templateService.createFromBoard(BOARD_A, TENANT_A, USER_A, "With relations", null);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<WhiteboardTemplateElement>> captor = ArgumentCaptor.forClass(List.class);
@@ -625,7 +672,7 @@ class WhiteboardTemplateServiceTest {
         when(cardConnectionRepository.findAllByBoardIdAndTenantId(BOARD_A, TENANT_A)).thenReturn(List.of());
 
         WhiteboardTemplate template =
-                templateService.createFromBoard(BOARD_A, TENANT_A, "Empty", null);
+                templateService.createFromBoard(BOARD_A, TENANT_A, USER_A, "Empty", null);
 
         assertThat(template.getName()).isEqualTo("Empty");
         verify(templateElementRepository).saveAll(eq(List.of()));

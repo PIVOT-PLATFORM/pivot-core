@@ -17,13 +17,17 @@ import java.util.UUID;
  * @param name         default display name
  * @param description  default short description, or {@code null}
  * @param thumbnailUrl URL of the gallery preview image, or {@code null}
+ * @param personal     {@code true} when the caller owns this template and may therefore edit or
+ *                     delete it; {@code false} for the global templates shipped with the product,
+ *                     which everyone may use and nobody may change (US08.13.2)
  */
 public record TemplateResponse(
         UUID id,
         String code,
         String name,
         String description,
-        String thumbnailUrl) {
+        String thumbnailUrl,
+        boolean personal) {
 
     /**
      * Creates a {@link TemplateResponse} from a {@link WhiteboardTemplate} entity.
@@ -32,11 +36,23 @@ public record TemplateResponse(
      * @return a populated response record
      */
     public static TemplateResponse from(final WhiteboardTemplate template) {
+        return from(template, false);
+    }
+
+    /**
+     * Creates a {@link TemplateResponse}, flagging whether the caller owns the template.
+     *
+     * @param template the template entity
+     * @param personal {@code true} if the calling user owns it
+     * @return a populated response record
+     */
+    public static TemplateResponse from(final WhiteboardTemplate template, final boolean personal) {
         return new TemplateResponse(
                 template.getId(),
                 template.getCode(),
                 template.getName(),
                 template.getDescription(),
-                template.getThumbnailUrl());
+                template.getThumbnailUrl(),
+                personal);
     }
 }

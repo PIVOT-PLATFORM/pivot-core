@@ -46,6 +46,20 @@ public class Board {
     @Column(name = "owner_id", nullable = false)
     private Long ownerId;
 
+    /**
+     * Id of the template this board is the editing draft of (US08.13.2), or {@code null} for an
+     * ordinary board.
+     *
+     * <p>Deliberately a bare column rather than a JPA association: a declared foreign key would
+     * make deleting a template cascade into boards, and would let a stale draft block that
+     * deletion. The relationship is resolved in code instead.
+     *
+     * <p>A board carrying a non-null value is invisible in every board listing — see
+     * {@code BoardRepository.findAccessibleByUser}.
+     */
+    @Column(name = "template_draft_of")
+    private UUID templateDraftOf;
+
     /** Visibility of the board; defaults to {@link BoardVisibility#PRIVATE}. */
     @Enumerated(EnumType.STRING)
     @Column(name = "visibility", nullable = false, length = 20)
@@ -175,6 +189,24 @@ public class Board {
      */
     public Long getOwnerId() {
         return ownerId;
+    }
+
+    /**
+     * Returns the template this board drafts, or {@code null} if it is an ordinary board.
+     *
+     * @return the drafted template's UUID, or {@code null}
+     */
+    public UUID getTemplateDraftOf() {
+        return templateDraftOf;
+    }
+
+    /**
+     * Marks this board as the editing draft of a template (US08.13.2).
+     *
+     * @param templateDraftOf the drafted template's UUID
+     */
+    public void setTemplateDraftOf(final UUID templateDraftOf) {
+        this.templateDraftOf = templateDraftOf;
     }
 
     /**
