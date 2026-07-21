@@ -5,10 +5,6 @@ import fr.pivot.collaboratif.whiteboard.board.BoardMemberRepository;
 import fr.pivot.collaboratif.whiteboard.board.BoardRole;
 import fr.pivot.collaboratif.whiteboard.canvas.dto.BroadcastCanvasMessage;
 import fr.pivot.collaboratif.whiteboard.canvas.dto.CanvasActionMessage;
-import fr.pivot.collaboratif.whiteboard.quiz.dto.ChoiceResponse;
-import fr.pivot.collaboratif.whiteboard.quiz.dto.ChoiceRevealResponse;
-import fr.pivot.collaboratif.whiteboard.quiz.dto.LeaderboardEntryResponse;
-import fr.pivot.collaboratif.whiteboard.quiz.dto.QuestionResponse;
 import fr.pivot.collaboratif.whiteboard.quiz.dto.QuizSessionResponse;
 import fr.pivot.collaboratif.whiteboard.ws.StompPrincipal;
 import org.slf4j.Logger;
@@ -21,13 +17,10 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Business logic for facilitator-driven MCQ quiz STOMP actions (Quiz feature, Kahoot/Klaxoon-style
@@ -67,12 +60,11 @@ import java.util.stream.Collectors;
  * frame reaches this service (EN08.1).
  *
  * <p><strong>Masking by construction.</strong> The masked/demasked question and leaderboard views
- * are built by {@link #buildCurrentSessionResponse(QuizSession)} (driven purely by
- * {@code QuizSession#getCurrentState()}) and {@link #buildFinalSessionResponse(QuizSession)} (used
- * only at {@code quiz:stop}, always fully demasked). Both replicate — deliberately duplicated, not
- * shared — the exact same construction logic as {@code QuizQueryService} (the read-side, lot C2), so
- * a client sees identical results whether it rehydrates over REST or receives a broadcast (see class
- * Javadoc there for the rationale: no shared "quiz-util" file inside {@code whiteboard/quiz/}).
+ * are built by {@link QuizResponseAssembler#currentSession} (driven purely by
+ * {@code QuizSession#getCurrentState()}) and {@link QuizResponseAssembler#finalSession} (used
+ * only at {@code quiz:stop}, always fully demasked) — the same package-private assembler used by
+ * {@code QuizQueryService} (the read-side, lot C2), so a client sees identical results whether it
+ * rehydrates over REST or receives a broadcast (see {@link QuizResponseAssembler}'s Javadoc).
  *
  * <p><strong>Anti-race.</strong> {@code quiz:answer}/{@code quiz:next}/{@code quiz:reveal}/
  * {@code quiz:stop} load the session via {@link QuizSessionRepository#findForUpdate} (pessimistic
@@ -180,7 +172,8 @@ public class QuizActionService {
             case IN_REVEAL -> handleReveal(boardId, data, principal);
             case IN_STOP -> handleStop(boardId, data, principal);
             default -> LOG.warn("Unknown quiz action type '{}' — dropped board={} user={}",
-                    LogSanitizer.forLog(message.type()), boardId, principal.userId());
+                    LogSanitizer.forLog(message.type()), LogSanitizer.forLog(boardId),
+                    LogSanitizer.forLog(principal.userId()));
         }
     }
 
@@ -191,16 +184,18 @@ public class QuizActionService {
      */
     private void handleStart(final UUID boardId, final Map<String, Object> data, final StompPrincipal principal) {
         if (!canManage(boardId, principal.userId())) {
-            LOG.debug("quiz:start refused (not OWNER/EDITOR): user={} board={}", principal.userId(), boardId);
+            LOG.debug("quiz:start refused (not OWNER/EDITOR): user={} board={}",
+                    LogSanitizer.forLog(principal.userId()), LogSanitizer.forLog(boardId));
             return;
         }
         if (quizSessionRepository.existsByBoardIdAndStatus(boardId, QuizStatus.ACTIVE)) {
-            LOG.debug("quiz:start refused (a session is already active): board={}", boardId);
+            LOG.debug("quiz:start refused (a session is already active): board={}", LogSanitizer.forLog(boardId));
             return;
         }
         List<ParsedQuestion> parsed = parseAndValidateQuestions(data.get("questions"));
         if (parsed == null) {
-            LOG.debug("quiz:start refused (invalid or missing question set): board={}", boardId);
+            LOG.debug("quiz:start refused (invalid or missing question set): board={}",
+                    LogSanitizer.forLog(boardId));
             return;
         }
 
@@ -224,11 +219,13 @@ public class QuizActionService {
         } catch (DataIntegrityViolationException e) {
             // Lost the race against a concurrent start (partial unique index on ACTIVE per board).
             // The other start's session is authoritative — drop silently, do not broadcast twice.
-            LOG.debug("quiz:start lost active-session race: board={}", boardId);
+            LOG.debug("quiz:start lost active-session race: board={}", LogSanitizer.forLog(boardId));
             return;
         }
-        broadcast(boardId, principal, OUT_SESSION_STARTED, buildCurrentSessionResponse(session));
-        LOG.info("Quiz started: session={} board={} questions={}", session.getId(), boardId, parsed.size());
+        broadcast(boardId, principal, OUT_SESSION_STARTED, QuizResponseAssembler.currentSession(
+                session, questionRepository, choiceRepository, answerRepository));
+        LOG.info("Quiz started: session={} board={} questions={}",
+                session.getId(), LogSanitizer.forLog(boardId), parsed.size());
     }
 
     /**
@@ -244,7 +241,8 @@ public class QuizActionService {
         }
         Integer index = session.getCurrentQuestionIndex();
         if (index == null || session.getCurrentState() != QuestionState.OPEN) {
-            LOG.debug("quiz:answer refused (no open question): session={} board={}", session.getId(), boardId);
+            LOG.debug("quiz:answer refused (no open question): session={} board={}",
+                    session.getId(), LogSanitizer.forLog(boardId));
             return;
         }
         UUID questionId = parseUuid(data.get("questionId"));
@@ -254,13 +252,13 @@ public class QuizActionService {
         Question current = questionRepository.findBySessionIdAndPosition(session.getId(), index).orElse(null);
         if (current == null || !current.getId().equals(questionId)) {
             LOG.debug("quiz:answer refused (stale/foreign questionId): session={} question={}",
-                    session.getId(), questionId);
+                    session.getId(), LogSanitizer.forLog(questionId));
             return;
         }
         UUID choiceId = parseUuid(data.get("choiceId"));
         if (choiceId == null || choiceRepository.countByIdAndQuestionId(choiceId, current.getId()) != 1) {
             LOG.debug("quiz:answer refused (missing/foreign choice): question={} choice={}",
-                    current.getId(), choiceId);
+                    current.getId(), LogSanitizer.forLog(choiceId));
             return;
         }
         Instant now = Instant.now();
@@ -274,9 +272,10 @@ public class QuizActionService {
         } else {
             answerRepository.save(new Answer(session.getId(), current.getId(), choiceId, principal.userId(), now));
         }
-        broadcast(boardId, principal, OUT_UPDATED, buildCurrentSessionResponse(session));
+        broadcast(boardId, principal, OUT_UPDATED, QuizResponseAssembler.currentSession(
+                session, questionRepository, choiceRepository, answerRepository));
         LOG.debug("Quiz answered: session={} question={} user={}",
-                session.getId(), current.getId(), principal.userId());
+                session.getId(), current.getId(), LogSanitizer.forLog(principal.userId()));
     }
 
     /**
@@ -287,7 +286,8 @@ public class QuizActionService {
      */
     private void handleNext(final UUID boardId, final Map<String, Object> data, final StompPrincipal principal) {
         if (!canManage(boardId, principal.userId())) {
-            LOG.debug("quiz:next refused (not OWNER/EDITOR): user={} board={}", principal.userId(), boardId);
+            LOG.debug("quiz:next refused (not OWNER/EDITOR): user={} board={}",
+                    LogSanitizer.forLog(principal.userId()), LogSanitizer.forLog(boardId));
             return;
         }
         QuizSession session = lockActiveSession(boardId, data, principal);
@@ -296,21 +296,24 @@ public class QuizActionService {
         }
         Integer index = session.getCurrentQuestionIndex();
         if (index == null) {
-            LOG.debug("quiz:next refused (quiz not started): session={} board={}", session.getId(), boardId);
+            LOG.debug("quiz:next refused (quiz not started): session={} board={}",
+                    session.getId(), LogSanitizer.forLog(boardId));
             return;
         }
         int nextIndex = index + 1;
         Question next = questionRepository.findBySessionIdAndPosition(session.getId(), nextIndex).orElse(null);
         if (next == null) {
             LOG.debug("quiz:next no-op (no further question, decision D3): session={} board={}",
-                    session.getId(), boardId);
+                    session.getId(), LogSanitizer.forLog(boardId));
             return;
         }
         session.setCurrentQuestionIndex(nextIndex);
         session.setCurrentState(QuestionState.OPEN);
         session = quizSessionRepository.save(session);
-        broadcast(boardId, principal, OUT_UPDATED, buildCurrentSessionResponse(session));
-        LOG.debug("Quiz advanced: session={} board={} question={}", session.getId(), boardId, nextIndex);
+        broadcast(boardId, principal, OUT_UPDATED, QuizResponseAssembler.currentSession(
+                session, questionRepository, choiceRepository, answerRepository));
+        LOG.debug("Quiz advanced: session={} board={} question={}",
+                session.getId(), LogSanitizer.forLog(boardId), nextIndex);
     }
 
     /**
@@ -321,7 +324,8 @@ public class QuizActionService {
      */
     private void handleReveal(final UUID boardId, final Map<String, Object> data, final StompPrincipal principal) {
         if (!canManage(boardId, principal.userId())) {
-            LOG.debug("quiz:reveal refused (not OWNER/EDITOR): user={} board={}", principal.userId(), boardId);
+            LOG.debug("quiz:reveal refused (not OWNER/EDITOR): user={} board={}",
+                    LogSanitizer.forLog(principal.userId()), LogSanitizer.forLog(boardId));
             return;
         }
         QuizSession session = lockActiveSession(boardId, data, principal);
@@ -329,14 +333,16 @@ public class QuizActionService {
             return;
         }
         if (session.getCurrentQuestionIndex() == null || session.getCurrentState() != QuestionState.OPEN) {
-            LOG.debug("quiz:reveal refused (no open question): session={} board={}", session.getId(), boardId);
+            LOG.debug("quiz:reveal refused (no open question): session={} board={}",
+                    session.getId(), LogSanitizer.forLog(boardId));
             return;
         }
         session.setCurrentState(QuestionState.REVEALED);
         session = quizSessionRepository.save(session);
-        broadcast(boardId, principal, OUT_UPDATED, buildCurrentSessionResponse(session));
+        broadcast(boardId, principal, OUT_UPDATED, QuizResponseAssembler.currentSession(
+                session, questionRepository, choiceRepository, answerRepository));
         LOG.info("Quiz revealed: session={} board={} question={}",
-                session.getId(), boardId, session.getCurrentQuestionIndex());
+                session.getId(), LogSanitizer.forLog(boardId), session.getCurrentQuestionIndex());
     }
 
     /**
@@ -346,7 +352,8 @@ public class QuizActionService {
      */
     private void handleStop(final UUID boardId, final Map<String, Object> data, final StompPrincipal principal) {
         if (!canManage(boardId, principal.userId())) {
-            LOG.debug("quiz:stop refused (not OWNER/EDITOR): user={} board={}", principal.userId(), boardId);
+            LOG.debug("quiz:stop refused (not OWNER/EDITOR): user={} board={}",
+                    LogSanitizer.forLog(principal.userId()), LogSanitizer.forLog(boardId));
             return;
         }
         QuizSession session = lockActiveSession(boardId, data, principal);
@@ -356,210 +363,16 @@ public class QuizActionService {
         session.setStatus(QuizStatus.CLOSED);
         session.setClosedAt(Instant.now());
         session = quizSessionRepository.save(session);
-        broadcast(boardId, principal, OUT_SESSION_CLOSED, buildFinalSessionResponse(session));
-        LOG.info("Quiz stopped: session={} board={}", session.getId(), boardId);
+        broadcast(boardId, principal, OUT_SESSION_CLOSED, QuizResponseAssembler.finalSession(
+                session, questionRepository, choiceRepository, answerRepository));
+        LOG.info("Quiz stopped: session={} board={}", session.getId(), LogSanitizer.forLog(boardId));
     }
 
     // -------------------------------------------------------------------------
-    // Session response construction (masking) — deliberately duplicated from
-    // QuizQueryService (lot C2); see class Javadoc.
+    // Session response construction (masking) is delegated to QuizResponseAssembler
+    // (package-private, static), the single shared source of truth also used by
+    // QuizQueryService — see that class's Javadoc.
     // -------------------------------------------------------------------------
-
-    /**
-     * Builds the masked/demasked view of a session driven purely by its current question's state —
-     * used by every broadcast except {@code quiz:session:closed}. Replicates
-     * {@code QuizQueryService#current}/{@code #buildCurrentQuestion}/{@code #buildCurrentLeaderboard}.
-     *
-     * @param session the session (its current question and state already reflect the mutation just
-     *                applied by the caller)
-     * @return the session's current wire view
-     */
-    private QuizSessionResponse buildCurrentSessionResponse(final QuizSession session) {
-        return QuizSessionResponse.of(session, buildCurrentQuestionResponse(session), buildCurrentLeaderboard(session));
-    }
-
-    /**
-     * Builds the fully demasked view of a session at close time — used only for
-     * {@code quiz:session:closed}. Replicates {@code QuizQueryService#last}/{@code #buildFinalQuestion}/
-     * {@code #buildFinalLeaderboard}: the quiz is over, so nothing is withheld anymore, regardless of
-     * whether the last question was ever explicitly revealed.
-     *
-     * @param session the just-closed session
-     * @return the session's fully demasked final wire view
-     */
-    private QuizSessionResponse buildFinalSessionResponse(final QuizSession session) {
-        return QuizSessionResponse.of(session, buildFinalQuestionResponse(session), buildFinalLeaderboard(session));
-    }
-
-    /**
-     * Builds the masked/demasked view of the question currently in play, or {@code null} if the
-     * quiz has not opened a question yet.
-     *
-     * @param session the session
-     * @return the current question's DTO, or {@code null}
-     */
-    private QuestionResponse buildCurrentQuestionResponse(final QuizSession session) {
-        Integer index = session.getCurrentQuestionIndex();
-        if (index == null) {
-            return null;
-        }
-        Question question = questionRepository.findBySessionIdAndPosition(session.getId(), index).orElse(null);
-        if (question == null) {
-            return null;
-        }
-        List<Choice> choices = choiceRepository.findAllByQuestionIdInOrderByPositionAsc(List.of(question.getId()));
-        int answeredCount = (int) answerRepository.countBySessionIdAndQuestionId(session.getId(), question.getId());
-        QuestionState state = session.getCurrentState();
-        List<?> choiceDtos = state == QuestionState.REVEALED
-                ? revealedChoices(session.getId(), question.getId(), choices)
-                : maskedChoices(choices);
-        return QuestionResponse.of(question, state == null ? QuestionState.OPEN : state, choiceDtos, answeredCount);
-    }
-
-    /**
-     * Builds the fully demasked view of the last question in play at close time, or {@code null} if
-     * the quiz was stopped before any question was opened.
-     *
-     * @param session the just-closed session
-     * @return the last question's fully demasked DTO, or {@code null}
-     */
-    private QuestionResponse buildFinalQuestionResponse(final QuizSession session) {
-        Integer index = session.getCurrentQuestionIndex();
-        if (index == null) {
-            return null;
-        }
-        Question question = questionRepository.findBySessionIdAndPosition(session.getId(), index).orElse(null);
-        if (question == null) {
-            return null;
-        }
-        List<Choice> choices = choiceRepository.findAllByQuestionIdInOrderByPositionAsc(List.of(question.getId()));
-        int answeredCount = (int) answerRepository.countBySessionIdAndQuestionId(session.getId(), question.getId());
-        List<ChoiceRevealResponse> choiceDtos = revealedChoices(session.getId(), question.getId(), choices);
-        return QuestionResponse.of(question, QuestionState.REVEALED, choiceDtos, answeredCount);
-    }
-
-    /**
-     * Maps choices to their masked wire form — no {@code correct}, no distribution.
-     *
-     * @param choices the question's choices
-     * @return the masked choice DTOs
-     */
-    private List<ChoiceResponse> maskedChoices(final List<Choice> choices) {
-        return choices.stream().map(ChoiceResponse::of).toList();
-    }
-
-    /**
-     * Maps choices to their demasked wire form, including the per-choice respondent count computed
-     * from the session's answers.
-     *
-     * @param sessionId  the owning session's UUID
-     * @param questionId the question the choices belong to
-     * @param choices    the question's choices
-     * @return the demasked choice DTOs, each carrying {@code correct} and its tally
-     */
-    private List<ChoiceRevealResponse> revealedChoices(
-            final UUID sessionId, final UUID questionId, final List<Choice> choices) {
-        Map<UUID, Long> tally = answerRepository.findAllBySessionId(sessionId).stream()
-                .filter(answer -> answer.getQuestionId().equals(questionId))
-                .collect(Collectors.groupingBy(Answer::getChoiceId, Collectors.counting()));
-        return choices.stream()
-                .map(choice -> ChoiceRevealResponse.of(choice, tally.getOrDefault(choice.getId(), 0L).intValue()))
-                .toList();
-    }
-
-    /**
-     * Builds the cumulative leaderboard for a session still in play, counting only questions that
-     * can no longer leak the still-open current question's correct choice: every question strictly
-     * before {@code currentQuestionIndex}, plus the current question itself once it has been
-     * {@link QuestionState#REVEALED}.
-     *
-     * @param session the session
-     * @return the cumulative leaderboard, ranked; empty if the quiz has not opened a question yet
-     */
-    private List<LeaderboardEntryResponse> buildCurrentLeaderboard(final QuizSession session) {
-        Integer index = session.getCurrentQuestionIndex();
-        if (index == null) {
-            return List.of();
-        }
-        boolean includeCurrent = session.getCurrentState() == QuestionState.REVEALED;
-        List<Question> counted = questionRepository.findAllBySessionIdOrderByPositionAsc(session.getId()).stream()
-                .filter(question -> question.getPosition() < index
-                        || (includeCurrent && question.getPosition() == index))
-                .toList();
-        return buildLeaderboard(session.getId(), counted);
-    }
-
-    /**
-     * Builds the final leaderboard for a just-closed session, counting every question — the quiz is
-     * over, so no question's correctness remains at risk of premature disclosure.
-     *
-     * @param session the just-closed session
-     * @return the final leaderboard, ranked
-     */
-    private List<LeaderboardEntryResponse> buildFinalLeaderboard(final QuizSession session) {
-        List<Question> all = questionRepository.findAllBySessionIdOrderByPositionAsc(session.getId());
-        return buildLeaderboard(session.getId(), all);
-    }
-
-    /**
-     * Computes each participant's cumulative score over a set of counted questions (one point per
-     * answer whose selected choice is correct) and ranks entries in descending score order, ties
-     * sharing a rank (standard competition ranking, e.g. 1, 1, 3).
-     *
-     * @param sessionId the owning session's UUID
-     * @param questions the questions to count toward the score (already filtered by the caller)
-     * @return the ranked leaderboard entries; empty if no question is counted
-     */
-    private List<LeaderboardEntryResponse> buildLeaderboard(final UUID sessionId, final List<Question> questions) {
-        if (questions.isEmpty()) {
-            return List.of();
-        }
-        List<UUID> questionIds = questions.stream().map(Question::getId).toList();
-        Set<UUID> countedQuestionIds = Set.copyOf(questionIds);
-        Map<UUID, Choice> choicesById = choiceRepository
-                .findAllByQuestionIdInOrderByPositionAsc(questionIds).stream()
-                .collect(Collectors.toMap(Choice::getId, choice -> choice));
-
-        Map<Long, Integer> scores = new HashMap<>();
-        for (Answer answer : answerRepository.findAllBySessionId(sessionId)) {
-            if (!countedQuestionIds.contains(answer.getQuestionId())) {
-                continue;
-            }
-            Choice choice = choicesById.get(answer.getChoiceId());
-            if (choice != null && choice.isCorrect()) {
-                scores.merge(answer.getUserId(), 1, Integer::sum);
-            }
-        }
-
-        List<Map.Entry<Long, Integer>> ranked = scores.entrySet().stream()
-                .sorted(Map.Entry.<Long, Integer>comparingByValue()
-                        .reversed()
-                        .thenComparing(Map.Entry::getKey))
-                .toList();
-        return ranked.stream()
-                .map(entry -> LeaderboardEntryResponse.of(
-                        entry.getKey(), entry.getValue(), rankOf(entry.getValue(), ranked)))
-                .toList();
-    }
-
-    /**
-     * Computes a 1-based standard competition rank for a given score within an already
-     * score-descending-sorted leaderboard (ties share a rank; the next distinct score skips ahead by
-     * the tie count, e.g. 1, 1, 3).
-     *
-     * @param score  the score to rank
-     * @param ranked the full leaderboard, sorted by score descending
-     * @return the 1-based rank of the given score
-     */
-    private int rankOf(final int score, final List<Map.Entry<Long, Integer>> ranked) {
-        int rank = 1;
-        for (Map.Entry<Long, Integer> other : ranked) {
-            if (other.getValue() > score) {
-                rank++;
-            }
-        }
-        return rank;
-    }
 
     // -------------------------------------------------------------------------
     // Inbound payload parsing / validation
@@ -700,7 +513,7 @@ public class QuizActionService {
         Optional<QuizSession> found = quizSessionRepository.findForUpdate(sessionId, boardId, principal.tenantId());
         if (found.isEmpty() || found.get().getStatus() != QuizStatus.ACTIVE) {
             LOG.debug("quiz action dropped (missing, cross-board/tenant, or closed): session={} board={}",
-                    sessionId, boardId);
+                    LogSanitizer.forLog(sessionId), LogSanitizer.forLog(boardId));
             return null;
         }
         return found.get();

@@ -4,20 +4,11 @@ import fr.pivot.collaboratif.exception.BoardNotFoundException;
 import fr.pivot.collaboratif.whiteboard.board.Board;
 import fr.pivot.collaboratif.whiteboard.board.BoardMemberRepository;
 import fr.pivot.collaboratif.whiteboard.board.BoardRepository;
-import fr.pivot.collaboratif.whiteboard.quiz.dto.ChoiceResponse;
-import fr.pivot.collaboratif.whiteboard.quiz.dto.ChoiceRevealResponse;
-import fr.pivot.collaboratif.whiteboard.quiz.dto.LeaderboardEntryResponse;
-import fr.pivot.collaboratif.whiteboard.quiz.dto.QuestionResponse;
 import fr.pivot.collaboratif.whiteboard.quiz.dto.QuizSessionResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Read-side service backing the quiz REST endpoints ({@code GET .../quiz/current|last}) — calques
@@ -39,12 +30,10 @@ import java.util.stream.Collectors;
  * (position strictly before the current one) plus the current question once it has actually been
  * revealed — never the still-open current question.
  *
- * <p>Leaderboard/tally aggregation is implemented privately in this service rather than shared
- * with {@code QuizActionService} (lot C1, mutation side): the module has no shared "quiz-util"
- * package by design (cf. {@code CLAUDE.md} module-contract rule — no ad hoc cross-file coupling
- * inside {@code whiteboard/quiz/} beyond what each lot's own file needs), so a small amount of
- * duplicated scoring logic between the query and action services is an accepted trade-off over
- * introducing a shared internal dependency between two lots developed in parallel.
+ * <p>Session/question/leaderboard construction is delegated to {@link QuizResponseAssembler}, the
+ * package-private assembler also used by {@code QuizActionService} (lot C1, mutation/broadcast
+ * side) — the single shared source of truth for masking and scoring logic, guaranteeing a client
+ * sees identical results whether it rehydrates over REST or receives a broadcast.
  */
 @Service
 @Transactional(readOnly = true)
@@ -97,8 +86,8 @@ public class QuizQueryService {
         requireBoardAccess(boardId, userId, tenantId);
         return quizSessionRepository
                 .findByBoardIdAndTenantIdAndStatus(boardId, tenantId, QuizStatus.ACTIVE)
-                .map(session -> QuizSessionResponse.of(
-                        session, buildCurrentQuestion(session), buildCurrentLeaderboard(session)))
+                .map(session -> QuizResponseAssembler.currentSession(
+                        session, questionRepository, choiceRepository, answerRepository))
                 .orElse(null);
     }
 
@@ -118,8 +107,8 @@ public class QuizQueryService {
         requireBoardAccess(boardId, userId, tenantId);
         return quizSessionRepository
                 .findFirstByBoardIdAndTenantIdAndStatusOrderByCreatedAtDesc(boardId, tenantId, QuizStatus.CLOSED)
-                .map(session -> QuizSessionResponse.of(
-                        session, buildFinalQuestion(session), buildFinalLeaderboard(session)))
+                .map(session -> QuizResponseAssembler.finalSession(
+                        session, questionRepository, choiceRepository, answerRepository))
                 .orElse(null);
     }
 
@@ -141,176 +130,5 @@ public class QuizQueryService {
         if (!isMember) {
             throw new BoardNotFoundException(boardId);
         }
-    }
-
-    /**
-     * Builds the masked/demasked view of an active session's current question, or {@code null} if
-     * the quiz has not opened a question yet ({@code currentQuestionIndex} still {@code null}).
-     *
-     * @param session the active session
-     * @return the current question's DTO, or {@code null}
-     */
-    private QuestionResponse buildCurrentQuestion(final QuizSession session) {
-        Integer index = session.getCurrentQuestionIndex();
-        if (index == null) {
-            return null;
-        }
-        Question question = questionRepository.findBySessionIdAndPosition(session.getId(), index).orElse(null);
-        if (question == null) {
-            return null;
-        }
-        List<Choice> choices = choiceRepository.findAllByQuestionIdInOrderByPositionAsc(List.of(question.getId()));
-        int answeredCount = (int) answerRepository.countBySessionIdAndQuestionId(session.getId(), question.getId());
-        QuestionState state = session.getCurrentState();
-        List<?> choiceDtos = state == QuestionState.REVEALED
-                ? revealedChoices(session.getId(), question.getId(), choices)
-                : maskedChoices(choices);
-        return QuestionResponse.of(question, state == null ? QuestionState.OPEN : state, choiceDtos, answeredCount);
-    }
-
-    /**
-     * Builds the fully demasked view of a closed session's last question (the one in play when the
-     * quiz was stopped), or {@code null} if the quiz was stopped before any question was opened.
-     *
-     * @param session the closed session
-     * @return the last question's fully demasked DTO, or {@code null}
-     */
-    private QuestionResponse buildFinalQuestion(final QuizSession session) {
-        Integer index = session.getCurrentQuestionIndex();
-        if (index == null) {
-            return null;
-        }
-        Question question = questionRepository.findBySessionIdAndPosition(session.getId(), index).orElse(null);
-        if (question == null) {
-            return null;
-        }
-        List<Choice> choices = choiceRepository.findAllByQuestionIdInOrderByPositionAsc(List.of(question.getId()));
-        int answeredCount = (int) answerRepository.countBySessionIdAndQuestionId(session.getId(), question.getId());
-        List<ChoiceRevealResponse> choiceDtos = revealedChoices(session.getId(), question.getId(), choices);
-        return QuestionResponse.of(question, QuestionState.REVEALED, choiceDtos, answeredCount);
-    }
-
-    /**
-     * Maps choices to their masked wire form — no {@code correct}, no distribution.
-     *
-     * @param choices the question's choices
-     * @return the masked choice DTOs
-     */
-    private List<ChoiceResponse> maskedChoices(final List<Choice> choices) {
-        return choices.stream().map(ChoiceResponse::of).toList();
-    }
-
-    /**
-     * Maps choices to their demasked wire form, including the per-choice respondent count computed
-     * from the session's answers.
-     *
-     * @param sessionId  the owning session's UUID
-     * @param questionId the question the choices belong to
-     * @param choices    the question's choices
-     * @return the demasked choice DTOs, each carrying {@code correct} and its tally
-     */
-    private List<ChoiceRevealResponse> revealedChoices(
-            final UUID sessionId, final UUID questionId, final List<Choice> choices) {
-        Map<UUID, Long> tally = answerRepository.findAllBySessionId(sessionId).stream()
-                .filter(answer -> answer.getQuestionId().equals(questionId))
-                .collect(Collectors.groupingBy(Answer::getChoiceId, Collectors.counting()));
-        return choices.stream()
-                .map(choice -> ChoiceRevealResponse.of(
-                        choice, tally.getOrDefault(choice.getId(), 0L).intValue()))
-                .toList();
-    }
-
-    /**
-     * Builds the cumulative leaderboard for an active session, counting only questions that can no
-     * longer leak the still-open current question's correct choice: every question strictly before
-     * {@code currentQuestionIndex}, plus the current question itself once it has been
-     * {@link QuestionState#REVEALED} (see class Javadoc).
-     *
-     * @param session the active session
-     * @return the cumulative leaderboard, ranked; empty if the quiz has not opened a question yet
-     */
-    private List<LeaderboardEntryResponse> buildCurrentLeaderboard(final QuizSession session) {
-        Integer index = session.getCurrentQuestionIndex();
-        if (index == null) {
-            return List.of();
-        }
-        boolean includeCurrent = session.getCurrentState() == QuestionState.REVEALED;
-        List<Question> counted = questionRepository.findAllBySessionIdOrderByPositionAsc(session.getId()).stream()
-                .filter(question -> question.getPosition() < index
-                        || (includeCurrent && question.getPosition() == index))
-                .toList();
-        return buildLeaderboard(session.getId(), counted);
-    }
-
-    /**
-     * Builds the final leaderboard for a closed session, counting every question — the quiz is
-     * over, so no question's correctness remains at risk of premature disclosure.
-     *
-     * @param session the closed session
-     * @return the final leaderboard, ranked
-     */
-    private List<LeaderboardEntryResponse> buildFinalLeaderboard(final QuizSession session) {
-        List<Question> all = questionRepository.findAllBySessionIdOrderByPositionAsc(session.getId());
-        return buildLeaderboard(session.getId(), all);
-    }
-
-    /**
-     * Computes each participant's cumulative score over a set of counted questions (one point per
-     * answer whose selected choice is correct) and ranks entries in descending score order, ties
-     * sharing a rank (standard competition ranking, e.g. 1, 1, 3).
-     *
-     * @param sessionId the owning session's UUID
-     * @param questions the questions to count toward the score (already filtered by the caller)
-     * @return the ranked leaderboard entries; empty if no question is counted
-     */
-    private List<LeaderboardEntryResponse> buildLeaderboard(final UUID sessionId, final List<Question> questions) {
-        if (questions.isEmpty()) {
-            return List.of();
-        }
-        List<UUID> questionIds = questions.stream().map(Question::getId).toList();
-        Set<UUID> countedQuestionIds = Set.copyOf(questionIds);
-        Map<UUID, Choice> choicesById = choiceRepository
-                .findAllByQuestionIdInOrderByPositionAsc(questionIds).stream()
-                .collect(Collectors.toMap(Choice::getId, choice -> choice));
-
-        Map<Long, Integer> scores = new HashMap<>();
-        for (Answer answer : answerRepository.findAllBySessionId(sessionId)) {
-            if (!countedQuestionIds.contains(answer.getQuestionId())) {
-                continue;
-            }
-            Choice choice = choicesById.get(answer.getChoiceId());
-            if (choice != null && choice.isCorrect()) {
-                scores.merge(answer.getUserId(), 1, Integer::sum);
-            }
-        }
-
-        List<Map.Entry<Long, Integer>> ranked = scores.entrySet().stream()
-                .sorted(Map.Entry.<Long, Integer>comparingByValue()
-                        .reversed()
-                        .thenComparing(Map.Entry::getKey))
-                .toList();
-        return ranked.stream()
-                .map(entry -> LeaderboardEntryResponse.of(
-                        entry.getKey(), entry.getValue(), rankOf(entry.getValue(), ranked)))
-                .toList();
-    }
-
-    /**
-     * Computes a 1-based standard competition rank for a given score within an already
-     * score-descending-sorted leaderboard (ties share a rank; the next distinct score skips ahead
-     * by the tie count, e.g. 1, 1, 3).
-     *
-     * @param score  the score to rank
-     * @param ranked the full leaderboard, sorted by score descending
-     * @return the 1-based rank of the given score
-     */
-    private int rankOf(final int score, final List<Map.Entry<Long, Integer>> ranked) {
-        int rank = 1;
-        for (Map.Entry<Long, Integer> other : ranked) {
-            if (other.getValue() > score) {
-                rank++;
-            }
-        }
-        return rank;
     }
 }
