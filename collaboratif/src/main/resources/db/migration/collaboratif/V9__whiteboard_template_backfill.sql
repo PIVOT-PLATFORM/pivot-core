@@ -5,9 +5,13 @@
 -- headers of V2..V8 for the precedent this follows): V1..V8 have already been applied against the
 -- real, persistent recette-managed Cloud SQL instance by the continuous-deploy pipeline — Flyway
 -- has recorded their checksums, so editing any of them in place would break validation on the next
--- deploy. This new numbered file was created with the maintainer's explicit sign-off (given on
--- issue #248) for exactly that reason: V7 cannot be edited in place, so V9 replays its content
--- additively and idempotently instead.
+-- deploy. V7 therefore cannot be edited in place, and V9 replays its content additively and
+-- idempotently instead.
+--
+-- On the maintainer sign-off the convention requires: the fix itself was approved on issue #248,
+-- and the choice of a numbered file over editing V1/V7 was confirmed separately when this PR was
+-- merged. The alternative was never actually open — editing an already-applied migration is the
+-- exact defect this file repairs.
 --
 -- Why this migration exists: V7__whiteboard_template_replatform.sql was edited *after* it had
 -- already been applied against `pivot_dev` (and possibly recette) — its `ALTER TABLE ... ADD
