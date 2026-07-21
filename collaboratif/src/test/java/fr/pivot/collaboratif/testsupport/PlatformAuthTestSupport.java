@@ -77,6 +77,9 @@ public final class PlatformAuthTestSupport {
                         email VARCHAR(320) NOT NULL,
                         role VARCHAR(50) NOT NULL DEFAULT 'ROLE_USER',
                         is_active BOOLEAN NOT NULL DEFAULT true,
+                        first_name VARCHAR(100),
+                        last_name VARCHAR(100),
+                        avatar_url TEXT,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
                     )
@@ -213,6 +216,40 @@ public final class PlatformAuthTestSupport {
             ps.setLong(1, tenantId);
             ps.setString(2, email);
             ps.setBoolean(3, active);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    /**
+     * Inserts an active user with an e-mail and a display name, returning its generated id
+     * (share-panel member-name tests).
+     *
+     * @param jdbcUrl   the JDBC URL
+     * @param username  the database username
+     * @param password  the database password
+     * @param tenantId  the owning tenant's id
+     * @param email     the user's e-mail
+     * @param firstName the user's first name (nullable)
+     * @param lastName  the user's last name (nullable)
+     * @return the generated {@code public.users.id}
+     * @throws SQLException if the insert fails
+     */
+    public static long seedUserWithName(
+            final String jdbcUrl, final String username, final String password,
+            final long tenantId, final String email,
+            final String firstName, final String lastName) throws SQLException {
+        final String sql = "INSERT INTO public.users "
+                + "(tenant_id, email, role, is_active, first_name, last_name) "
+                + "VALUES (?, ?, 'ROLE_USER', true, ?, ?) RETURNING id";
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, tenantId);
+            ps.setString(2, email);
+            ps.setString(3, firstName);
+            ps.setString(4, lastName);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rs.getLong(1);

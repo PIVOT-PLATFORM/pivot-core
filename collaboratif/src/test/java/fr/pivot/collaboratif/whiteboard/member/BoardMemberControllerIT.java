@@ -88,9 +88,9 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
         ownerToken = ownerFixture.rawToken();
 
         editorEmail = "editor-" + UUID.randomUUID() + "@pivot.invalid";
-        editorId = PlatformAuthTestSupport.seedUserWithEmail(
+        editorId = PlatformAuthTestSupport.seedUserWithName(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
-                tenantId, editorEmail, true);
+                tenantId, editorEmail, "Marie", "Dupont");
         editorToken = PlatformAuthTestSupport.issueToken(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
                 editorId, "active", Instant.now().plusSeconds(3600));
@@ -125,7 +125,37 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].role").value("OWNER"))
                 .andExpect(jsonPath("$[1].userId").value(editorId))
-                .andExpect(jsonPath("$[1].role").value("EDITOR"));
+                .andExpect(jsonPath("$[1].role").value("EDITOR"))
+                .andExpect(jsonPath("$[1].email").value(editorEmail))
+                .andExpect(jsonPath("$[1].firstName").value("Marie"))
+                .andExpect(jsonPath("$[1].lastName").value("Dupont"));
+    }
+
+    @Test
+    void listMembers_memberAbsentFromDirectory_returnsNullIdentity() throws Exception {
+        long ghostId = 999_000_000L; // aucun public.users correspondant
+        boardMemberRepository.save(new BoardMember(
+                new BoardMemberId(boardId, ghostId), BoardRole.VIEWER, Instant.now()));
+
+        String body = mockMvc.perform(get(BOARDS_PATH + "/" + boardId + "/members")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(3)))
+                .andReturn()
+                .getResponse().getContentAsString();
+
+        JsonNode ghost = null;
+        for (JsonNode node : mapper.readTree(body)) {
+            if (node.get("userId").asLong() == ghostId) {
+                ghost = node;
+                break;
+            }
+        }
+        assertThat(ghost).as("ghost member present in list").isNotNull();
+        assertThat(ghost.get("role").asText()).isEqualTo("VIEWER");
+        assertThat(ghost.get("email").isNull()).isTrue();
+        assertThat(ghost.get("firstName").isNull()).isTrue();
+        assertThat(ghost.get("lastName").isNull()).isTrue();
     }
 
     @Test
@@ -296,7 +326,8 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                         .content("{\"email\": \"" + email + "\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.userId").value(inviteeId))
-                .andExpect(jsonPath("$.role").value("VIEWER"));
+                .andExpect(jsonPath("$.role").value("VIEWER"))
+                .andExpect(jsonPath("$.email").value(email));
 
         assertThat(notificationsFor(inviteeId, Kind.SHARED)).hasSize(1);
     }

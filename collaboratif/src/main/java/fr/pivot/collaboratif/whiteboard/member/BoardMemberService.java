@@ -20,7 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Business logic for board member management operations, including named e-mail invitations
@@ -84,9 +87,19 @@ public class BoardMemberService {
         Board board = boardRepository.findByIdAndTenantId(boardId, tenantId)
                 .orElseThrow(() -> new BoardNotFoundException(boardId));
         requireAccess(boardId, callerId, board.getOwnerId());
-        return boardMemberRepository.findAllByIdBoardIdOrderByJoinedAtAsc(boardId)
-                .stream()
-                .map(MemberResponse::from)
+
+        List<BoardMember> members =
+                boardMemberRepository.findAllByIdBoardIdOrderByJoinedAtAsc(boardId);
+        List<Long> userIds = members.stream()
+                .map(m -> m.getId().getUserId())
+                .toList();
+        Map<Long, UserDirectoryEntry> directory = userIds.isEmpty()
+                ? Map.of()
+                : userDirectoryRepository.findAllByIdInAndTenantId(userIds, tenantId).stream()
+                        .collect(Collectors.toMap(UserDirectoryEntry::getId, Function.identity()));
+
+        return members.stream()
+                .map(m -> MemberResponse.from(m, directory.get(m.getId().getUserId())))
                 .toList();
     }
 
@@ -150,7 +163,7 @@ public class BoardMemberService {
                     inviteeId, Kind.SHARED, boardId, board.getTitle(), role.name()));
             logAuditEvent("MemberInvited", boardId, callerId,
                     "invitee=" + inviteeId + " role=" + role);
-            return MemberResponse.from(created);
+            return MemberResponse.from(created, invitee);
         }
         if (existing.getRole() != role) {
             existing.setRole(role);
@@ -159,9 +172,9 @@ public class BoardMemberService {
                     inviteeId, Kind.ROLE_CHANGED, boardId, board.getTitle(), role.name()));
             logAuditEvent("MemberInviteRoleChanged", boardId, callerId,
                     "invitee=" + inviteeId + " role=" + role);
-            return MemberResponse.from(saved);
+            return MemberResponse.from(saved, invitee);
         }
-        return MemberResponse.from(existing);
+        return MemberResponse.from(existing, invitee);
     }
 
     /**
