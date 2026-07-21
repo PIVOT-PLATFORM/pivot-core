@@ -132,10 +132,17 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
     }
 
     @Test
-    void listMembers_memberAbsentFromDirectory_returnsNullIdentity() throws Exception {
-        long ghostId = 999_000_000L; // aucun public.users correspondant
+    void listMembers_memberFromAnotherTenant_returnsNullIdentity() throws Exception {
+        // FK board_member.user_id -> public.users : l'utilisateur DOIT exister, mais dans un
+        // autre tenant. La résolution d'annuaire est tenant-scopée => identité non résolue (null),
+        // exactement le cas « compte hors tenant » du design.
+        long otherTenantId = PlatformAuthTestSupport.seedTenant(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(), null);
+        long foreignUserId = PlatformAuthTestSupport.seedUserWithName(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
+                otherTenantId, "foreign-" + UUID.randomUUID() + "@pivot.invalid", "Ghost", "User");
         boardMemberRepository.save(new BoardMember(
-                new BoardMemberId(boardId, ghostId), BoardRole.VIEWER, Instant.now()));
+                new BoardMemberId(boardId, foreignUserId), BoardRole.VIEWER, Instant.now()));
 
         String body = mockMvc.perform(get(BOARDS_PATH + "/" + boardId + "/members")
                         .header("Authorization", "Bearer " + ownerToken))
@@ -144,18 +151,18 @@ class BoardMemberControllerIT extends AbstractCollaboratifIntegrationTest {
                 .andReturn()
                 .getResponse().getContentAsString();
 
-        JsonNode ghost = null;
+        JsonNode foreign = null;
         for (JsonNode node : mapper.readTree(body)) {
-            if (node.get("userId").asLong() == ghostId) {
-                ghost = node;
+            if (node.get("userId").asLong() == foreignUserId) {
+                foreign = node;
                 break;
             }
         }
-        assertThat(ghost).as("ghost member present in list").isNotNull();
-        assertThat(ghost.get("role").asText()).isEqualTo("VIEWER");
-        assertThat(ghost.get("email").isNull()).isTrue();
-        assertThat(ghost.get("firstName").isNull()).isTrue();
-        assertThat(ghost.get("lastName").isNull()).isTrue();
+        assertThat(foreign).as("foreign-tenant member present in list").isNotNull();
+        assertThat(foreign.get("role").asText()).isEqualTo("VIEWER");
+        assertThat(foreign.get("email").isNull()).isTrue();
+        assertThat(foreign.get("firstName").isNull()).isTrue();
+        assertThat(foreign.get("lastName").isNull()).isTrue();
     }
 
     @Test
