@@ -241,6 +241,11 @@ public class CapacitySummaryService {
         List<CapacityMemberBreakdownResponse> breakdown = new ArrayList<>(capacity.members().size());
         for (MemberCapacityResult result : capacity.members()) {
             CapacityEventMember member = byId.get(result.memberId());
+            if (member == null) {
+                throw new IllegalStateException(
+                        "CapacityCalculator returned a member result with no matching roster entry: "
+                                + result.memberId());
+            }
             breakdown.add(new CapacityMemberBreakdownResponse(
                     member.getId(),
                     member.getName(),
