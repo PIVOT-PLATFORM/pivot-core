@@ -125,6 +125,13 @@
             <Package name="fr.pivot.agilite.wheel.ws"/>
             <Package name="fr.pivot.agilite.retro.action"/>
             <Package name="fr.pivot.agilite.retro.action.dto"/>
+            <!-- E11 Capacity Planning : CapacityEvent est une entité JPA (getters/setters
+                 mutables requis par Hibernate, y compris working_days Integer[]) ; les DTO
+                 records (CapacityEventInput, CapacityMemberInput, EventCapacityResult) exposent
+                 des List/Set/Map déjà considérées immuables côté appelant. Même justification
+                 centralisée que les packages agilite ci-dessus (ADR-022, CLAUDE.md). -->
+            <Package name="fr.pivot.agilite.capacity"/>
+            <Package name="fr.pivot.agilite.capacity.dto"/>
         </Or>
     </Match>
 
