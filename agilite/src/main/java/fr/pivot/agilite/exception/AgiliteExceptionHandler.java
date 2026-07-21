@@ -6,9 +6,11 @@ import fr.pivot.agilite.poker.exception.InvalidDeckException;
 import fr.pivot.agilite.poker.exception.InviteCodeNotFoundException;
 import fr.pivot.agilite.poker.exception.PokerFacilitatorOnlyException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
+import fr.pivot.agilite.poker.exception.TicketAlreadyFinalizedException;
 import fr.pivot.agilite.poker.exception.TicketAlreadyRevealedException;
 import fr.pivot.agilite.poker.exception.TicketFacilitatorOnlyException;
 import fr.pivot.agilite.poker.exception.TicketNotFoundException;
+import fr.pivot.agilite.poker.exception.TicketNotRevealedException;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -33,7 +35,8 @@ import java.util.Map;
  * InviteCodeNotFoundException}), ticket/vote facilitator and conflict failures (US09.2.1, {@link
  * TicketFacilitatorOnlyException}, {@link ActiveTicketExistsException}), ticket revelation
  * lookup/conflict failures (US09.2.2, {@link TicketNotFoundException}, {@link
- * TicketAlreadyRevealedException}), wheel/team domain
+ * TicketAlreadyRevealedException}), ticket reset/finalization conflict failures (US09.2.3, {@link
+ * TicketNotRevealedException}, {@link TicketAlreadyFinalizedException}), wheel/team domain
  * exceptions (US14.1.1, {@link
  * WheelNotFoundException}, {@link TeamNotFoundException}, {@link WheelValidationException}), the
  * US14.2.1 weighted anti-repeat draw's defensive empty-wheel guard ({@link
@@ -196,6 +199,39 @@ public class AgiliteExceptionHandler {
         problem.setTitle("Ticket already revealed");
         problem.setDetail(ex.getMessage());
         problem.setProperties(Map.of("code", "TICKET_ALREADY_REVEALED"));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 when the facilitator attempts to reset or finalize a ticket that is still
+     * {@code VOTING} — never revealed yet, so neither action makes sense (US09.2.3).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail with {@code { "code": "TICKET_NOT_REVEALED" } }
+     */
+    @ExceptionHandler(TicketNotRevealedException.class)
+    public ProblemDetail handleTicketNotRevealed(final TicketNotRevealedException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Ticket not revealed");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "TICKET_NOT_REVEALED"));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 when the facilitator attempts to reset or finalize a ticket that already
+     * has a persisted final estimate — finalization is a terminal, one-time transition
+     * (US09.2.3).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail with {@code { "code": "TICKET_ALREADY_FINALIZED" } }
+     */
+    @ExceptionHandler(TicketAlreadyFinalizedException.class)
+    public ProblemDetail handleTicketAlreadyFinalized(final TicketAlreadyFinalizedException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Ticket already finalized");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "TICKET_ALREADY_FINALIZED"));
         return problem;
     }
 

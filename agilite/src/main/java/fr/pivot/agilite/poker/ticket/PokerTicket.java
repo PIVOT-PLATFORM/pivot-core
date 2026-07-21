@@ -50,6 +50,9 @@ public class PokerTicket {
     @Column(name = "revealed_at")
     private Instant revealedAt;
 
+    @Column(name = "final_estimate", length = 10)
+    private String finalEstimate;
+
     /** No-argument constructor required by JPA. */
     protected PokerTicket() {
     }
@@ -100,6 +103,20 @@ public class PokerTicket {
     }
 
     /**
+     * @return the facilitator-validated final estimate (US09.2.3), or {@code null} if this
+     *     ticket has not been finalized yet — the vast majority of tickets, including every one
+     *     still {@link PokerTicketStatus#VOTING}
+     */
+    public String getFinalEstimate() {
+        return finalEstimate;
+    }
+
+    /** @return {@code true} if {@link #finalizeEstimate} has already been called on this ticket */
+    public boolean isFinalized() {
+        return finalEstimate != null;
+    }
+
+    /**
      * Reveals this ticket (US09.2.2): transitions {@link #status} to {@link
      * PokerTicketStatus#REVEALED} and sets {@link #revealedAt}. A one-time transition — the
      * caller (see {@code PokerTicketService#reveal}) must guard against calling this on a ticket
@@ -110,5 +127,31 @@ public class PokerTicket {
     public void reveal(final Instant revealedAt) {
         this.status = PokerTicketStatus.REVEALED;
         this.revealedAt = revealedAt;
+    }
+
+    /**
+     * Resets this ticket (US09.2.3): transitions {@link #status} back to {@link
+     * PokerTicketStatus#VOTING} and clears {@link #revealedAt} — a new round of voting, callable
+     * any number of times on the same ticket. The caller (see {@code PokerTicketService#reset})
+     * must guard against calling this on a ticket that is not currently {@link
+     * PokerTicketStatus#REVEALED}, or already {@link #isFinalized() finalized} (terminal state),
+     * and is responsible for deleting the previous round's cast votes.
+     */
+    public void reset() {
+        this.status = PokerTicketStatus.VOTING;
+        this.revealedAt = null;
+    }
+
+    /**
+     * Persists the facilitator-validated final estimate (US09.2.3) — a terminal, one-time
+     * transition; once set, neither {@link #reset()} nor a second call to this method may be
+     * applied to this ticket again (enforced by the caller, see {@code
+     * PokerTicketService#finalizeEstimate}). Named to avoid colliding with {@link Object#finalize()}.
+     *
+     * @param finalEstimate the facilitator-chosen final estimate, one of the room's own deck
+     *                      values
+     */
+    public void finalizeEstimate(final String finalEstimate) {
+        this.finalEstimate = finalEstimate;
     }
 }

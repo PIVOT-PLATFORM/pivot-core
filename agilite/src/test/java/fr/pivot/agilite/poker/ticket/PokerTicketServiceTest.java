@@ -3,14 +3,20 @@ package fr.pivot.agilite.poker.ticket;
 import fr.pivot.agilite.poker.PokerRoom;
 import fr.pivot.agilite.poker.PokerRoomRepository;
 import fr.pivot.agilite.poker.exception.ActiveTicketExistsException;
+import fr.pivot.agilite.poker.exception.TicketAlreadyFinalizedException;
 import fr.pivot.agilite.poker.exception.TicketAlreadyRevealedException;
 import fr.pivot.agilite.poker.exception.TicketFacilitatorOnlyException;
+import fr.pivot.agilite.poker.exception.TicketNotRevealedException;
 import fr.pivot.agilite.poker.exception.RoomNotFoundException;
 import fr.pivot.agilite.poker.exception.TicketNotFoundException;
 import fr.pivot.agilite.poker.ticket.dto.AttributedVoteResponse;
 import fr.pivot.agilite.poker.ticket.dto.RecapResponse;
 import fr.pivot.agilite.poker.ticket.dto.RevealResponse;
+import fr.pivot.agilite.poker.ticket.dto.TicketFinalizedEvent;
+import fr.pivot.agilite.poker.ticket.dto.TicketFinalizedResponse;
 import fr.pivot.agilite.poker.ticket.dto.TicketRecapEntry;
+import fr.pivot.agilite.poker.ticket.dto.TicketResetEvent;
+import fr.pivot.agilite.poker.ticket.dto.TicketResetResponse;
 import fr.pivot.agilite.poker.ticket.dto.TicketResponse;
 import fr.pivot.agilite.poker.ticket.dto.VotesRevealedEvent;
 import fr.pivot.agilite.poker.ws.PokerRosterService;
@@ -363,6 +369,251 @@ class PokerTicketServiceTest {
         verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
+    // ── reset (US09.2.3) ──
+
+    /**
+     * Given the room's facilitator and a {@code REVEALED}, non-finalized ticket, when it is
+     * reset, then previously cast votes are deleted, the ticket transitions back to {@code
+     * VOTING} with {@code revealedAt} cleared, and a {@code TICKET_RESET} event plus a fresh
+     * roster broadcast are sent to the room topic.
+     */
+    @Test
+    void reset_asFacilitatorOnRevealedTicket_deletesVotesResetsAndBroadcasts() {
+        PokerRoom room = facilitatorRoom();
+        PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        ticket.reveal(FIXED_NOW.minusSeconds(30));
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(ticket)).thenReturn(ticket);
+
+        TicketResetResponse response = service.reset(ROOM_ID, TICKET_ID, FACILITATOR_USER_ID, TENANT_ID);
+
+        assertThat(response.id()).isEqualTo(TICKET_ID);
+        assertThat(response.status()).isEqualTo("VOTING");
+        assertThat(response.revealedAt()).isNull();
+        assertThat(ticket.getStatus()).isEqualTo(PokerTicketStatus.VOTING);
+        assertThat(ticket.getRevealedAt()).isNull();
+
+        verify(voteRepository).deleteByTicketId(TICKET_ID);
+        verify(rosterService).broadcast(ROOM_ID);
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(messagingTemplate).convertAndSend(eq("/topic/agilite/poker/" + ROOM_ID), eventCaptor.capture());
+        TicketResetEvent event = (TicketResetEvent) eventCaptor.getValue();
+        assertThat(event.type()).isEqualTo("TICKET_RESET");
+        assertThat(event.ticketId()).isEqualTo(TICKET_ID);
+    }
+
+    /**
+     * Error case: given a ticket still {@code VOTING} (never revealed), when a reset is
+     * attempted, then {@link TicketNotRevealedException} is thrown and nothing is deleted,
+     * persisted, or broadcast.
+     */
+    @Test
+    void reset_ticketStillVoting_throwsTicketNotRevealedException() {
+        PokerRoom room = facilitatorRoom();
+        PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() -> service.reset(ROOM_ID, TICKET_ID, FACILITATOR_USER_ID, TENANT_ID))
+                .isInstanceOf(TicketNotRevealedException.class);
+        verify(voteRepository, never()).deleteByTicketId(any());
+        verify(ticketRepository, never()).save(any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
+    }
+
+    /**
+     * Error case: given a ticket already finalized, when a reset is attempted, then {@link
+     * TicketAlreadyFinalizedException} is thrown and nothing is deleted, persisted, or broadcast
+     * — finalization is a terminal state.
+     */
+    @Test
+    void reset_ticketAlreadyFinalized_throwsTicketAlreadyFinalizedException() {
+        PokerRoom room = facilitatorRoom();
+        PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        ticket.reveal(FIXED_NOW.minusSeconds(30));
+        ticket.finalizeEstimate("5");
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() -> service.reset(ROOM_ID, TICKET_ID, FACILITATOR_USER_ID, TENANT_ID))
+                .isInstanceOf(TicketAlreadyFinalizedException.class);
+        verify(voteRepository, never()).deleteByTicketId(any());
+        verify(ticketRepository, never()).save(any());
+    }
+
+    /**
+     * Security AC: given an authenticated, same-tenant caller who is not the room's facilitator,
+     * when a reset is attempted, then {@link TicketFacilitatorOnlyException} is thrown and
+     * nothing is deleted, persisted, or broadcast.
+     */
+    @Test
+    void reset_callerNotFacilitator_throwsTicketFacilitatorOnlyException() {
+        PokerRoom room = facilitatorRoom();
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> service.reset(ROOM_ID, TICKET_ID, 999L, TENANT_ID))
+                .isInstanceOf(TicketFacilitatorOnlyException.class);
+        verify(voteRepository, never()).deleteByTicketId(any());
+        verify(ticketRepository, never()).save(any());
+    }
+
+    /**
+     * Error case: given a room belonging to another tenant, when a reset is attempted, then
+     * {@link RoomNotFoundException} is thrown — never confirms cross-tenant existence.
+     */
+    @Test
+    void reset_crossTenantRoom_throwsRoomNotFoundException() {
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.reset(ROOM_ID, TICKET_ID, FACILITATOR_USER_ID, TENANT_ID))
+                .isInstanceOf(RoomNotFoundException.class);
+    }
+
+    /**
+     * Error case: given a ticket that exists but belongs to a different room than the one in the
+     * request path, when a reset is attempted, then {@link TicketNotFoundException} is thrown —
+     * never confirms cross-room existence.
+     */
+    @Test
+    void reset_ticketBelongsToDifferentRoom_throwsTicketNotFoundException() {
+        PokerRoom room = facilitatorRoom();
+        UUID otherRoomId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        PokerTicket ticket = new PokerTicket(otherRoomId, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(() -> service.reset(ROOM_ID, TICKET_ID, FACILITATOR_USER_ID, TENANT_ID))
+                .isInstanceOf(TicketNotFoundException.class);
+    }
+
+    // ── finalizeEstimate (US09.2.3) ──
+
+    /**
+     * Given the room's facilitator and a {@code REVEALED}, non-finalized ticket, when a valid
+     * deck value is finalized, then it is persisted on the ticket (still {@code REVEALED}) and a
+     * {@code TICKET_FINALIZED} event is broadcast to the room topic.
+     */
+    @Test
+    void finalizeEstimate_asFacilitatorWithValidValue_persistsAndBroadcasts() {
+        PokerRoom room = facilitatorRoom();
+        PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        ticket.reveal(FIXED_NOW.minusSeconds(30));
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
+        when(ticketRepository.save(ticket)).thenReturn(ticket);
+
+        TicketFinalizedResponse response =
+                service.finalizeEstimate(ROOM_ID, TICKET_ID, "5", FACILITATOR_USER_ID, TENANT_ID);
+
+        assertThat(response.id()).isEqualTo(TICKET_ID);
+        assertThat(response.status()).isEqualTo("REVEALED");
+        assertThat(response.finalEstimate()).isEqualTo("5");
+        assertThat(ticket.getFinalEstimate()).isEqualTo("5");
+        assertThat(ticket.isFinalized()).isTrue();
+
+        ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(messagingTemplate).convertAndSend(eq("/topic/agilite/poker/" + ROOM_ID), eventCaptor.capture());
+        TicketFinalizedEvent event = (TicketFinalizedEvent) eventCaptor.getValue();
+        assertThat(event.type()).isEqualTo("TICKET_FINALIZED");
+        assertThat(event.ticketId()).isEqualTo(TICKET_ID);
+        assertThat(event.finalEstimate()).isEqualTo("5");
+    }
+
+    /**
+     * Error case: given a {@code finalEstimate} not part of the room's own deck, when
+     * finalization is attempted, then {@link IllegalArgumentException} is thrown (mapped to HTTP
+     * 400) and nothing is persisted or broadcast.
+     */
+    @Test
+    void finalizeEstimate_valueNotInRoomDeck_throwsIllegalArgumentException() {
+        PokerRoom room = facilitatorRoom();
+        PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        ticket.reveal(FIXED_NOW.minusSeconds(30));
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(
+                () -> service.finalizeEstimate(ROOM_ID, TICKET_ID, "999", FACILITATOR_USER_ID, TENANT_ID))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(ticketRepository, never()).save(any());
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
+    }
+
+    /**
+     * Error case: given a ticket still {@code VOTING}, when finalization is attempted, then
+     * {@link TicketNotRevealedException} is thrown.
+     */
+    @Test
+    void finalizeEstimate_ticketStillVoting_throwsTicketNotRevealedException() {
+        PokerRoom room = facilitatorRoom();
+        PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(
+                () -> service.finalizeEstimate(ROOM_ID, TICKET_ID, "5", FACILITATOR_USER_ID, TENANT_ID))
+                .isInstanceOf(TicketNotRevealedException.class);
+        verify(ticketRepository, never()).save(any());
+    }
+
+    /**
+     * Error case: given a ticket already finalized, when a second finalization is attempted,
+     * then {@link TicketAlreadyFinalizedException} is thrown and the previously persisted value
+     * is left unchanged.
+     */
+    @Test
+    void finalizeEstimate_ticketAlreadyFinalized_throwsTicketAlreadyFinalizedException() {
+        PokerRoom room = facilitatorRoom();
+        PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        ticket.reveal(FIXED_NOW.minusSeconds(30));
+        ticket.finalizeEstimate("5");
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+        when(ticketRepository.findById(TICKET_ID)).thenReturn(Optional.of(ticket));
+
+        assertThatThrownBy(
+                () -> service.finalizeEstimate(ROOM_ID, TICKET_ID, "8", FACILITATOR_USER_ID, TENANT_ID))
+                .isInstanceOf(TicketAlreadyFinalizedException.class);
+        assertThat(ticket.getFinalEstimate()).isEqualTo("5");
+        verify(ticketRepository, never()).save(any());
+    }
+
+    /**
+     * Security AC: given an authenticated, same-tenant caller who is not the room's facilitator,
+     * when finalization is attempted, then {@link TicketFacilitatorOnlyException} is thrown and
+     * nothing is persisted or broadcast.
+     */
+    @Test
+    void finalizeEstimate_callerNotFacilitator_throwsTicketFacilitatorOnlyException() {
+        PokerRoom room = facilitatorRoom();
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+
+        assertThatThrownBy(() -> service.finalizeEstimate(ROOM_ID, TICKET_ID, "5", 999L, TENANT_ID))
+                .isInstanceOf(TicketFacilitatorOnlyException.class);
+        verify(ticketRepository, never()).save(any());
+    }
+
+    /**
+     * Error case: given a room belonging to another tenant, when finalization is attempted, then
+     * {@link RoomNotFoundException} is thrown — never confirms cross-tenant existence.
+     */
+    @Test
+    void finalizeEstimate_crossTenantRoom_throwsRoomNotFoundException() {
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(
+                () -> service.finalizeEstimate(ROOM_ID, TICKET_ID, "5", FACILITATOR_USER_ID, TENANT_ID))
+                .isInstanceOf(RoomNotFoundException.class);
+    }
+
     // ── recap (E09 — end-of-session recap) ──
 
     /**
@@ -403,6 +654,31 @@ class PokerTicketServiceTest {
         assertThat(second.id()).isEqualTo(secondTicketId);
         assertThat(second.attributedVotes()).containsExactly(new AttributedVoteResponse("Alice", "8"));
         assertThat(second.consensus().mean()).isEqualTo(8.0);
+    }
+
+    /**
+     * Given a room with a finalized ticket, when the recap is fetched, then its entry carries the
+     * persisted {@code finalEstimate} (US09.2.3) — a finalized ticket remains consultable
+     * indefinitely with its retained value via this same read endpoint.
+     */
+    @Test
+    void recap_ticketFinalized_entryCarriesFinalEstimate() {
+        PokerRoom room = facilitatorRoom();
+        when(roomRepository.findByIdAndTenantId(ROOM_ID, TENANT_ID)).thenReturn(Optional.of(room));
+
+        PokerTicket ticket = new PokerTicket(ROOM_ID, "Title", FIXED_NOW.minusSeconds(60));
+        setId(ticket, TICKET_ID);
+        ticket.reveal(FIXED_NOW.minusSeconds(30));
+        ticket.finalizeEstimate("8");
+        when(ticketRepository.findByRoomIdAndStatusOrderByRevealedAtAsc(ROOM_ID, PokerTicketStatus.REVEALED))
+                .thenReturn(List.of(ticket));
+        when(voteRepository.findByTicketId(TICKET_ID)).thenReturn(List.of());
+        when(rosterService.namesByParticipantKey(ROOM_ID)).thenReturn(Map.of());
+
+        RecapResponse recap = service.recap(ROOM_ID, TENANT_ID);
+
+        assertThat(recap.tickets()).hasSize(1);
+        assertThat(recap.tickets().get(0).finalEstimate()).isEqualTo("8");
     }
 
     /**
