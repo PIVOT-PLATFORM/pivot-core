@@ -1,5 +1,6 @@
 package fr.pivot.agilite.capacity;
 
+import fr.pivot.agilite.capacity.connector.HolidayConnector;
 import fr.pivot.agilite.capacity.dto.CapacityGaugeResponse;
 import fr.pivot.agilite.capacity.dto.CapacityMemberBreakdownResponse;
 import fr.pivot.agilite.capacity.dto.CapacitySummaryResponse;
@@ -15,10 +16,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /**
@@ -43,6 +46,9 @@ class CapacitySummaryServiceTest {
     @Mock
     private TeamMemberRepository teamMemberRepository;
 
+    @Mock
+    private HolidayConnector holidayConnector;
+
     private CapacitySummaryService service;
 
     private static final Long TENANT_ID = 100L;
@@ -51,8 +57,12 @@ class CapacitySummaryServiceTest {
 
     @BeforeEach
     void setUp() {
+        // lenient: the "not found" tests short-circuit before this connector is ever consulted.
+        org.mockito.Mockito.lenient()
+                .when(holidayConnector.holidaysFor(any(), any(), any()))
+                .thenReturn(Set.of());
         service = new CapacitySummaryService(
-                eventRepository, eventMemberRepository, absenceRepository, teamMemberRepository);
+                eventRepository, eventMemberRepository, absenceRepository, teamMemberRepository, holidayConnector);
     }
 
     /**
@@ -96,6 +106,41 @@ class CapacitySummaryServiceTest {
         assertThat(breakdown.workedDays()).isEqualTo(10.0);
         assertThat(breakdown.netCapacity()).isEqualTo(7.0);
         assertThat(breakdown.recommendedEngagement()).isEqualTo(5.95);
+    }
+
+    /**
+     * {@link HolidayConnector} is consulted with the event's own dates and the first member's
+     * locality, and a resolved holiday excludes one working day from the totals — proving the
+     * wiring actually reaches {@code CapacityCalculator}, not just that the default connector is a
+     * no-op.
+     */
+    @Test
+    void summarize_holidayConnectorResolvesADate_excludesItFromWorkingDays() {
+        UUID eventId = UUID.randomUUID();
+        LocalDate startDate = LocalDate.of(2026, 7, 6);
+        LocalDate endDate = LocalDate.of(2026, 7, 17);
+        CapacityEvent event = new CapacityEvent(
+                TENANT_ID, TEAM_ID, CapacityEventType.SPRINT, "Sprint 1",
+                startDate, endDate, new Integer[] {1, 2, 3, 4, 5});
+        setId(event, eventId);
+
+        UUID memberId = UUID.randomUUID();
+        CapacityEventMember member = new CapacityEventMember(eventId, null, "Alice", "DEV", 1.0, 0);
+        setMemberId(member, memberId);
+        member.setLocality("FR");
+
+        when(eventRepository.findByIdAndTenantId(eventId, TENANT_ID)).thenReturn(Optional.of(event));
+        when(teamMemberRepository.findByTeamIdAndUserId(TEAM_ID, CALLER_ID))
+                .thenReturn(Optional.of(new TeamMember(TEAM_ID, CALLER_ID)));
+        when(eventMemberRepository.findByEventIdOrderByPositionAsc(eventId)).thenReturn(List.of(member));
+        when(absenceRepository.findByEventMemberIdIn(List.of(memberId))).thenReturn(List.of());
+        when(eventRepository.findByParentIdAndTenantId(eventId, TENANT_ID)).thenReturn(List.of());
+        LocalDate holiday = LocalDate.of(2026, 7, 14);
+        when(holidayConnector.holidaysFor("FR", startDate, endDate)).thenReturn(Set.of(holiday));
+
+        CapacitySummaryResponse response = service.summarize(eventId, CALLER_ID, TENANT_ID);
+
+        assertThat(response.totalWorkingDays()).isEqualTo(9);
     }
 
     /** No committed points at all: the gauge stays at zero engagement and never over-committed. */
