@@ -578,8 +578,10 @@ public class BoardService {
             final Long userId,
             final Long tenantId) {
         requireOwnedBoard(boardId, userId, tenantId);
+        // The board's OWNER — already enforced by requireOwnedBoard above — becomes the template's
+        // personal owner (US08.13.2).
         WhiteboardTemplate template = templateService.createFromBoard(
-                boardId, tenantId, request.name(), request.description());
+                boardId, tenantId, userId, request.name(), request.description());
         logAuditEvent("BoardSavedAsTemplate", boardId, userId, "template=" + template.getId());
         return TemplateResponse.from(template);
     }

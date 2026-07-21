@@ -217,6 +217,13 @@ public class WhiteboardTemplateService {
         if (node.has("layer")) {
             frame.setLayer(node.get("layer").asInt());
         }
+        // US08.13.2 — `active` was never read here, in either cloning path. The §6 registry
+        // (constat 13) recorded the omission on the template->draft path only; it was in fact
+        // missing from both, so every frame materialized from a template fell back to the
+        // column default of `false` regardless of what the template authored.
+        if (node.has("active")) {
+            frame.setActive(node.get("active").asBoolean());
+        }
         Frame saved = frameRepository.save(frame);
         if (localKey != null) {
             keyToId.put(localKey, saved.getId());
@@ -327,8 +334,10 @@ public class WhiteboardTemplateService {
      *
      * @param boardId     the source board UUID (already resolved tenant-scoped and
      *                    OWNER-authorized by the caller)
-     * @param tenantId    the owning tenant's {@code public.tenants.id} — the new template is
-     *                    private to this tenant (non-null {@code tenant_id})
+     * @param tenantId    the owning tenant's {@code public.tenants.id}
+     * @param ownerId     the author's {@code public.users.id} — the template is personal to them
+     *                    (US08.13.2); sharing it with the tenant or with named people is
+     *                    US08.13.5's concern, not this method's
      * @param name        the template name (validated at the controller layer)
      * @param description the optional template description
      * @return the newly persisted template header
@@ -337,10 +346,11 @@ public class WhiteboardTemplateService {
     public WhiteboardTemplate createFromBoard(
             final UUID boardId,
             final Long tenantId,
+            final Long ownerId,
             final String name,
             final String description) {
         WhiteboardTemplate template = templateRepository.save(
-                new WhiteboardTemplate(UUID.randomUUID(), tenantId, name, description, null));
+                new WhiteboardTemplate(UUID.randomUUID(), tenantId, ownerId, name, description, null));
 
         List<Frame> frames =
                 frameRepository.findAllByBoardIdAndTenantIdOrderByLayerAscCreatedAtAsc(boardId, tenantId);

@@ -38,6 +38,7 @@ public interface BoardRepository extends JpaRepository<Board, UUID> {
             LEFT JOIN BoardMember bm ON bm.id.boardId = b.id AND bm.id.userId = :userId
             WHERE b.tenantId = :tenantId
               AND b.deletedAt IS NULL
+              AND b.templateDraftOf IS NULL
               AND (b.ownerId = :userId OR bm.id.userId = :userId)
               AND (:search IS NULL OR :search = ''
                    OR LOWER(FUNCTION('unaccent', b.title)) LIKE CONCAT('%', :search, '%')
@@ -48,6 +49,7 @@ public interface BoardRepository extends JpaRepository<Board, UUID> {
             LEFT JOIN BoardMember bm ON bm.id.boardId = b.id AND bm.id.userId = :userId
             WHERE b.tenantId = :tenantId
               AND b.deletedAt IS NULL
+              AND b.templateDraftOf IS NULL
               AND (b.ownerId = :userId OR bm.id.userId = :userId)
               AND (:search IS NULL OR :search = ''
                    OR LOWER(FUNCTION('unaccent', b.title)) LIKE CONCAT('%', :search, '%')
