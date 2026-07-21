@@ -1,6 +1,7 @@
 package fr.pivot.agilite.capacity;
 
 import fr.pivot.agilite.capacity.calc.CapacityCalculator;
+import fr.pivot.agilite.capacity.connector.HolidayConnector;
 import fr.pivot.agilite.capacity.dto.CapacityAbsenceInput;
 import fr.pivot.agilite.capacity.dto.CapacityEventInput;
 import fr.pivot.agilite.capacity.dto.CapacityGaugeResponse;
@@ -52,6 +53,7 @@ public class CapacitySummaryService {
     private final CapacityEventMemberRepository eventMemberRepository;
     private final CapacityAbsenceRepository absenceRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final HolidayConnector holidayConnector;
 
     /**
      * Constructs the service with its required dependencies.
@@ -60,16 +62,21 @@ public class CapacitySummaryService {
      * @param eventMemberRepository capacity event member persistence
      * @param absenceRepository     capacity absence persistence
      * @param teamMemberRepository  {@code pivot-core-starter}'s team membership persistence
+     * @param holidayConnector      resolves the applicable holiday calendar (EN11.1 Wave 2
+     *                              connector; TODO(EN22.3) — the default bound implementation
+     *                              returns no holidays)
      */
     public CapacitySummaryService(
             final CapacityEventRepository eventRepository,
             final CapacityEventMemberRepository eventMemberRepository,
             final CapacityAbsenceRepository absenceRepository,
-            final TeamMemberRepository teamMemberRepository) {
+            final TeamMemberRepository teamMemberRepository,
+            final HolidayConnector holidayConnector) {
         this.eventRepository = eventRepository;
         this.eventMemberRepository = eventMemberRepository;
         this.absenceRepository = absenceRepository;
         this.teamMemberRepository = teamMemberRepository;
+        this.holidayConnector = holidayConnector;
     }
 
     /**
@@ -193,9 +200,9 @@ public class CapacitySummaryService {
                 event.getStartDate(),
                 event.getEndDate(),
                 workingDaysOf(event),
-                // TODO(EN22.3): the calendar connectors resolving a real holiday set (public
-                // holidays, tenant-specific closures) are Wave 2 — pass no holidays for now.
-                Set.of(),
+                // TODO(EN22.3): DefaultHolidayConnector returns Set.of() until the EN22.3
+                // calendar bus integration lands — see HolidayConnector's Javadoc.
+                holidayConnector.holidaysFor(localityOf(members), event.getStartDate(), event.getEndDate()),
                 event.getFocusFactor(),
                 null,
                 event.getMargeSecurite(),
@@ -206,6 +213,24 @@ public class CapacitySummaryService {
                 memberInputs);
 
         return CapacityCalculator.computeEventCapacity(input);
+    }
+
+    /**
+     * Resolves the locality to pass to {@link #holidayConnector} — the first member-level {@link
+     * CapacityEventMember#getLocality()} found, since the event itself carries no locality field.
+     *
+     * @param members the event's members, in display order
+     * @return the first non-blank member locality, or {@code null} if none carry one (the
+     *         connector resolves a {@code null}/blank locality to an empty holiday set)
+     */
+    private static String localityOf(final List<CapacityEventMember> members) {
+        for (CapacityEventMember member : members) {
+            String locality = member.getLocality();
+            if (locality != null && !locality.isBlank()) {
+                return locality;
+            }
+        }
+        return null;
     }
 
     /**
