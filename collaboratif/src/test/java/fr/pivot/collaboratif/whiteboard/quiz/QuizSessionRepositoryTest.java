@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -57,6 +58,7 @@ class QuizSessionRepositoryTest extends AbstractCollaboratifIntegrationTest {
     // =========================================================================
 
     @Test
+    @Transactional
     void findForUpdate_matchingIdBoardAndTenant_returnsTheSession() throws Exception {
         long tenantId = seedTenant();
         Board board = seedBoard(tenantId);
@@ -69,6 +71,7 @@ class QuizSessionRepositoryTest extends AbstractCollaboratifIntegrationTest {
     }
 
     @Test
+    @Transactional
     void findForUpdate_wrongBoardId_returnsEmpty() throws Exception {
         long tenantId = seedTenant();
         Board board = seedBoard(tenantId);
@@ -81,6 +84,7 @@ class QuizSessionRepositoryTest extends AbstractCollaboratifIntegrationTest {
     }
 
     @Test
+    @Transactional
     void findForUpdate_wrongTenantId_returnsEmptyEvenForTheCorrectBoard() throws Exception {
         long tenantId = seedTenant();
         long otherTenantId = seedTenant();
@@ -94,6 +98,7 @@ class QuizSessionRepositoryTest extends AbstractCollaboratifIntegrationTest {
     }
 
     @Test
+    @Transactional
     void findForUpdate_unknownId_returnsEmpty() throws Exception {
         long tenantId = seedTenant();
         Board board = seedBoard(tenantId);
