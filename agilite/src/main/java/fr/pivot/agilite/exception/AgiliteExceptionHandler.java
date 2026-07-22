@@ -714,4 +714,20 @@ public class AgiliteExceptionHandler {
         problem.setProperties(Map.of("code", ex.getCode()));
         return problem;
     }
+
+    /**
+     * Returns HTTP 403 when a non-tenant-administrator attempts to manage the tenant's holiday
+     * list (US11.6.1) — the one capacity-module endpoint gated by platform role rather than team
+     * membership, see {@link CapacityAdminOnlyException}'s Javadoc.
+     *
+     * @param ex the thrown exception
+     * @return a 403 problem detail
+     */
+    @ExceptionHandler(CapacityAdminOnlyException.class)
+    public ProblemDetail handleCapacityAdminOnly(final CapacityAdminOnlyException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Forbidden");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
 }

@@ -24,6 +24,8 @@ public class CapacityEventService {
 
     /** Maximum name length, enforced alongside the bean-validation {@code @Size} annotation. */
     private static final int MAX_NAME_LENGTH = 120;
+    private static final int MIN_FOCUS_FACTOR_PERCENT = 10;
+    private static final int MAX_FOCUS_FACTOR_PERCENT = 100;
 
     private final CapacityEventRepository eventRepository;
     private final CapacityEventMemberRepository memberRepository;
@@ -68,13 +70,14 @@ public class CapacityEventService {
             CapacityEvent parent = accessService.resolveEventForCaller(parentEventId, callerUserId, tenantId);
             // Depth checked before type: a candidate that already has its own parent is rejected
             // as too-deep regardless of type (US11.3.1's "événement déjà parent" AC row) — a
-            // parent-less, non-PI_PLANNING candidate falls through to the type check below.
+            // parent-less, non-parent-typed candidate falls through to the type check below.
             if (parent.getParentEventId() != null) {
                 throw new CapacityValidationException("MAX_DEPTH_EXCEEDED", "Parent event already has a parent");
             }
-            if (parent.getType() != CapacityEventType.PI_PLANNING) {
-                throw new CapacityValidationException("INVALID_PARENT_EVENT", "Parent event must be PI_PLANNING");
+            if (!isParentType(parent.getType())) {
+                throw new CapacityValidationException("INVALID_PARENT_EVENT", "Parent event must be PI_PLANNING or INCREMENT");
             }
+            requireChildWithinParentPeriod(parent, request.startDate(), request.endDate());
         }
 
         CapacityEvent draft = new CapacityEvent(
@@ -88,7 +91,7 @@ public class CapacityEventService {
         draft.setParentEventId(parentEventId);
         CapacityEvent event = eventRepository.save(draft);
 
-        if (request.type() != CapacityEventType.PI_PLANNING) {
+        if (!isParentType(request.type())) {
             List<TeamMemberResponse> teamMembers =
                     teamMembershipService.listMembers(request.teamId(), callerUserId, tenantId);
             List<CapacityEventMember> roster = teamMembers.stream()
@@ -146,7 +149,9 @@ public class CapacityEventService {
                         event.getCreatedAt(),
                         event.getUpdatedAt(),
                         null,
-                        List.of()))
+                        List.of(),
+                        event.isIpIteration(),
+                        event.getFocusFactorPercent()))
                 .toList();
     }
 
@@ -184,9 +189,52 @@ public class CapacityEventService {
         }
         LocalDateRange range = resolveEffectiveRange(event, request.startDate(), request.endDate());
         validateDateRange(range.startDate(), range.endDate());
+        if (event.getParentEventId() != null) {
+            CapacityEvent parent = eventRepository.findById(event.getParentEventId()).orElseThrow();
+            requireChildWithinParentPeriod(parent, range.startDate(), range.endDate());
+        }
         event.setStartDate(range.startDate());
         event.setEndDate(range.endDate());
+        if (request.isIpIteration() != null) {
+            event.setIpIteration(request.isIpIteration());
+        }
+        if (request.focusFactorPercent() != null) {
+            int value = request.focusFactorPercent();
+            if (value < MIN_FOCUS_FACTOR_PERCENT || value > MAX_FOCUS_FACTOR_PERCENT) {
+                throw new CapacityValidationException(
+                        "INVALID_FOCUS_FACTOR",
+                        "focusFactorPercent must be between " + MIN_FOCUS_FACTOR_PERCENT + " and " + MAX_FOCUS_FACTOR_PERCENT);
+            }
+            event.setFocusFactorPercent(value);
+        }
         return toResponse(event, tenantId);
+    }
+
+    /**
+     * Returns whether {@code type} may be a parent in the PI/Sprint hierarchy (US11.3.1/US11.5.1)
+     * — both {@code PI_PLANNING} (has IP-iteration semantics) and {@code INCREMENT} (a plain lot
+     * of N sprints, no IP iteration) qualify.
+     *
+     * @param type the candidate type
+     * @return {@code true} if {@code type} may own children
+     */
+    private static boolean isParentType(final CapacityEventType type) {
+        return type == CapacityEventType.PI_PLANNING || type == CapacityEventType.INCREMENT;
+    }
+
+    /**
+     * Validates a child's effective period stays within its parent's own period (US11.5.1).
+     *
+     * @param parent    the parent event
+     * @param startDate the child's effective start date
+     * @param endDate   the child's effective end date
+     */
+    private void requireChildWithinParentPeriod(
+            final CapacityEvent parent, final LocalDate startDate, final LocalDate endDate) {
+        if (startDate.isBefore(parent.getStartDate()) || endDate.isAfter(parent.getEndDate())) {
+            throw new CapacityValidationException(
+                    "CHILD_PERIOD_OUTSIDE_PARENT", "Child event period must stay within its parent's period");
+        }
     }
 
     /**
@@ -293,7 +341,9 @@ public class CapacityEventService {
                 event.getCreatedAt(),
                 event.getUpdatedAt(),
                 parent,
-                children);
+                children,
+                event.isIpIteration(),
+                event.getFocusFactorPercent());
     }
 
     private EventRef toRef(final CapacityEvent event) {

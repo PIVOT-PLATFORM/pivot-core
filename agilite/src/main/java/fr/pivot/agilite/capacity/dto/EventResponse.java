@@ -23,8 +23,10 @@ import java.util.UUID;
  * @param createdBy       the creating user's {@code public.users.id}
  * @param createdAt       the creation timestamp
  * @param updatedAt       the last-update timestamp
- * @param parent          the parent PI Planning event's summary, or {@code null}
- * @param children        the event's direct children summaries, empty if none
+ * @param parent             the parent PI Planning event's summary, or {@code null}
+ * @param children           the event's direct children summaries, empty if none
+ * @param isIpIteration      the IP-iteration flag (US11.5.1)
+ * @param focusFactorPercent the event-level focus-factor override (US11.6.2), or {@code null}
  */
 public record EventResponse(
         UUID id,
@@ -40,5 +42,7 @@ public record EventResponse(
         Instant createdAt,
         Instant updatedAt,
         EventRef parent,
-        List<EventRef> children) {
+        List<EventRef> children,
+        boolean isIpIteration,
+        Integer focusFactorPercent) {
 }

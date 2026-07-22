@@ -78,6 +78,22 @@ public class CapacityEvent {
     @Column(name = "points_per_day")
     private Double pointsPerDay;
 
+    /**
+     * Marks a {@code SPRINT} child of a {@code PI_PLANNING} parent as the IP iteration (US11.5.1)
+     * — excluded from that parent's aggregated capacity. Ignored (no effect, never an error) on
+     * any other event: a top-level event, or a child of an {@code INCREMENT} parent.
+     */
+    @Column(name = "is_ip_iteration", nullable = false)
+    private boolean isIpIteration;
+
+    /**
+     * Event-level focus-factor override in {@code [10, 100]} (US11.6.2), or {@code null} to fall
+     * back to the owning team's maturity-derived default, then the global 70% default
+     * (US11.6.4) — resolution centralized in {@code CapacitySummaryService}, never duplicated.
+     */
+    @Column(name = "focus_factor_percent")
+    private Integer focusFactorPercent;
+
     /** Points committed at sprint planning time (US11.4.1); {@code SPRINT} events only. */
     @Column(name = "committed_points")
     private Integer committedPoints;
@@ -282,6 +298,44 @@ public class CapacityEvent {
      */
     public void setPointsPerDay(final Double pointsPerDay) {
         this.pointsPerDay = pointsPerDay;
+    }
+
+    /**
+     * Returns whether this event is the IP iteration of its {@code PI_PLANNING} parent.
+     *
+     * @return {@code true} if flagged as the IP iteration
+     */
+    public boolean isIpIteration() {
+        return isIpIteration;
+    }
+
+    /**
+     * Sets the IP-iteration flag — accepted unconditionally (US11.5.1: meaningful only for a
+     * {@code SPRINT} child of a {@code PI_PLANNING} parent, silently without effect otherwise).
+     *
+     * @param ipIteration the new flag value
+     */
+    public void setIpIteration(final boolean ipIteration) {
+        this.isIpIteration = ipIteration;
+    }
+
+    /**
+     * Returns the event-level focus-factor override, or {@code null} if unset.
+     *
+     * @return the focus-factor percentage, {@code [10, 100]}, or {@code null}
+     */
+    public Integer getFocusFactorPercent() {
+        return focusFactorPercent;
+    }
+
+    /**
+     * Sets the event-level focus-factor override.
+     *
+     * @param focusFactorPercent the new focus-factor percentage, expected already validated in
+     *                           {@code [10, 100]}, or {@code null} to clear the override
+     */
+    public void setFocusFactorPercent(final Integer focusFactorPercent) {
+        this.focusFactorPercent = focusFactorPercent;
     }
 
     /**

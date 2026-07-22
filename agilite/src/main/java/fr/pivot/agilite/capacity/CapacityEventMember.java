@@ -54,6 +54,13 @@ public class CapacityEventMember {
     @Column(name = "excluded", nullable = false)
     private boolean excluded;
 
+    /**
+     * Per-member focus-factor override in {@code [10, 100]} (US11.6.2), taking precedence over
+     * the owning event's own {@code focusFactorPercent} when set; {@code null} defers to it.
+     */
+    @Column(name = "focus_factor_percent")
+    private Integer focusFactorPercent;
+
     /** No-arg constructor required by JPA. */
     protected CapacityEventMember() {
     }
@@ -144,5 +151,24 @@ public class CapacityEventMember {
      */
     public void setExcluded(final boolean excluded) {
         this.excluded = excluded;
+    }
+
+    /**
+     * Returns the per-member focus-factor override, or {@code null} if unset.
+     *
+     * @return the focus-factor percentage, {@code [10, 100]}, or {@code null}
+     */
+    public Integer getFocusFactorPercent() {
+        return focusFactorPercent;
+    }
+
+    /**
+     * Sets the per-member focus-factor override.
+     *
+     * @param focusFactorPercent the new focus-factor percentage, expected already validated in
+     *                           {@code [10, 100]}, or {@code null} to clear the override
+     */
+    public void setFocusFactorPercent(final Integer focusFactorPercent) {
+        this.focusFactorPercent = focusFactorPercent;
     }
 }
