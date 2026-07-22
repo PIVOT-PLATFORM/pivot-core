@@ -3,6 +3,7 @@ package fr.pivot.agilite.capacity;
 import fr.pivot.agilite.capacity.dto.EventResponse;
 import fr.pivot.agilite.capacity.dto.UpdateVelocityRequest;
 import fr.pivot.agilite.capacity.dto.VelocityAverageResponse;
+import fr.pivot.agilite.capacity.dto.VelocityForecastResponse;
 import fr.pivot.agilite.capacity.dto.VelocityHistoryEntryResponse;
 import fr.pivot.agilite.context.RequestPrincipal;
 import fr.pivot.agilite.web.AgiliteApiPaths;
@@ -31,14 +32,18 @@ import java.util.UUID;
 public class CapacityVelocityController {
 
     private final CapacityVelocityService velocityService;
+    private final CapacityVelocityForecastService forecastService;
 
     /**
-     * Creates the controller with its required service dependency.
+     * Creates the controller with its required service dependencies.
      *
      * @param velocityService the velocity business logic service (US11.4.1)
+     * @param forecastService the velocity forecast business logic service (US11.6.3)
      */
-    public CapacityVelocityController(final CapacityVelocityService velocityService) {
+    public CapacityVelocityController(
+            final CapacityVelocityService velocityService, final CapacityVelocityForecastService forecastService) {
         this.velocityService = velocityService;
+        this.forecastService = forecastService;
     }
 
     /**
@@ -89,5 +94,21 @@ public class CapacityVelocityController {
             @RequestParam(required = false) final Double factor,
             final RequestPrincipal principal) {
         return velocityService.average(teamId, count, factor, principal.userId(), principal.tenantId());
+    }
+
+    /**
+     * Computes a team's net-person-day-weighted moving-average velocity forecast (US11.6.3).
+     *
+     * @param teamId    the team's {@code public.teams.id} from the path
+     * @param window    optional averaging window, default 3, {@code [1, 10]}
+     * @param principal the resolved caller identity
+     * @return the forecast response
+     */
+    @GetMapping("/teams/{teamId}/velocity-forecast")
+    public VelocityForecastResponse forecast(
+            @PathVariable final Long teamId,
+            @RequestParam(required = false) final Integer window,
+            final RequestPrincipal principal) {
+        return forecastService.forecast(teamId, window, principal.userId(), principal.tenantId());
     }
 }
