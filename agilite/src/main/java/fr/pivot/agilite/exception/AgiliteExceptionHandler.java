@@ -633,4 +633,36 @@ public class AgiliteExceptionHandler {
         problem.setDetail(ex.getMessage());
         return problem;
     }
+
+    /**
+     * Returns HTTP 404 when a PI cycle, iteration, Train team, ticket, or dependency is not
+     * found, belongs to another tenant, or the caller has no link to its cycle
+     * (US50.1.1/US50.3.1/US50.3.2).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(PiNotFoundException.class)
+    public ProblemDetail handlePiNotFound(final PiNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Not found");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 400 with a machine-readable {@code code} property for PI Planning
+     * business-rule validation failures (US50.1.1/US50.3.1/US50.3.2).
+     *
+     * @param ex the thrown exception
+     * @return a 400 problem detail with a {@code code} property
+     */
+    @ExceptionHandler(PiValidationException.class)
+    public ProblemDetail handlePiValidation(final PiValidationException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Validation failed");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
 }
