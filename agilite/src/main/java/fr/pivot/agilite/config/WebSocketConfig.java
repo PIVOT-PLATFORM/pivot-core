@@ -2,6 +2,7 @@ package fr.pivot.agilite.config;
 
 import fr.pivot.agilite.poker.ws.PokerChannelInterceptor;
 import fr.pivot.agilite.retro.ws.RetroChannelInterceptor;
+import fr.pivot.agilite.standup.ws.StandupChannelInterceptor;
 import fr.pivot.agilite.web.AgiliteApiPaths;
 import fr.pivot.agilite.wheel.ws.WheelChannelInterceptor;
 import fr.pivot.agilite.ws.WsConnectionHandshakeHandler;
@@ -140,8 +141,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      * registration from {@link #DOMAIN_TOPIC_PREFIX}. Package-private for direct assertion from
      * tests.
      */
-    static final String[] ROOM_BROKER_PREFIXES =
-            {"/topic/agilite/poker", "/topic/agilite/retro", "/topic/agilite/wheels", "/queue"};
+    static final String[] ROOM_BROKER_PREFIXES = {
+        "/topic/agilite/poker", "/topic/agilite/retro", "/topic/agilite/wheels",
+        "/topic/agilite/standup", "/queue"
+    };
 
     private final String relayHost;
     private final int relayPort;
@@ -151,6 +154,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final PokerChannelInterceptor pokerChannelInterceptor;
     private final RetroChannelInterceptor retroChannelInterceptor;
     private final WheelChannelInterceptor wheelChannelInterceptor;
+    private final StandupChannelInterceptor standupChannelInterceptor;
     private final WsSessionTrackingHandlerDecoratorFactory sessionTrackingHandlerDecoratorFactory;
 
     /**
@@ -183,6 +187,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      *                                                (US20.1.2a)
      * @param wheelChannelInterceptor                 STOMP frame interceptor enforcing wheel
      *                                                subscription authorization (US14.3.1)
+     * @param standupChannelInterceptor               STOMP frame interceptor enforcing standup
+     *                                                session subscription authorization
+     *                                                (US10.1.2)
      * @param sessionTrackingHandlerDecoratorFactory  decorator factory that feeds
      *                                                {@code WsSessionRegistry}, used by
      *                                                {@code pokerChannelInterceptor}/{@code
@@ -198,6 +205,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             final PokerChannelInterceptor pokerChannelInterceptor,
             final RetroChannelInterceptor retroChannelInterceptor,
             final WheelChannelInterceptor wheelChannelInterceptor,
+            final StandupChannelInterceptor standupChannelInterceptor,
             final WsSessionTrackingHandlerDecoratorFactory sessionTrackingHandlerDecoratorFactory) {
         this.relayHost = relayHost;
         this.relayPort = relayPort;
@@ -207,6 +215,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         this.pokerChannelInterceptor = pokerChannelInterceptor;
         this.retroChannelInterceptor = retroChannelInterceptor;
         this.wheelChannelInterceptor = wheelChannelInterceptor;
+        this.standupChannelInterceptor = standupChannelInterceptor;
         this.sessionTrackingHandlerDecoratorFactory = sessionTrackingHandlerDecoratorFactory;
     }
 
@@ -322,16 +331,18 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     /**
-     * Registers {@link PokerChannelInterceptor}, {@link RetroChannelInterceptor} and
-     * {@link WheelChannelInterceptor} on the client inbound channel, enforcing EN09.1/US20.1.2a/
-     * US14.3.1 isolation on every SUBSCRIBE (and, for poker/retro, SEND) frame. Each interceptor
-     * only ever acts on its own domain's destination prefixes (see their respective JavaDoc) —
-     * registering all three has no effect on one another's traffic.
+     * Registers {@link PokerChannelInterceptor}, {@link RetroChannelInterceptor}, {@link
+     * WheelChannelInterceptor} and {@link StandupChannelInterceptor} on the client inbound
+     * channel, enforcing EN09.1/US20.1.2a/US14.3.1/US10.1.2 isolation on every SUBSCRIBE (and,
+     * for poker/retro, SEND) frame. Each interceptor only ever acts on its own domain's
+     * destination prefixes (see their respective JavaDoc) — registering all four has no effect on
+     * one another's traffic.
      *
      * @param registration the inbound channel registration
      */
     @Override
     public void configureClientInboundChannel(final ChannelRegistration registration) {
-        registration.interceptors(pokerChannelInterceptor, retroChannelInterceptor, wheelChannelInterceptor);
+        registration.interceptors(
+                pokerChannelInterceptor, retroChannelInterceptor, wheelChannelInterceptor, standupChannelInterceptor);
     }
 }

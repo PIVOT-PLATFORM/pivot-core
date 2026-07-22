@@ -44,8 +44,11 @@ import java.util.Map;
  * GuestSessionExpiredException}, {@link PokerFacilitatorOnlyException}), retro action
  * lookup/validation exceptions (US20.3.1, {@link RetroActionNotFoundException}, {@link
  * RetroActionOwnerNotTeamMemberException}, {@link RetroActionSourceCardMismatchException}, {@link
- * InvalidRetroActionStatusException}), as well as Spring MVC/ Bean Validation failures ({@link
- * MethodArgumentNotValidException}, {@link ConstraintViolationException}).
+ * InvalidRetroActionStatusException}), daily standup session/participant lookup and lifecycle
+ * exceptions (US10.1.1/US10.1.2/US10.2.2/US10.3.1, {@link StandupSessionNotFoundException},
+ * {@link StandupValidationException}, {@link StandupConflictException}), as well as Spring MVC/
+ * Bean Validation failures ({@link MethodArgumentNotValidException}, {@link
+ * ConstraintViolationException}).
  */
 @RestControllerAdvice(basePackages = "fr.pivot.agilite")
 public class AgiliteExceptionHandler {
@@ -567,6 +570,53 @@ public class AgiliteExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         problem.setTitle("Validation failed");
         problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 404 when a standup session is not found, belongs to another tenant, or the
+     * caller is not a member of its team (US10.1.1/US10.1.2).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(StandupSessionNotFoundException.class)
+    public ProblemDetail handleStandupSessionNotFound(final StandupSessionNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Standup session not found");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 400 with a machine-readable {@code code} property for standup business-rule
+     * validation failures (US10.1.1/US10.2.2/US10.3.1).
+     *
+     * @param ex the thrown exception
+     * @return a 400 problem detail with a {@code code} property
+     */
+    @ExceptionHandler(StandupValidationException.class)
+    public ProblemDetail handleStandupValidation(final StandupValidationException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Validation failed");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 with a machine-readable {@code code} property for standup lifecycle
+     * conflicts (US10.1.1/US10.1.2/US10.2.2).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail with a {@code code} property
+     */
+    @ExceptionHandler(StandupConflictException.class)
+    public ProblemDetail handleStandupConflict(final StandupConflictException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Conflict");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
         return problem;
     }
 

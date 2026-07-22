@@ -2,6 +2,7 @@ package fr.pivot.agilite.config;
 
 import fr.pivot.agilite.poker.ws.PokerChannelInterceptor;
 import fr.pivot.agilite.retro.ws.RetroChannelInterceptor;
+import fr.pivot.agilite.standup.ws.StandupChannelInterceptor;
 import fr.pivot.agilite.wheel.ws.WheelChannelInterceptor;
 import fr.pivot.agilite.ws.WsSessionRegistry;
 import fr.pivot.agilite.ws.WsSessionTrackingHandlerDecoratorFactory;
@@ -145,8 +146,9 @@ class WebSocketConfigIT {
      * class's {@code @Bean} methods too, silently substituting Mockito mocks — whose unstubbed
      * {@code preSend(...)} returns {@code null} unconditionally, for <em>every</em> STOMP frame
      * including CONNECT — for the real {@code @Component}-scanned {@code PokerChannelInterceptor}/
-     * {@code RetroChannelInterceptor}/{@code WheelChannelInterceptor} beans everywhere else in the
-     * module. {@code @TestConfiguration} is Spring Boot's documented fix: it is recognised and
+     * {@code RetroChannelInterceptor}/{@code WheelChannelInterceptor}/{@code
+     * StandupChannelInterceptor} beans everywhere else in the module. {@code @TestConfiguration}
+     * is Spring Boot's documented fix: it is recognised and
      * actively excluded by the {@code TypeExcludeFilter} that {@code @SpringBootApplication}
      * (and, after the EN53.1 hardening, {@link fr.pivot.agilite.AgiliteTestApplication}) registers
      * by default — while still fully usable here via this class's own explicit {@code
@@ -197,6 +199,18 @@ class WebSocketConfigIT {
         @Bean
         WheelChannelInterceptor wheelChannelInterceptor() {
             return mock(WheelChannelInterceptor.class);
+        }
+
+        /**
+         * Mocked US10.1.2 standup session subscription isolation interceptor — unused by this
+         * relay-connectivity test, but required to satisfy {@link WebSocketConfig}'s constructor
+         * since this slice loads only {@link WebSocketConfig}, not the full application context.
+         *
+         * @return a Mockito mock
+         */
+        @Bean
+        StandupChannelInterceptor standupChannelInterceptor() {
+            return mock(StandupChannelInterceptor.class);
         }
 
         /**

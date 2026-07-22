@@ -1,6 +1,7 @@
 package fr.pivot.agilite.config;
 
 import fr.pivot.agilite.poker.ws.PokerRoomDestinations;
+import fr.pivot.agilite.standup.ws.StandupDestinations;
 import fr.pivot.agilite.wheel.ws.WheelDestinations;
 import org.junit.jupiter.api.Test;
 
@@ -84,5 +85,20 @@ class WebSocketConfigTest {
 
         String wheelDestination = "/topic/agilite/wheels/11111111-1111-1111-1111-111111111111";
         assertThat(wheelDestination).doesNotStartWith(WebSocketConfig.DOMAIN_TOPIC_PREFIX);
+    }
+
+    /**
+     * Security AC (US10.1.2): the standup broadcast topic's prefix must be registered on the
+     * in-process room broker and never overlap the EN07.3 ActiveMQ relay's domain prefix, same
+     * guarantee as the EN09.1 planning-poker room broker and US14.3.1 wheel broker above.
+     */
+    @Test
+    void standupBrokerPrefixNeverOverlapsTheActiveMqRelayPrefix() {
+        assertThat(Arrays.asList(WebSocketConfig.ROOM_BROKER_PREFIXES))
+                .contains(StandupDestinations.TOPIC_STANDUP_PREFIX.substring(
+                        0, StandupDestinations.TOPIC_STANDUP_PREFIX.length() - 1));
+
+        String standupDestination = "/topic/agilite/standup/11111111-1111-1111-1111-111111111111";
+        assertThat(standupDestination).doesNotStartWith(WebSocketConfig.DOMAIN_TOPIC_PREFIX);
     }
 }
