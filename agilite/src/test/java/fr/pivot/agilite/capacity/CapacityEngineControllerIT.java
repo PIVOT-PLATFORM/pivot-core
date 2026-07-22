@@ -280,6 +280,87 @@ class CapacityEngineControllerIT extends AbstractAgiliteIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void importCsv_emptyFile_returns400() throws Exception {
+        String eventId = createSprintId(tokenA1, teamA1, "2026-01-05", "2026-01-16");
+        MockMultipartFile file = new MockMultipartFile("file", "absences.csv", "text/csv", new byte[0]);
+
+        mockMvc.perform(multipart(EVENTS_PATH + "/" + eventId + "/absences/import")
+                        .file(file)
+                        .header("Authorization", "Bearer " + tokenA1))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_IMPORT_FILE"));
+    }
+
+    @Test
+    void importCsv_tooFewColumns_rowErrorsAsInvalidDateRange() throws Exception {
+        String eventId = createSprintId(tokenA1, teamA1, "2026-01-05", "2026-01-16");
+        String csv = "teamMemberIdOrEmail,dateDebut,dateFin\n1,2026-01-06\n";
+        MockMultipartFile file = new MockMultipartFile("file", "absences.csv", "text/csv", csv.getBytes());
+
+        mockMvc.perform(multipart(EVENTS_PATH + "/" + eventId + "/absences/import")
+                        .file(file)
+                        .header("Authorization", "Bearer " + tokenA1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(0))
+                .andExpect(jsonPath("$.errors[0].code").value("INVALID_DATE_RANGE"));
+    }
+
+    @Test
+    void importCsv_malformedDate_rowErrorsAsInvalidDateRange() throws Exception {
+        String eventId = createSprintId(tokenA1, teamA1, "2026-01-05", "2026-01-16");
+        MvcResult membersResult = mockMvc.perform(get(EVENTS_PATH + "/" + eventId + "/members")
+                        .header("Authorization", "Bearer " + tokenA1))
+                .andReturn();
+        long teamMemberId = objectMapper.readTree(membersResult.getResponse().getContentAsString())
+                .get(0).get("teamMemberId").asLong();
+        String csv = "teamMemberIdOrEmail,dateDebut,dateFin\n" + teamMemberId + ",not-a-date,2026-01-07\n";
+        MockMultipartFile file = new MockMultipartFile("file", "absences.csv", "text/csv", csv.getBytes());
+
+        mockMvc.perform(multipart(EVENTS_PATH + "/" + eventId + "/absences/import")
+                        .file(file)
+                        .header("Authorization", "Bearer " + tokenA1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imported").value(0))
+                .andExpect(jsonPath("$.errors[0].code").value("INVALID_DATE_RANGE"));
+    }
+
+    @Test
+    void importCsv_dateDebutAfterDateFin_rowErrorsAsInvalidDateRange() throws Exception {
+        String eventId = createSprintId(tokenA1, teamA1, "2026-01-05", "2026-01-16");
+        MvcResult membersResult = mockMvc.perform(get(EVENTS_PATH + "/" + eventId + "/members")
+                        .header("Authorization", "Bearer " + tokenA1))
+                .andReturn();
+        long teamMemberId = objectMapper.readTree(membersResult.getResponse().getContentAsString())
+                .get(0).get("teamMemberId").asLong();
+        String csv = "teamMemberIdOrEmail,dateDebut,dateFin\n" + teamMemberId + ",2026-01-10,2026-01-06\n";
+        MockMultipartFile file = new MockMultipartFile("file", "absences.csv", "text/csv", csv.getBytes());
+
+        mockMvc.perform(multipart(EVENTS_PATH + "/" + eventId + "/absences/import")
+                        .file(file)
+                        .header("Authorization", "Bearer " + tokenA1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors[0].code").value("INVALID_DATE_RANGE"));
+    }
+
+    @Test
+    void importCsv_absenceFullyOutsideEventPeriod_rowErrorsAsAbsenceOutsideEvent() throws Exception {
+        String eventId = createSprintId(tokenA1, teamA1, "2026-01-05", "2026-01-16");
+        MvcResult membersResult = mockMvc.perform(get(EVENTS_PATH + "/" + eventId + "/members")
+                        .header("Authorization", "Bearer " + tokenA1))
+                .andReturn();
+        long teamMemberId = objectMapper.readTree(membersResult.getResponse().getContentAsString())
+                .get(0).get("teamMemberId").asLong();
+        String csv = "teamMemberIdOrEmail,dateDebut,dateFin\n" + teamMemberId + ",2026-03-01,2026-03-02\n";
+        MockMultipartFile file = new MockMultipartFile("file", "absences.csv", "text/csv", csv.getBytes());
+
+        mockMvc.perform(multipart(EVENTS_PATH + "/" + eventId + "/absences/import")
+                        .file(file)
+                        .header("Authorization", "Bearer " + tokenA1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.errors[0].code").value("ABSENCE_OUTSIDE_EVENT"));
+    }
+
     // -------------------------------------------------------------------------
     // GET /capacity/events/{id}/summary — US11.6.5, full engine + isProvisional
     // -------------------------------------------------------------------------
@@ -332,5 +413,128 @@ class CapacityEngineControllerIT extends AbstractAgiliteIntegrationTest {
         mockMvc.perform(get(EVENTS_PATH + "/" + incrementId + "/summary").header("Authorization", "Bearer " + tokenA1))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.memberCount").value(1));
+    }
+
+    // -------------------------------------------------------------------------
+    // POST/PATCH /capacity/events — US11.5.1 hierarchy depth/period, US11.6.2 focus factor
+    // -------------------------------------------------------------------------
+
+    @Test
+    void create_childOfAnAlreadyNestedParent_returns400MaxDepthExceeded() throws Exception {
+        String incrementBody = "{\"type\": \"INCREMENT\", \"name\": \"Increment 1\", \"teamId\": " + teamA1
+                + ", \"startDate\": \"2026-01-05\", \"endDate\": \"2026-02-27\"}";
+        MvcResult incrementResult = mockMvc.perform(post(EVENTS_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA1)
+                        .content(incrementBody))
+                .andReturn();
+        String incrementId = objectMapper.readTree(incrementResult.getResponse().getContentAsString()).get("id").asText();
+
+        String sprintBody = "{\"type\": \"SPRINT\", \"name\": \"Sprint 1\", \"teamId\": " + teamA1
+                + ", \"startDate\": \"2026-01-05\", \"endDate\": \"2026-01-16\", \"parentEventId\": \"" + incrementId + "\"}";
+        MvcResult sprintResult = mockMvc.perform(post(EVENTS_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA1)
+                        .content(sprintBody))
+                .andReturn();
+        String sprintId = objectMapper.readTree(sprintResult.getResponse().getContentAsString()).get("id").asText();
+
+        // A candidate that is itself already a child (has a parent) can never become a parent.
+        String grandchildBody = "{\"type\": \"SPRINT\", \"name\": \"Sprint 2\", \"teamId\": " + teamA1
+                + ", \"startDate\": \"2026-01-05\", \"endDate\": \"2026-01-16\", \"parentEventId\": \"" + sprintId + "\"}";
+        mockMvc.perform(post(EVENTS_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA1)
+                        .content(grandchildBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MAX_DEPTH_EXCEEDED"));
+    }
+
+    @Test
+    void create_childPeriodOutsideParentPeriod_returns400() throws Exception {
+        String incrementBody = "{\"type\": \"INCREMENT\", \"name\": \"Increment 1\", \"teamId\": " + teamA1
+                + ", \"startDate\": \"2026-01-05\", \"endDate\": \"2026-01-16\"}";
+        MvcResult incrementResult = mockMvc.perform(post(EVENTS_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA1)
+                        .content(incrementBody))
+                .andReturn();
+        String incrementId = objectMapper.readTree(incrementResult.getResponse().getContentAsString()).get("id").asText();
+
+        // Child ends 2026-02-01, well past the parent's 2026-01-16 end date.
+        String sprintBody = "{\"type\": \"SPRINT\", \"name\": \"Sprint 1\", \"teamId\": " + teamA1
+                + ", \"startDate\": \"2026-01-05\", \"endDate\": \"2026-02-01\", \"parentEventId\": \"" + incrementId + "\"}";
+        mockMvc.perform(post(EVENTS_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA1)
+                        .content(sprintBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CHILD_PERIOD_OUTSIDE_PARENT"));
+    }
+
+    @Test
+    void update_isIpIterationOnTopLevelSprint_acceptedWithoutEffectOnAggregation() throws Exception {
+        // A top-level SPRINT (no PI_PLANNING parent) has no IP-iteration semantics — the flag is
+        // accepted without error, per the AC's explicit "accepted, no effect" row (US11.5.1).
+        String eventId = createSprintId(tokenA1, teamA1, "2026-01-05", "2026-01-16");
+
+        mockMvc.perform(patch(EVENTS_PATH + "/" + eventId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA1)
+                        .content("{\"isIpIteration\": true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isIpIteration").value(true));
+    }
+
+    @Test
+    void update_focusFactorOutOfBounds_returns400() throws Exception {
+        String eventId = createSprintId(tokenA1, teamA1, "2026-01-05", "2026-01-16");
+
+        mockMvc.perform(patch(EVENTS_PATH + "/" + eventId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA1)
+                        .content("{\"focusFactorPercent\": 5}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_FOCUS_FACTOR"));
+    }
+
+    @Test
+    void update_focusFactorWithinBounds_appliedAndReflectedInSummary() throws Exception {
+        String eventId = createSprintId(tokenA1, teamA1, "2026-01-05", "2026-01-09");
+
+        mockMvc.perform(patch(EVENTS_PATH + "/" + eventId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + tokenA1)
+                        .content("{\"focusFactorPercent\": 50}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.focusFactorPercent").value(50));
+
+        // Mon 2026-01-05 .. Fri 2026-01-09: 5 working days * 1 member * 100% availability * 50% = 2.5.
+        mockMvc.perform(get(EVENTS_PATH + "/" + eventId + "/summary").header("Authorization", "Bearer " + tokenA1))
+                .andExpect(jsonPath("$.netCapacityDays").value(2.5))
+                .andExpect(jsonPath("$.isProvisional").value(false));
+    }
+
+    // -------------------------------------------------------------------------
+    // GET /capacity/holidays?from=&to= — US11.6.1 period filter
+    // -------------------------------------------------------------------------
+
+    @Test
+    void listHolidays_periodFilter_onlyReturnsHolidaysWithinRange() throws Exception {
+        mockMvc.perform(post(HOLIDAYS_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + adminTokenA)
+                        .content("{\"date\": \"2026-01-01\", \"label\": \"Jour de l'an\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post(HOLIDAYS_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + adminTokenA)
+                        .content("{\"date\": \"2026-05-01\", \"label\": \"Fête du travail\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get(HOLIDAYS_PATH + "?from=2026-01-01&to=2026-01-31").header("Authorization", "Bearer " + tokenA1))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].label").value("Jour de l'an"));
     }
 }
