@@ -63,6 +63,9 @@
 		     https://docs.spring.io/spring-modulith/reference/appendix.html for the current
 		     compatibility matrix and adjust here (single line to change, no other impact). -->
 		<spring-modulith.version>2.1.0</spring-modulith.version>
+		<!-- CVE-2026-54291 (HIGH, pgjdbc) — fixed upstream in 42.7.12, spring-boot-starter-parent
+		     4.1.0 still manages 42.7.11. Override until the parent bumps. -->
+		<postgresql.version>42.7.12</postgresql.version>
 	</properties>
 
 	<dependencyManagement>
