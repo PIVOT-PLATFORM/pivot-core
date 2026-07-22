@@ -665,4 +665,53 @@ public class AgiliteExceptionHandler {
         problem.setProperties(Map.of("code", ex.getCode()));
         return problem;
     }
+
+    /**
+     * Returns HTTP 404 when a capacity event, member, or absence is not found, belongs to
+     * another tenant, or the caller has no link to its team
+     * (US11.1.1/US11.2.1/US11.2.2/US11.3.1/US11.4.1/US11.4.2).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(CapacityNotFoundException.class)
+    public ProblemDetail handleCapacityNotFound(final CapacityNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Not found");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 400 with a machine-readable {@code code} property for capacity-planning
+     * business-rule validation failures
+     * (US11.1.1/US11.2.1/US11.2.2/US11.3.1/US11.4.1/US11.4.2).
+     *
+     * @param ex the thrown exception
+     * @return a 400 problem detail with a {@code code} property
+     */
+    @ExceptionHandler(CapacityValidationException.class)
+    public ProblemDetail handleCapacityValidation(final CapacityValidationException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Validation failed");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 with a machine-readable {@code code} property for capacity event
+     * lifecycle conflicts (US11.1.1 — deleting an event that still has children).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail with a {@code code} property
+     */
+    @ExceptionHandler(CapacityConflictException.class)
+    public ProblemDetail handleCapacityConflict(final CapacityConflictException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Conflict");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
 }
