@@ -41,6 +41,7 @@ public class CapacityAbsenceImportService {
 
     private static final int MAX_LINES = 500;
     private static final int EXPECTED_COLUMNS = 3;
+    private static final String CODE_INVALID_DATE_RANGE = "INVALID_DATE_RANGE";
 
     private final CapacityEventService eventService;
     private final CapacityEventMemberRepository memberRepository;
@@ -115,54 +116,70 @@ public class CapacityAbsenceImportService {
         List<AbsenceImportResponse.RowError> errors = new ArrayList<>();
         for (int i = 0; i < dataLines.size(); i++) {
             int lineNumber = i + 1;
-            String[] columns = dataLines.get(i).split(",", -1);
-            if (columns.length < EXPECTED_COLUMNS) {
-                errors.add(new AbsenceImportResponse.RowError(lineNumber, "INVALID_DATE_RANGE"));
-                continue;
-            }
-            String memberRef = columns[0].trim();
-            CapacityEventMember member = resolveMember(memberRef, membersByTeamMemberId, membersByEmail);
-            if (member == null) {
-                errors.add(new AbsenceImportResponse.RowError(lineNumber, "UNKNOWN_MEMBER"));
-                continue;
-            }
-
-            LocalDate dateDebut;
-            LocalDate dateFin;
-            try {
-                dateDebut = LocalDate.parse(columns[1].trim());
-                dateFin = LocalDate.parse(columns[2].trim());
-            } catch (DateTimeParseException e) {
-                errors.add(new AbsenceImportResponse.RowError(lineNumber, "INVALID_DATE_RANGE"));
-                continue;
-            }
-            if (dateDebut.isAfter(dateFin)) {
-                errors.add(new AbsenceImportResponse.RowError(lineNumber, "INVALID_DATE_RANGE"));
-                continue;
-            }
-            boolean fullyOutside = dateFin.isBefore(event.getStartDate()) || dateDebut.isAfter(event.getEndDate());
-            if (fullyOutside) {
-                errors.add(new AbsenceImportResponse.RowError(lineNumber, "ABSENCE_OUTSIDE_EVENT"));
-                continue;
-            }
-
-            if (isExactDuplicate(member.getId(), dateDebut, dateFin)) {
+            String errorCode = processRow(dataLines.get(i), event, membersByTeamMemberId, membersByEmail);
+            if (errorCode == null) {
                 imported++;
-                continue;
+            } else {
+                errors.add(new AbsenceImportResponse.RowError(lineNumber, errorCode));
             }
-
-            absenceRepository.save(new CapacityAbsence(member.getId(), dateDebut, dateFin));
-            imported++;
         }
 
         return new AbsenceImportResponse(imported, errors);
+    }
+
+    /**
+     * Processes a single CSV data row: resolves the member, validates the dates, and persists the
+     * absence (or detects an exact duplicate and no-ops) — a single-exit helper so the caller's
+     * loop never needs more than one branch per row.
+     *
+     * @param row                    the raw CSV data line (no header)
+     * @param event                  the target event, already access-checked
+     * @param membersByTeamMemberId  the event's roster, keyed by {@code teamMemberId}
+     * @param membersByEmail         the event's roster, keyed by lowercase resolved email
+     * @return {@code null} if the row was imported (including a silently-deduped exact
+     *     duplicate), or the machine-readable error code otherwise
+     */
+    private String processRow(
+            final String row,
+            final CapacityEvent event,
+            final Map<Long, CapacityEventMember> membersByTeamMemberId,
+            final Map<String, CapacityEventMember> membersByEmail) {
+        String[] columns = row.split(",", -1);
+        if (columns.length < EXPECTED_COLUMNS) {
+            return CODE_INVALID_DATE_RANGE;
+        }
+        CapacityEventMember member = resolveMember(columns[0].trim(), membersByTeamMemberId, membersByEmail);
+        if (member == null) {
+            return "UNKNOWN_MEMBER";
+        }
+
+        LocalDate dateDebut;
+        LocalDate dateFin;
+        try {
+            dateDebut = LocalDate.parse(columns[1].trim());
+            dateFin = LocalDate.parse(columns[2].trim());
+        } catch (DateTimeParseException _) {
+            return CODE_INVALID_DATE_RANGE;
+        }
+        if (dateDebut.isAfter(dateFin)) {
+            return CODE_INVALID_DATE_RANGE;
+        }
+        boolean fullyOutside = dateFin.isBefore(event.getStartDate()) || dateDebut.isAfter(event.getEndDate());
+        if (fullyOutside) {
+            return "ABSENCE_OUTSIDE_EVENT";
+        }
+
+        if (!isExactDuplicate(member.getId(), dateDebut, dateFin)) {
+            absenceRepository.save(new CapacityAbsence(member.getId(), dateDebut, dateFin));
+        }
+        return null;
     }
 
     private CapacityEventMember resolveMember(
             final String ref, final Map<Long, CapacityEventMember> byTeamMemberId, final Map<String, CapacityEventMember> byEmail) {
         try {
             return byTeamMemberId.get(Long.parseLong(ref));
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
             return byEmail.get(ref.toLowerCase(Locale.ROOT));
         }
     }
