@@ -148,6 +148,21 @@
                  decision — see us-planifier-program-board.md §Architecture). -->
             <Package name="fr.pivot.agilite.pi"/>
             <Package name="fr.pivot.agilite.pi.dto"/>
+            <!-- E11 Capacity Planning v1 socle (US11.1.1/US11.1.2/US11.2.1/US11.2.2/US11.3.1/
+                 US11.4.1/US11.4.2) : CapacityEvent/CapacityEventMember/CapacityAbsence/
+                 CapacityBurndownEntry are JPA entities (mutable getters/setters required by
+                 Hibernate); CapacityEventService/CapacityEventAccessService/
+                 CapacityMemberService/CapacityAbsenceService/CapacitySummaryService/
+                 CapacityVelocityService/CapacityBurndownService/CapacityEventController/
+                 CapacityMemberController/CapacityVelocityController/CapacityBurndownController
+                 store constructor-injected singleton beans (repositories,
+                 TeamMembershipService, other capacity services, Clock); DTO records expose
+                 mutable List for JSON transport (same rationale as the standup/pi dto packages
+                 above). No WebSocket sub-package for this module (planning/reporting tool, no
+                 live-collaboration angle — same no-WebSocket precedent as PI Planning's Program
+                 Board). -->
+            <Package name="fr.pivot.agilite.capacity"/>
+            <Package name="fr.pivot.agilite.capacity.dto"/>
         </Or>
     </Match>
 
