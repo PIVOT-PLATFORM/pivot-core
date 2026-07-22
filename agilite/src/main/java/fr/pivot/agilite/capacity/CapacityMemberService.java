@@ -23,6 +23,8 @@ public class CapacityMemberService {
 
     private static final int MIN_AVAILABILITY_PERCENT = 10;
     private static final int MAX_AVAILABILITY_PERCENT = 100;
+    private static final int MIN_FOCUS_FACTOR_PERCENT = 10;
+    private static final int MAX_FOCUS_FACTOR_PERCENT = 100;
 
     private final CapacityEventService eventService;
     private final CapacityEventMemberRepository memberRepository;
@@ -101,6 +103,15 @@ public class CapacityMemberService {
         if (request.excluded() != null) {
             member.setExcluded(request.excluded());
         }
+        if (request.focusFactorPercent() != null) {
+            int value = request.focusFactorPercent();
+            if (value < MIN_FOCUS_FACTOR_PERCENT || value > MAX_FOCUS_FACTOR_PERCENT) {
+                throw new CapacityValidationException(
+                        "INVALID_FOCUS_FACTOR",
+                        "focusFactorPercent must be between " + MIN_FOCUS_FACTOR_PERCENT + " and " + MAX_FOCUS_FACTOR_PERCENT);
+            }
+            member.setFocusFactorPercent(value);
+        }
         List<AbsenceResponse> absences = absenceRepository.findAllByEventMemberIdOrderByDateDebutAsc(memberId).stream()
                 .map(absence -> new AbsenceResponse(absence.getId(), absence.getDateDebut(), absence.getDateFin()))
                 .toList();
@@ -110,6 +121,6 @@ public class CapacityMemberService {
     private MemberResponse toResponse(final CapacityEventMember member, final List<AbsenceResponse> absences) {
         return new MemberResponse(
                 member.getId(), member.getTeamMemberId(), member.getName(), member.getAvailabilityPercent(),
-                member.isExcluded(), absences);
+                member.isExcluded(), absences, member.getFocusFactorPercent());
     }
 }

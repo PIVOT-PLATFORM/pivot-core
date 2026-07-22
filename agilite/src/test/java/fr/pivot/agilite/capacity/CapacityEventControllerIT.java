@@ -308,6 +308,9 @@ class CapacityEventControllerIT extends AbstractAgiliteIntegrationTest {
     @Test
     void summary_leafEvent_isProvisionalTrue() throws Exception {
         // Mon 2026-01-05 .. Fri 2026-01-16: 10 working days, one auto-seeded member at 100%.
+        // Sprint 21 (US11.6.2): the global 70% focus-factor default applies unconditionally, even
+        // with zero engine configuration -> 10 * 1.0 * 0.7 = 7.0 (isProvisional stays true: no
+        // holiday/maturity/explicit focus factor has been genuinely configured).
         String eventId = createEventId(tokenA1, "SPRINT", teamA1);
 
         mockMvc.perform(get(BASE_PATH + "/" + eventId + "/summary").header("Authorization", "Bearer " + tokenA1))
@@ -315,7 +318,7 @@ class CapacityEventControllerIT extends AbstractAgiliteIntegrationTest {
                 .andExpect(jsonPath("$.isProvisional").value(true))
                 .andExpect(jsonPath("$.memberCount").value(1))
                 .andExpect(jsonPath("$.workingDays").value(10))
-                .andExpect(jsonPath("$.netCapacityDays").value(10.0));
+                .andExpect(jsonPath("$.netCapacityDays").value(7.0));
     }
 
     @Test
@@ -339,9 +342,11 @@ class CapacityEventControllerIT extends AbstractAgiliteIntegrationTest {
                                 + piId + "\"}"))
                 .andExpect(status().isCreated());
 
+        // Sprint 21 (US11.6.2): child leaf applies the 70% global focus-factor default before
+        // aggregation -> 10 * 1.0 * 0.7 = 7.0.
         mockMvc.perform(get(BASE_PATH + "/" + piId + "/summary").header("Authorization", "Bearer " + tokenA1))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.netCapacityDays").value(10.0))
+                .andExpect(jsonPath("$.netCapacityDays").value(7.0))
                 .andExpect(jsonPath("$.memberCount").value(1));
     }
 

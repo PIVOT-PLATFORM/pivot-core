@@ -13,7 +13,14 @@ import java.util.UUID;
  * @param availabilityPercent the availability percentage, {@code [10, 100]}
  * @param excluded            whether the member is excluded from capacity calculations
  * @param absences            the member's absences, ordered by {@code dateDebut}
+ * @param focusFactorPercent  the per-member focus-factor override (US11.6.2), or {@code null}
  */
 public record MemberResponse(
-        UUID id, Long teamMemberId, String name, int availabilityPercent, boolean excluded, List<AbsenceResponse> absences) {
+        UUID id,
+        Long teamMemberId,
+        String name,
+        int availabilityPercent,
+        boolean excluded,
+        List<AbsenceResponse> absences,
+        Integer focusFactorPercent) {
 }
