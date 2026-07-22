@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.Month;
 import java.time.ZoneOffset;
 import java.util.List;
 
@@ -17,8 +18,8 @@ import static org.assertj.core.api.Assertions.offset;
 class CapacityBurndownCalculatorTest {
 
     // Monday 2026-01-05 .. Friday 2026-01-09: 5 working days.
-    private static final LocalDate START = LocalDate.of(2026, 1, 5);
-    private static final LocalDate END = LocalDate.of(2026, 1, 9);
+    private static final LocalDate START = LocalDate.of(2026, Month.JANUARY, 5);
+    private static final LocalDate END = LocalDate.of(2026, Month.JANUARY, 9);
 
     @Test
     void idealCurve_nullCommittedPoints_returnsEmpty() {
@@ -40,8 +41,8 @@ class CapacityBurndownCalculatorTest {
 
     @Test
     void idealCurve_singleWorkingDay_isZero() {
-        LocalDate saturday = LocalDate.of(2026, 1, 10);
-        LocalDate mondayAfter = LocalDate.of(2026, 1, 12);
+        LocalDate saturday = LocalDate.of(2026, Month.JANUARY, 10);
+        LocalDate mondayAfter = LocalDate.of(2026, Month.JANUARY, 12);
         List<CapacityBurndownCalculator.IdealPoint> curve =
                 CapacityBurndownCalculator.idealCurve(saturday, mondayAfter, 8);
 

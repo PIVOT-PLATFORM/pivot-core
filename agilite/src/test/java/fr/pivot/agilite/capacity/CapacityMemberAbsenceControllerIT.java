@@ -84,7 +84,7 @@ class CapacityMemberAbsenceControllerIT extends AbstractAgiliteIntegrationTest {
     }
 
     // -------------------------------------------------------------------------
-    // PATCH /capacity/events/{id}/members/{memberId}
+    // PATCH capacity/events/EVENT_ID/members/MEMBER_ID
     // -------------------------------------------------------------------------
 
     @Test

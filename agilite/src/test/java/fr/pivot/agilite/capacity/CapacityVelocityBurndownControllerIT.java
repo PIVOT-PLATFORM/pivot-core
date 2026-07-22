@@ -15,6 +15,7 @@ import org.springframework.web.context.WebApplicationContext;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
+import java.time.Month;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -97,7 +98,7 @@ class CapacityVelocityBurndownControllerIT extends AbstractAgiliteIntegrationTes
 
     @Test
     void updateVelocity_committedThenCompletedIndependently() throws Exception {
-        String sprintId = createSprintId(tokenA1, LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 16));
+        String sprintId = createSprintId(tokenA1, LocalDate.of(2026, Month.JANUARY, 5), LocalDate.of(2026, Month.JANUARY, 16));
 
         mockMvc.perform(patch(BASE_PATH + "/events/" + sprintId + "/velocity")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -130,7 +131,7 @@ class CapacityVelocityBurndownControllerIT extends AbstractAgiliteIntegrationTes
 
     @Test
     void updateVelocity_negativePoints_returns400WithInvalidPointsCode() throws Exception {
-        String sprintId = createSprintId(tokenA1, LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 16));
+        String sprintId = createSprintId(tokenA1, LocalDate.of(2026, Month.JANUARY, 5), LocalDate.of(2026, Month.JANUARY, 16));
 
         mockMvc.perform(patch(BASE_PATH + "/events/" + sprintId + "/velocity")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -146,14 +147,14 @@ class CapacityVelocityBurndownControllerIT extends AbstractAgiliteIntegrationTes
 
     @Test
     void history_onlyIncludesSprintsWithCompletedPoints() throws Exception {
-        String sprintWithVelocity = createSprintId(tokenA1, LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 16));
+        String sprintWithVelocity = createSprintId(tokenA1, LocalDate.of(2026, Month.JANUARY, 5), LocalDate.of(2026, Month.JANUARY, 16));
         mockMvc.perform(patch(BASE_PATH + "/events/" + sprintWithVelocity + "/velocity")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Authorization", "Bearer " + tokenA1)
                         .content("{\"completedPoints\": 15}"))
                 .andExpect(status().isOk());
         // A second sprint with no completedPoints must not appear in history.
-        createSprintId(tokenA1, LocalDate.of(2026, 2, 2), LocalDate.of(2026, 2, 13));
+        createSprintId(tokenA1, LocalDate.of(2026, Month.FEBRUARY, 2), LocalDate.of(2026, Month.FEBRUARY, 13));
 
         mockMvc.perform(get(BASE_PATH + "/teams/" + teamA1 + "/velocity-history")
                         .header("Authorization", "Bearer " + tokenA1))
@@ -173,7 +174,7 @@ class CapacityVelocityBurndownControllerIT extends AbstractAgiliteIntegrationTes
 
     @Test
     void average_appliesDefaultFactor() throws Exception {
-        String sprintId = createSprintId(tokenA1, LocalDate.of(2026, 1, 5), LocalDate.of(2026, 1, 16));
+        String sprintId = createSprintId(tokenA1, LocalDate.of(2026, Month.JANUARY, 5), LocalDate.of(2026, Month.JANUARY, 16));
         mockMvc.perform(patch(BASE_PATH + "/events/" + sprintId + "/velocity")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header("Authorization", "Bearer " + tokenA1)

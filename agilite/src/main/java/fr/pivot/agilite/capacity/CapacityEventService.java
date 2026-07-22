@@ -11,7 +11,6 @@ import fr.pivot.agilite.team.dto.TeamMemberResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -78,17 +77,15 @@ public class CapacityEventService {
             }
         }
 
-        Instant now = Instant.now();
         CapacityEvent draft = new CapacityEvent(
                 tenantId,
                 request.teamId(),
-                parentEventId,
                 request.type(),
                 request.name(),
                 request.startDate(),
                 request.endDate(),
-                callerUserId,
-                now);
+                callerUserId);
+        draft.setParentEventId(parentEventId);
         CapacityEvent event = eventRepository.save(draft);
 
         if (request.type() != CapacityEventType.PI_PLANNING) {
@@ -100,7 +97,7 @@ public class CapacityEventService {
             memberRepository.saveAll(roster);
         }
 
-        return toResponse(event, callerUserId, tenantId);
+        return toResponse(event, tenantId);
     }
 
     /**
@@ -115,7 +112,7 @@ public class CapacityEventService {
     @Transactional(readOnly = true)
     public EventResponse findById(final UUID eventId, final Long callerUserId, final Long tenantId) {
         CapacityEvent event = accessService.resolveEventForCaller(eventId, callerUserId, tenantId);
-        return toResponse(event, callerUserId, tenantId);
+        return toResponse(event, tenantId);
     }
 
     /**
@@ -189,7 +186,7 @@ public class CapacityEventService {
         validateDateRange(range.startDate(), range.endDate());
         event.setStartDate(range.startDate());
         event.setEndDate(range.endDate());
-        return toResponse(event, callerUserId, tenantId);
+        return toResponse(event, tenantId);
     }
 
     /**
@@ -268,12 +265,11 @@ public class CapacityEventService {
     /**
      * Builds a full response for an event, resolving its parent/children summaries.
      *
-     * @param event        the event
-     * @param callerUserId the calling user's {@code public.users.id}
-     * @param tenantId     the calling tenant's {@code public.tenants.id}
+     * @param event    the event
+     * @param tenantId the calling tenant's {@code public.tenants.id}
      * @return the full event response
      */
-    private EventResponse toResponse(final CapacityEvent event, final Long callerUserId, final Long tenantId) {
+    private EventResponse toResponse(final CapacityEvent event, final Long tenantId) {
         EventRef parent = null;
         if (event.getParentEventId() != null) {
             parent = eventRepository.findByIdAndTenantId(event.getParentEventId(), tenantId)

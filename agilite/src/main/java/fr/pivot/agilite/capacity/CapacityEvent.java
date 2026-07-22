@@ -103,38 +103,34 @@ public class CapacityEvent {
     }
 
     /**
-     * Full constructor for creating a new capacity event.
+     * Constructor for creating a new top-level capacity event (no parent) — {@code
+     * parentEventId} is set separately via {@link #setParentEventId} for child events, keeping
+     * this constructor within the 7-parameter limit. {@code createdAt}/{@code updatedAt} are
+     * left to {@link #prePersist}, which always fires on the first insert.
      *
-     * @param tenantId      owning tenant's {@code public.tenants.id}
-     * @param teamId        owning team's {@code public.teams.id}
-     * @param parentEventId the parent PI Planning event's id, or {@code null}
-     * @param type          the event kind
-     * @param name          event name (max 120 chars)
-     * @param startDate     event start date
-     * @param endDate       event end date
-     * @param createdBy     creating user's {@code public.users.id}
-     * @param now           timestamp used for both {@code createdAt} and {@code updatedAt}
+     * @param tenantId  owning tenant's {@code public.tenants.id}
+     * @param teamId    owning team's {@code public.teams.id}
+     * @param type      the event kind
+     * @param name      event name (max 120 chars)
+     * @param startDate event start date
+     * @param endDate   event end date
+     * @param createdBy creating user's {@code public.users.id}
      */
     public CapacityEvent(
             final Long tenantId,
             final Long teamId,
-            final UUID parentEventId,
             final CapacityEventType type,
             final String name,
             final LocalDate startDate,
             final LocalDate endDate,
-            final Long createdBy,
-            final Instant now) {
+            final Long createdBy) {
         this.tenantId = tenantId;
         this.teamId = teamId;
-        this.parentEventId = parentEventId;
         this.type = type;
         this.name = name;
         this.startDate = startDate;
         this.endDate = endDate;
         this.createdBy = createdBy;
-        this.createdAt = now;
-        this.updatedAt = now;
     }
 
     /**
@@ -194,6 +190,17 @@ public class CapacityEvent {
      */
     public UUID getParentEventId() {
         return parentEventId;
+    }
+
+    /**
+     * Sets the parent PI Planning event's id — called once, right after construction, for a
+     * child ({@code SPRINT}/{@code RELEASE}/{@code CUSTOM}) event (US11.3.1); left {@code null}
+     * for a top-level event.
+     *
+     * @param parentEventId the parent event's id, or {@code null}
+     */
+    public void setParentEventId(final UUID parentEventId) {
+        this.parentEventId = parentEventId;
     }
 
     /**

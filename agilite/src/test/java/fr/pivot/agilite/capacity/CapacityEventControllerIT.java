@@ -53,7 +53,6 @@ class CapacityEventControllerIT extends AbstractAgiliteIntegrationTest {
 
     private String tokenA2;
 
-    private long tenantB;
     private String tokenB;
 
     @BeforeEach
@@ -74,7 +73,6 @@ class CapacityEventControllerIT extends AbstractAgiliteIntegrationTest {
 
         AuthFixture fixtureB = PlatformAuthTestSupport.seedActiveUserWithTeamAndToken(
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-        tenantB = fixtureB.tenantId();
         tokenB = fixtureB.rawToken();
     }
 

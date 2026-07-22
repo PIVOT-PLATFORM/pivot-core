@@ -3,6 +3,7 @@ package fr.pivot.agilite.capacity;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.time.Month;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,8 +15,8 @@ import static org.assertj.core.api.Assertions.offset;
 class CapacityCalculatorTest {
 
     // Monday 2026-01-05 .. Friday 2026-01-09: 5 working days, 0 weekend days.
-    private static final LocalDate MON = LocalDate.of(2026, 1, 5);
-    private static final LocalDate FRI = LocalDate.of(2026, 1, 9);
+    private static final LocalDate MON = LocalDate.of(2026, Month.JANUARY, 5);
+    private static final LocalDate FRI = LocalDate.of(2026, Month.JANUARY, 9);
 
     @Test
     void countWorkingDays_excludesOnlyWeekends() {
@@ -25,7 +26,7 @@ class CapacityCalculatorTest {
 
     @Test
     void countWorkingDays_singleWeekendDay_returnsZero() {
-        LocalDate saturday = LocalDate.of(2026, 1, 10);
+        LocalDate saturday = LocalDate.of(2026, Month.JANUARY, 10);
         assertThat(CapacityCalculator.countWorkingDays(saturday, saturday)).isZero();
     }
 
@@ -72,7 +73,7 @@ class CapacityCalculatorTest {
         // Absence Wed-Sun (2026-01-07..2026-01-11): only Wed/Thu/Fri (3 working days) overlap
         // the Mon-Fri event period.
         CapacityCalculator.AbsenceRange absence = new CapacityCalculator.AbsenceRange(
-                LocalDate.of(2026, 1, 7), LocalDate.of(2026, 1, 11));
+                LocalDate.of(2026, Month.JANUARY, 7), LocalDate.of(2026, Month.JANUARY, 11));
         List<CapacityCalculator.MemberInput> members =
                 List.of(new CapacityCalculator.MemberInput(false, 100, List.of(absence)));
 

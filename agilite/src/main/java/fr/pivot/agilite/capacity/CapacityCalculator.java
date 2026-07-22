@@ -81,7 +81,7 @@ public final class CapacityCalculator {
         int count = 0;
         for (LocalDate day = start; !day.isAfter(end); day = day.plusDays(1)) {
             DayOfWeek dayOfWeek = day.getDayOfWeek();
-            if (dayOfWeek != DayOfWeek.SATURDAY && dayOfWeek != DayOfWeek.SUNDAY) {
+            if (!dayOfWeek.equals(DayOfWeek.SATURDAY) && !dayOfWeek.equals(DayOfWeek.SUNDAY)) {
                 count++;
             }
         }
