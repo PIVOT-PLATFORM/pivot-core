@@ -96,7 +96,7 @@ public class RequestPrincipalResolver implements HandlerMethodArgumentResolver {
         final AuthenticatedPrincipal principal = principalResolver.resolve(rawToken)
                 .orElseThrow(RequestPrincipalResolver::unauthorized);
 
-        return new RequestPrincipal(principal.userId(), principal.tenantId());
+        return new RequestPrincipal(principal.userId(), principal.tenantId(), principal.role());
     }
 
     /**

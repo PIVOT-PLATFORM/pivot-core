@@ -184,6 +184,32 @@ public final class PlatformAuthTestSupport {
     }
 
     /**
+     * Inserts a user row with {@code role = 'ROLE_ADMIN'} — for tenant-admin-gated endpoint tests
+     * (US11.6.1, {@code CapacityHolidayController}).
+     *
+     * @param jdbcUrl  the JDBC URL
+     * @param username the database username
+     * @param password the database password
+     * @param tenantId the owning tenant's id
+     * @return the generated {@code public.users.id}
+     * @throws SQLException if the insert fails
+     */
+    public static long seedAdminUser(
+            final String jdbcUrl, final String username, final String password, final long tenantId) throws SQLException {
+        final String email = UUID.randomUUID() + "@pivot.invalid";
+        final String sql = "INSERT INTO public.users (tenant_id, email, role, is_active) VALUES (?, ?, 'ROLE_ADMIN', true) RETURNING id";
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, tenantId);
+            ps.setString(2, email);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    /**
      * Inserts a user row, optionally with a first/last name (for display-name resolution tests).
      *
      * @param jdbcUrl   the JDBC URL
