@@ -136,6 +136,18 @@
             <Package name="fr.pivot.agilite.standup"/>
             <Package name="fr.pivot.agilite.standup.dto"/>
             <Package name="fr.pivot.agilite.standup.ws"/>
+            <!-- E50 PI Planning socle (US50.1.1/US50.3.1/US50.3.2) : PiCycle/PiIteration/
+                 PiCycleTeam are JPA entities with @ManyToOne back-references (mutable
+                 getters/setters and stored owning-entity references required by Hibernate,
+                 same pattern as WheelEntry.getWheel()/StandupParticipant); PiCycleService/
+                 PiCycleAccessService/PiBoardService/PiTicketService/PiDependencyService/
+                 PiCycleController/PiBoardController/PiTicketController/PiDependencyController
+                 store constructor-injected singleton beans (repositories, TeamMembershipService);
+                 DTO records expose mutable List for JSON transport (same rationale as the
+                 standup.dto package above). No WebSocket sub-package for this module (Gate 1
+                 decision — see us-planifier-program-board.md §Architecture). -->
+            <Package name="fr.pivot.agilite.pi"/>
+            <Package name="fr.pivot.agilite.pi.dto"/>
         </Or>
     </Match>
 
