@@ -148,4 +148,85 @@ class PollActivityServiceTest {
         assertThat(results.get(0).count()).isEqualTo(0);
         assertThat(results.get(0).percent()).isEqualTo(0.0);
     }
+
+    @Test
+    void voteRejectsAnEmptySelection() {
+        Session session = liveSession("{}");
+        when(optionRepository.findAllBySessionIdOrderBySortOrderAsc(session.getId())).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.vote(session, UUID.randomUUID(), List.of()))
+                .isInstanceOf(SessionValidationException.class);
+    }
+
+    @Test
+    void voteAcceptsMultipleOptionsWhenAllowMultipleIsTrue() {
+        SessionPollOption optionA = new SessionPollOption(UUID.randomUUID(), "A", 0);
+        ReflectionTestUtils.setField(optionA, "id", UUID.randomUUID());
+        SessionPollOption optionB = new SessionPollOption(UUID.randomUUID(), "B", 1);
+        ReflectionTestUtils.setField(optionB, "id", UUID.randomUUID());
+        Session session = liveSession("{\"allowMultiple\":true}");
+        UUID participantId = UUID.randomUUID();
+        when(optionRepository.findAllBySessionIdOrderBySortOrderAsc(session.getId()))
+                .thenReturn(List.of(optionA, optionB));
+        when(voteRepository.findBySessionIdAndParticipantId(session.getId(), participantId))
+                .thenReturn(Optional.empty());
+        when(voteRepository.findAllBySessionId(session.getId())).thenReturn(List.of());
+        when(stateRepository.findBySessionId(session.getId())).thenReturn(Optional.empty());
+
+        service.vote(session, participantId, List.of(optionA.getId(), optionB.getId()));
+
+        org.mockito.Mockito.verify(voteRepository).save(any());
+    }
+
+    /**
+     * When {@link PollActivityService#readAllowMultiple} is fed a session with a malformed
+     * (non-JSON) {@code config} blob, it must not propagate the parse failure — the caught
+     * exception's fallback ({@code allowMultiple = false}) is what makes a single-option vote
+     * still work rather than a poll being permanently unvotable due to a corrupted config.
+     */
+    @Test
+    void voteToleratesAnUnparsableConfigAndFallsBackToSingleSelection() {
+        SessionPollOption option = new SessionPollOption(UUID.randomUUID(), "A", 0);
+        ReflectionTestUtils.setField(option, "id", UUID.randomUUID());
+        Session session = liveSession("not-json");
+        UUID participantId = UUID.randomUUID();
+        when(optionRepository.findAllBySessionIdOrderBySortOrderAsc(session.getId())).thenReturn(List.of(option));
+        when(voteRepository.findBySessionIdAndParticipantId(session.getId(), participantId))
+                .thenReturn(Optional.empty());
+        when(voteRepository.findAllBySessionId(session.getId())).thenReturn(List.of());
+        when(stateRepository.findBySessionId(session.getId())).thenReturn(Optional.empty());
+
+        service.vote(session, participantId, List.of(option.getId()));
+
+        org.mockito.Mockito.verify(voteRepository).save(any());
+    }
+
+    @Test
+    void hideResultsCreatesStateWhenNoneExistsAndBroadcasts() {
+        UUID sessionId = UUID.randomUUID();
+        when(stateRepository.findBySessionId(sessionId)).thenReturn(Optional.empty());
+        when(optionRepository.findAllBySessionIdOrderBySortOrderAsc(sessionId)).thenReturn(List.of());
+        when(voteRepository.findAllBySessionId(sessionId)).thenReturn(List.of());
+
+        service.hideResults(sessionId);
+
+        org.mockito.Mockito.verify(stateRepository).save(
+                org.mockito.ArgumentMatchers.argThat(SessionPollState::isResultsHidden));
+        org.mockito.Mockito.verify(messagingTemplate).convertAndSend(
+                org.mockito.ArgumentMatchers.anyString(), any(Object.class));
+    }
+
+    @Test
+    void showResultsFlipsAnExistingHiddenStateBackToVisibleAndBroadcasts() {
+        UUID sessionId = UUID.randomUUID();
+        SessionPollState state = new SessionPollState(sessionId, true);
+        when(stateRepository.findBySessionId(sessionId)).thenReturn(Optional.of(state));
+        when(optionRepository.findAllBySessionIdOrderBySortOrderAsc(sessionId)).thenReturn(List.of());
+        when(voteRepository.findAllBySessionId(sessionId)).thenReturn(List.of());
+
+        service.showResults(sessionId);
+
+        assertThat(state.isResultsHidden()).isFalse();
+        org.mockito.Mockito.verify(stateRepository).save(state);
+    }
 }
