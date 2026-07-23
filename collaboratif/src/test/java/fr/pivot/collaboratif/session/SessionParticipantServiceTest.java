@@ -180,10 +180,12 @@ class SessionParticipantServiceTest {
 
         ParticipantSessionResponse response = service.getForParticipant(session);
 
-        // ParticipantSessionResponse carries no joinCode/teamId accessor at all — this test
-        // documents the intentional shape gap in case a future edit widens the record.
+        // Asserts the record's exact field set (rather than a doesNotContain check on a
+        // collection that could trivially pass if empty) — documents the intentional shape gap
+        // (no joinCode/teamId accessor at all) in case a future edit widens the record.
         assertThat(response.getClass().getRecordComponents())
                 .extracting(java.lang.reflect.RecordComponent::getName)
-                .doesNotContain("joinCode", "teamId");
+                .containsExactlyInAnyOrder(
+                        "id", "title", "type", "status", "config", "participantCount", "startedAt", "endedAt");
     }
 }
