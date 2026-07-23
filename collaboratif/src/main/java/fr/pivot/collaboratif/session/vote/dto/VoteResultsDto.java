@@ -19,6 +19,7 @@ import java.util.List;
  * @param veto            FIST_TO_FIVE: {@code true} if any participant rated 0 (a veto), else
  *                        {@code false}
  * @param options         WEIGHTED: per-option points totals, or empty
+ * @param matrix          MATRIX: per-option weighted mean scores, or empty
  */
 public record VoteResultsDto(
         VoteType voteType,
@@ -27,7 +28,8 @@ public record VoteResultsDto(
         Double average,
         String consensusLevel,
         boolean veto,
-        List<WeightedOptionResult> options) {
+        List<WeightedOptionResult> options,
+        List<MatrixOptionResult> matrix) {
 
     /**
      * Builds the pre-close result — no tallies revealed.
@@ -37,6 +39,6 @@ public record VoteResultsDto(
      * @return an open-state result
      */
     public static VoteResultsDto open(final VoteType voteType, final long ballotCount) {
-        return new VoteResultsDto(voteType, false, ballotCount, null, null, false, List.of());
+        return new VoteResultsDto(voteType, false, ballotCount, null, null, false, List.of(), List.of());
     }
 }

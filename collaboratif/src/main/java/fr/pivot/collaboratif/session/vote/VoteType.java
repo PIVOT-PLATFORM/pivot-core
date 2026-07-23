@@ -6,10 +6,11 @@ package fr.pivot.collaboratif.session.vote;
  * <p>{@link #FIST_TO_FIVE} — each participant rates a single proposal 0 (fist = veto) to 5, the
  * result is the average plus a consensus level and a veto alert. {@link #WEIGHTED} — each
  * participant distributes a fixed points budget across the options, the result is the points total
- * per option. (MATRIX, the third mode named in the US, is a later increment — a criteria×options
- * grid is a materially larger data model and is intentionally out of this pass.)
+ * per option. {@link #MATRIX} — each participant scores every option against every weighted
+ * criterion (a criteria×options grid); the result is each option's weighted mean score, ranked.
  */
 public enum VoteType {
     FIST_TO_FIVE,
-    WEIGHTED
+    WEIGHTED,
+    MATRIX
 }
