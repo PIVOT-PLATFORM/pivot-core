@@ -415,4 +415,22 @@ public class CollaboratifExceptionHandler {
         problem.setProperties(Map.of("code", ex.getCode()));
         return problem;
     }
+
+    /**
+     * Returns HTTP 403 with a machine-readable {@code code} property when a joined participant
+     * acts on a session resource they do not own — e.g. editing another participant's BRAINSTORM
+     * card (US19.3.4). Unlike a session-access denial (404, anti-enumeration), an in-session
+     * per-resource ownership denial is a genuine 403.
+     *
+     * @param ex the thrown exception
+     * @return a 403 problem detail carrying the code
+     */
+    @ExceptionHandler(SessionForbiddenException.class)
+    public ProblemDetail handleSessionForbidden(final SessionForbiddenException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Forbidden");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
 }
