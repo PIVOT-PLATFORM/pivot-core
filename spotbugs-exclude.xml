@@ -244,4 +244,32 @@
         </Or>
     </Match>
 
+    <!--
+        E19 Module Session (Sprint 22, US19.1.1/US19.1.2/US19.2.1/US19.3.2/US19.3.3) — same
+        centralized-exclusion rationale as the collaboratif block above: Session/Activity/
+        Participant/SessionPollOption/SessionPollVote/SessionPollState/SessionWordcloudEntry/
+        SessionWordcloudSubmission/TenantWordBlocklist are JPA entities (mutable getters/setters
+        required by Hibernate); SessionService/SessionAccessService/SessionParticipantService/
+        SessionCallerResolver/PollActivityService/WordcloudActivityService/SessionController/
+        SessionParticipantController/PollController/WordcloudController/
+        SessionMembershipCacheService/SessionChannelInterceptor/SessionGuestPrincipalResolver
+        store constructor-injected singleton beans (repositories, SimpMessagingTemplate,
+        ObjectMapper, StringRedisTemplate, AuthenticatedPrincipalResolver); DTO records
+        (CreateSessionRequest, SessionResponse, PollVoteRequest, PollUpdatedEvent, ...) expose
+        mutable List for JSON transport (same rationale as the whiteboard vote/quiz dto
+        packages above).
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Or>
+            <Package name="fr.pivot.collaboratif.session"/>
+            <Package name="fr.pivot.collaboratif.session.dto"/>
+            <Package name="fr.pivot.collaboratif.session.poll"/>
+            <Package name="fr.pivot.collaboratif.session.poll.dto"/>
+            <Package name="fr.pivot.collaboratif.session.wordcloud"/>
+            <Package name="fr.pivot.collaboratif.session.wordcloud.dto"/>
+            <Package name="fr.pivot.collaboratif.session.ws"/>
+        </Or>
+    </Match>
+
 </FindBugsFilter>
