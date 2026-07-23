@@ -28,19 +28,27 @@ import java.util.UUID;
  * HTTP 404 (never 403).
  *
  * <p>The full path (including the application context) is {@code /api/collaboratif/sessions/...}.
+ *
+ * <p><strong>Named {@code ModuleSessionController}, not the bare {@code SessionController}</strong> —
+ * the shell already owns {@code fr.pivot.auth.controller.SessionController} (login/device session
+ * management), a domain-generic name that collides on Spring's default annotation-based bean id
+ * ({@code sessionController}) once both are aggregated into the same {@code pivot-core-app}
+ * context — same collision class as {@link CollaboratifRequestPrincipal}, discovered here only
+ * once this module was built as part of the full reactor (an isolated {@code -pl collaboratif}
+ * build never exercises it).
  */
 @RestController
 @RequestMapping(CollaboratifApiPaths.BASE + "/sessions")
-public class SessionController {
+public class ModuleSessionController {
 
-    private final SessionService sessionService;
+    private final ModuleSessionService sessionService;
 
     /**
      * Creates the controller with its required service dependency.
      *
      * @param sessionService the session business logic service
      */
-    public SessionController(final SessionService sessionService) {
+    public ModuleSessionController(final ModuleSessionService sessionService) {
         this.sessionService = sessionService;
     }
 

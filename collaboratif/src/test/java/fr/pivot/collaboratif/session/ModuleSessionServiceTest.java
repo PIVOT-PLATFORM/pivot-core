@@ -26,7 +26,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class SessionServiceTest {
+class ModuleSessionServiceTest {
 
     private static final Long TENANT_ID = 1L;
     private static final Long CREATOR_ID = 10L;
@@ -40,20 +40,20 @@ class SessionServiceTest {
     @Mock
     private SessionAccessService accessService;
     @Mock
-    private JoinCodeGenerator joinCodeGenerator;
+    private SessionJoinCodeGenerator joinCodeGenerator;
     @Mock
     private PollActivityService pollActivityService;
     @Mock
     private SimpMessagingTemplate messagingTemplate;
 
-    private SessionService sessionService;
+    private ModuleSessionService sessionService;
     private ObjectMapper objectMapper;
     private CollaboratifRequestPrincipal principal;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        sessionService = new SessionService(
+        sessionService = new ModuleSessionService(
                 sessionRepository, activityRepository, participantRepository, accessService,
                 joinCodeGenerator, pollActivityService, messagingTemplate, objectMapper);
         principal = new CollaboratifRequestPrincipal(CREATOR_ID, TENANT_ID, "ROLE_USER");

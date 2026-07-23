@@ -13,7 +13,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class JoinCodeGeneratorTest {
+class SessionJoinCodeGeneratorTest {
 
     @Mock
     private SessionRepository sessionRepository;
@@ -22,7 +22,7 @@ class JoinCodeGeneratorTest {
     void generatesA6CharacterCodeFromTheExpectedAlphabet() {
         when(sessionRepository.existsByTenantIdAndJoinCodeAndStatusNot(anyLong(), anyString(), any()))
                 .thenReturn(false);
-        JoinCodeGenerator generator = new JoinCodeGenerator(sessionRepository);
+        SessionJoinCodeGenerator generator = new SessionJoinCodeGenerator(sessionRepository);
 
         String code = generator.generate(1L);
 
@@ -34,7 +34,7 @@ class JoinCodeGeneratorTest {
     void retriesOnCollisionUntilAUniqueCodeIsFound() {
         when(sessionRepository.existsByTenantIdAndJoinCodeAndStatusNot(anyLong(), anyString(), any()))
                 .thenReturn(true, true, false);
-        JoinCodeGenerator generator = new JoinCodeGenerator(sessionRepository);
+        SessionJoinCodeGenerator generator = new SessionJoinCodeGenerator(sessionRepository);
 
         String code = generator.generate(1L);
 
@@ -45,7 +45,7 @@ class JoinCodeGeneratorTest {
     void throwsAfterTenConsecutiveCollisions() {
         when(sessionRepository.existsByTenantIdAndJoinCodeAndStatusNot(anyLong(), anyString(), any()))
                 .thenReturn(true);
-        JoinCodeGenerator generator = new JoinCodeGenerator(sessionRepository);
+        SessionJoinCodeGenerator generator = new SessionJoinCodeGenerator(sessionRepository);
 
         assertThatThrownBy(() -> generator.generate(1L)).isInstanceOf(IllegalStateException.class);
     }
@@ -56,7 +56,7 @@ class JoinCodeGeneratorTest {
                 org.mockito.ArgumentMatchers.eq(42L), anyString(),
                 org.mockito.ArgumentMatchers.eq(SessionStatus.COMPLETED)))
                 .thenReturn(false);
-        JoinCodeGenerator generator = new JoinCodeGenerator(sessionRepository);
+        SessionJoinCodeGenerator generator = new SessionJoinCodeGenerator(sessionRepository);
 
         generator.generate(42L);
 

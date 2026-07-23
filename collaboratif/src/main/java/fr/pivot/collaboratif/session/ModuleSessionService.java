@@ -20,15 +20,19 @@ import java.util.UUID;
 
 /**
  * Business logic for session creation, listing, and lifecycle transitions (US19.1.1, US19.1.2).
+ *
+ * <p><strong>Named {@code ModuleSessionService}, not the bare {@code SessionService}</strong> —
+ * the shell already owns {@code fr.pivot.auth.service.SessionService} (login/device session
+ * management); see {@link ModuleSessionController}'s Javadoc for the full collision rationale.
  */
 @Service
-public class SessionService {
+public class ModuleSessionService {
 
     private final SessionRepository sessionRepository;
     private final ActivityRepository activityRepository;
     private final ParticipantRepository participantRepository;
     private final SessionAccessService accessService;
-    private final JoinCodeGenerator joinCodeGenerator;
+    private final SessionJoinCodeGenerator joinCodeGenerator;
     private final PollActivityService pollActivityService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
@@ -45,12 +49,12 @@ public class SessionService {
      * @param messagingTemplate     STOMP broadcaster for lifecycle events
      * @param objectMapper          JSON (de)serializer for {@code config}
      */
-    public SessionService(
+    public ModuleSessionService(
             final SessionRepository sessionRepository,
             final ActivityRepository activityRepository,
             final ParticipantRepository participantRepository,
             final SessionAccessService accessService,
-            final JoinCodeGenerator joinCodeGenerator,
+            final SessionJoinCodeGenerator joinCodeGenerator,
             final PollActivityService pollActivityService,
             final SimpMessagingTemplate messagingTemplate,
             final ObjectMapper objectMapper) {

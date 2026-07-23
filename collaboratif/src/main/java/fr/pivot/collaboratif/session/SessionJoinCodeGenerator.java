@@ -8,12 +8,25 @@ import java.security.SecureRandom;
  * Generates 6-character alphanumeric uppercase join codes for sessions (US19.1.1), unique among
  * non-{@link SessionStatus#COMPLETED} sessions of a given tenant.
  *
- * <p><strong>New, collaboratif-local implementation</strong> — this module never imports {@code
- * fr.pivot.agilite.retro.session.JoinCodeGenerator} (a same-shape sibling in the {@code agilite}
- * module), since cross-module reach-through between {@code agilite} and {@code collaboratif} is
- * forbidden and enforced by {@code ModularityTests}. The alphabet excludes ambiguous characters
- * ({@code 0/O/1/I}, per this US's own AC — a stricter requirement than {@code agilite.retro}'s
- * generator, which deliberately keeps them since its codes are copy-pasted, never dictated).
+ * <p><strong>New, collaboratif-local implementation, module-qualified name.</strong> This module
+ * never imports {@code fr.pivot.agilite.retro.session.JoinCodeGenerator} (a same-shape sibling in
+ * the {@code agilite} module), since cross-module reach-through between {@code agilite} and
+ * {@code collaboratif} is forbidden and enforced by {@code ModularityTests}. The alphabet
+ * excludes ambiguous characters ({@code 0/O/1/I}, per this US's own AC — a stricter requirement
+ * than {@code agilite.retro}'s generator, which deliberately keeps them since its codes are
+ * copy-pasted, never dictated).
+ *
+ * <p><strong>Named {@code SessionJoinCodeGenerator}, not the bare {@code JoinCodeGenerator}</strong> —
+ * agilite's sibling class above has the exact same simple name in a different package; both are
+ * aggregated into the same {@code pivot-core-app} classpath, where Spring's default
+ * annotation-based bean-name generator derives a bean id from the simple class name
+ * (decapitalized), so two distinct {@code @Component} classes named {@code JoinCodeGenerator}
+ * collide on the identical bean id {@code joinCodeGenerator} and fail context startup with a
+ * {@code ConflictingBeanDefinitionException} — the exact same collision class already documented
+ * on {@link fr.pivot.collaboratif.context.CollaboratifRequestPrincipal}/{@code
+ * CollaboratifRequestPrincipalResolver}/{@code CollaboratifExceptionHandler}, discovered here only
+ * once this module was aggregated into the full reactor build (an isolated {@code -pl
+ * collaboratif} build never exercises the collision).
  *
  * <p><strong>Randomness.</strong> Uses {@link SecureRandom}, never {@code Random}/{@code
  * Math.random()}.
@@ -26,7 +39,7 @@ import java.security.SecureRandom;
  * regardless of this pre-check.
  */
 @Component
-public class JoinCodeGenerator {
+public class SessionJoinCodeGenerator {
 
     /** Alphabet used to build join codes: uppercase letters and digits, excluding 0/O/1/I. */
     private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -45,7 +58,7 @@ public class JoinCodeGenerator {
      *
      * @param sessionRepository repository used to check candidate codes for uniqueness
      */
-    public JoinCodeGenerator(final SessionRepository sessionRepository) {
+    public SessionJoinCodeGenerator(final SessionRepository sessionRepository) {
         this.sessionRepository = sessionRepository;
     }
 

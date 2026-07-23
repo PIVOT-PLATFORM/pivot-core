@@ -61,7 +61,7 @@ public class Session {
 
     /**
      * 6-character alphanumeric join code, unique among non-{@link SessionStatus#COMPLETED}
-     * sessions of the tenant (see {@code uq_session_join_code_active}, {@link JoinCodeGenerator}).
+     * sessions of the tenant (see {@code uq_session_join_code_active}, {@link SessionJoinCodeGenerator}).
      */
     @Column(name = "join_code", nullable = false, length = 6)
     private String joinCode;
