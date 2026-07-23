@@ -50,12 +50,17 @@ jobs:
             -t "local/pivot-core:${SHA_TAG}" \
             .
 
+      # format: table (not sarif) — this workflow has no code-scanning consumer for a SARIF
+      # file, so a sarif-format scan produces literally no visible output when it fails
+      # (this exact gate has now failed 7 times across pivot-core PRs/deploys this sprint
+      # with zero diagnosable output each time, always unreproducible on a fresh local
+      # rescan of the same commit). table prints the actual CVE/package to the job log on
+      # failure, so a future recurrence is finally diagnosable instead of a silent black box.
       - name: Scan image - Trivy (gate)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: local/pivot-core:${{ env.SHA_TAG }}
-          format: sarif
-          output: trivy-dev.sarif
+          format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
