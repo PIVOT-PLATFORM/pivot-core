@@ -1,11 +1,14 @@
 package fr.pivot.collaboratif.session;
 
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import fr.pivot.collaboratif.exception.SessionGuestExpiredException;
 import fr.pivot.collaboratif.exception.SessionNotFoundException;
 import fr.pivot.collaboratif.session.dto.GuestHeartbeatRequest;
 import fr.pivot.collaboratif.session.dto.JoinSessionRequest;
 import fr.pivot.collaboratif.session.dto.JoinSessionResponse;
 import fr.pivot.collaboratif.session.dto.ParticipantJoinedEvent;
+import fr.pivot.collaboratif.session.dto.ParticipantSessionResponse;
 import fr.pivot.collaboratif.session.ws.SessionDestinations;
 import fr.pivot.core.auth.AuthenticatedPrincipal;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -20,8 +23,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Business logic for the unified join endpoint and guest heartbeat (US19.2.1) — a single {@code
- * POST /sessions/join} serves both authenticated and anonymous {@code ROLE_GUEST} callers.
+ * Business logic for the unified join endpoint, guest heartbeat (US19.2.1), and the
+ * participant-safe session-state read (US19.2.2) — a single {@code POST /sessions/join} serves
+ * both authenticated and anonymous {@code ROLE_GUEST} callers, and {@link #getForParticipant}
+ * serves the same dual audience once already joined.
  */
 @Service
 public class SessionParticipantService {
@@ -38,6 +43,7 @@ public class SessionParticipantService {
     private final SessionRepository sessionRepository;
     private final ParticipantRepository participantRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ObjectMapper objectMapper;
     private final SecureRandom secureRandom = new SecureRandom();
 
     /**
@@ -46,14 +52,17 @@ public class SessionParticipantService {
      * @param sessionRepository     repository for join-code resolution
      * @param participantRepository repository for participant persistence
      * @param messagingTemplate     STOMP broadcaster for the {@code PARTICIPANT_JOINED} event
+     * @param objectMapper          JSON deserializer for the session's {@code config}
      */
     public SessionParticipantService(
             final SessionRepository sessionRepository,
             final ParticipantRepository participantRepository,
-            final SimpMessagingTemplate messagingTemplate) {
+            final SimpMessagingTemplate messagingTemplate,
+            final ObjectMapper objectMapper) {
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
         this.messagingTemplate = messagingTemplate;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -113,6 +122,33 @@ public class SessionParticipantService {
         }
         participant.refreshHeartbeat(now);
         participantRepository.save(participant);
+    }
+
+    /**
+     * Builds the participant-safe view of an already-resolved session (US19.2.2) — used by the
+     * guest-accessible session-state endpoint once the caller has already been authorized as a
+     * joined {@link Participant} of this exact session via {@code SessionCallerResolver}. No
+     * further authorization is performed here: that resolution, not this method, is the real
+     * access-control gate (same division of responsibility as {@code PollActivityService#vote}
+     * and {@code WordcloudActivityService#submitWord}).
+     *
+     * @param session the already-resolved session
+     * @return the participant-safe view
+     */
+    @Transactional(readOnly = true)
+    public ParticipantSessionResponse getForParticipant(final Session session) {
+        long participantCount = participantRepository.countBySessionId(session.getId());
+        return new ParticipantSessionResponse(
+                session.getId(), session.getTitle(), session.getType(), session.getStatus(),
+                readConfig(session.getConfig()), participantCount, session.getStartedAt(), session.getEndedAt());
+    }
+
+    private JsonNode readConfig(final String config) {
+        try {
+            return objectMapper.readTree(config);
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to deserialize session config", e);
+        }
     }
 
     private String generateGuestToken() {

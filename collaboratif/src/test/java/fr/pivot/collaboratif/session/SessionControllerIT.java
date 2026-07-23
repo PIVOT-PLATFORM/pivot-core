@@ -315,4 +315,125 @@ class SessionControllerIT extends AbstractCollaboratifIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("INVALID_SESSION_STATUS"));
     }
+
+    // -------------------------------------------------------------------------
+    // GET /collaboratif/sessions/{id}/state (US19.2.2) — guest-accessible session-detail read
+    // -------------------------------------------------------------------------
+
+    @Test
+    void getState_asGuestForItsOwnJoinedSession_returnsTheParticipantSafeConfig() throws Exception {
+        String createBody = createSession(userA, "POLL",
+                "{\"question\":\"Q?\",\"options\":[\"Option A\",\"Option B\"],\"allowMultiple\":false}")
+                .getResponse().getContentAsString();
+        String sessionId = JsonPath.read(createBody, "$.id");
+        String joinCode = JsonPath.read(createBody, "$.joinCode");
+        mockMvc.perform(post(BASE_PATH + "/" + sessionId + "/start").header("Authorization", userA.authorizationHeader()))
+                .andExpect(status().isOk());
+
+        MvcResult joinResult = mockMvc.perform(post(BASE_PATH + "/join")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"" + joinCode + "\",\"displayName\":\"Guest\"}"))
+                .andReturn();
+        String guestToken = JsonPath.read(joinResult.getResponse().getContentAsString(), "$.token");
+
+        mockMvc.perform(get(BASE_PATH + "/" + sessionId + "/state").header("X-Guest-Token", guestToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(sessionId))
+                .andExpect(jsonPath("$.type").value("POLL"))
+                .andExpect(jsonPath("$.status").value("LIVE"))
+                .andExpect(jsonPath("$.config.question").value("Q?"))
+                .andExpect(jsonPath("$.config.options[0]").value("Option A"))
+                .andExpect(jsonPath("$.participantCount").value(1));
+    }
+
+    @Test
+    void getState_asGuestWithATokenForAnotherSession_returns401WithGuestSessionExpiredCode() throws Exception {
+        String bodyA = createSession(userA, "WORDCLOUD", "{}").getResponse().getContentAsString();
+        String joinCodeA = JsonPath.read(bodyA, "$.joinCode");
+        MvcResult joinResultA = mockMvc.perform(post(BASE_PATH + "/join")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"" + joinCodeA + "\",\"displayName\":\"Guest A\"}"))
+                .andReturn();
+        String guestTokenForSessionA = JsonPath.read(joinResultA.getResponse().getContentAsString(), "$.token");
+
+        String bodyB = createSession(userA, "WORDCLOUD", "{}").getResponse().getContentAsString();
+        String sessionIdB = JsonPath.read(bodyB, "$.id");
+
+        mockMvc.perform(get(BASE_PATH + "/" + sessionIdB + "/state").header("X-Guest-Token", guestTokenForSessionA))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("GUEST_SESSION_EXPIRED"));
+    }
+
+    @Test
+    void getState_asAnAuthenticatedParticipant_returnsIt() throws Exception {
+        String createBody = createSession(userA, "WORDCLOUD", "{}").getResponse().getContentAsString();
+        String sessionId = JsonPath.read(createBody, "$.id");
+        String joinCode = JsonPath.read(createBody, "$.joinCode");
+        long sameTenantUserId = PlatformAuthTestSupport.seedUser(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(), userA.tenantId(), true);
+        String sameTenantToken = PlatformAuthTestSupport.issueToken(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
+                sameTenantUserId, "active", java.time.Instant.now().plusSeconds(3600));
+
+        mockMvc.perform(post(BASE_PATH + "/join")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + sameTenantToken)
+                        .content("{\"code\":\"" + joinCode + "\",\"displayName\":\"Bob\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(BASE_PATH + "/" + sessionId + "/state").header("Authorization", "Bearer " + sameTenantToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(sessionId));
+    }
+
+    @Test
+    void getState_forAnAuthenticatedCallerWhoNeverJoined_returns404() throws Exception {
+        String createBody = createSession(userA, "WORDCLOUD", "{}").getResponse().getContentAsString();
+        String sessionId = JsonPath.read(createBody, "$.id");
+
+        mockMvc.perform(get(BASE_PATH + "/" + sessionId + "/state").header("Authorization", userA.authorizationHeader()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getState_withNoBearerAndNoGuestToken_returns401WithGuestSessionExpiredCode() throws Exception {
+        String createBody = createSession(userA, "WORDCLOUD", "{}").getResponse().getContentAsString();
+        String sessionId = JsonPath.read(createBody, "$.id");
+
+        mockMvc.perform(get(BASE_PATH + "/" + sessionId + "/state"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("GUEST_SESSION_EXPIRED"));
+    }
+
+    @Test
+    void getState_neverLeaksTheJoinCodeOrLivePollTallies() throws Exception {
+        String createBody = createSession(userA, "POLL",
+                "{\"question\":\"Q?\",\"options\":[\"Option A\",\"Option B\"],\"allowMultiple\":false}")
+                .getResponse().getContentAsString();
+        String sessionId = JsonPath.read(createBody, "$.id");
+        String joinCode = JsonPath.read(createBody, "$.joinCode");
+        mockMvc.perform(post(BASE_PATH + "/" + sessionId + "/start").header("Authorization", userA.authorizationHeader()))
+                .andExpect(status().isOk());
+
+        MvcResult joinResult = mockMvc.perform(post(BASE_PATH + "/join")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"" + joinCode + "\",\"displayName\":\"Guest\"}"))
+                .andReturn();
+        String guestToken = JsonPath.read(joinResult.getResponse().getContentAsString(), "$.token");
+
+        // Facilitator hides results — the state payload never carried tallies in the first place,
+        // this asserts that stays true regardless of the hidden-results toggle.
+        mockMvc.perform(post(BASE_PATH + "/" + sessionId + "/poll/hide-results")
+                        .header("Authorization", userA.authorizationHeader()))
+                .andExpect(status().isOk());
+
+        String stateBody = mockMvc.perform(get(BASE_PATH + "/" + sessionId + "/state")
+                        .header("X-Guest-Token", guestToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(stateBody).doesNotContain("joinCode");
+        assertThat(stateBody).doesNotContain("\"results\"");
+        assertThat(stateBody).doesNotContain("\"percent\"");
+    }
 }

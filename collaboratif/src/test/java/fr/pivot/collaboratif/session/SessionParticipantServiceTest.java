@@ -1,10 +1,12 @@
 package fr.pivot.collaboratif.session;
 
+import tools.jackson.databind.ObjectMapper;
 import fr.pivot.collaboratif.exception.SessionGuestExpiredException;
 import fr.pivot.collaboratif.exception.SessionNotFoundException;
 import fr.pivot.collaboratif.session.dto.GuestHeartbeatRequest;
 import fr.pivot.collaboratif.session.dto.JoinSessionRequest;
 import fr.pivot.collaboratif.session.dto.JoinSessionResponse;
+import fr.pivot.collaboratif.session.dto.ParticipantSessionResponse;
 import fr.pivot.core.auth.AuthenticatedPrincipal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,10 +36,13 @@ class SessionParticipantServiceTest {
     private SimpMessagingTemplate messagingTemplate;
 
     private SessionParticipantService service;
+    private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
-        service = new SessionParticipantService(sessionRepository, participantRepository, messagingTemplate);
+        objectMapper = new ObjectMapper();
+        service = new SessionParticipantService(
+                sessionRepository, participantRepository, messagingTemplate, objectMapper);
     }
 
     private Session session() {
@@ -149,5 +154,36 @@ class SessionParticipantServiceTest {
         service.heartbeat(sessionId, participant.getId(), new GuestHeartbeatRequest("real-token"));
 
         assertThat(participant.getLastHeartbeatAt()).isNotNull();
+    }
+
+    @Test
+    void getForParticipantReturnsTheParticipantSafeShapeIncludingConfigAndCount() {
+        Session session = new Session(
+                1L, 42L, "Retro", SessionType.POLL, "ABCDEF",
+                "{\"question\":\"Q\",\"options\":[\"A\",\"B\"]}", 10L, Instant.now());
+        when(participantRepository.countBySessionId(session.getId())).thenReturn(3L);
+
+        ParticipantSessionResponse response = service.getForParticipant(session);
+
+        assertThat(response.id()).isEqualTo(session.getId());
+        assertThat(response.title()).isEqualTo("Retro");
+        assertThat(response.type()).isEqualTo(SessionType.POLL);
+        assertThat(response.status()).isEqualTo(session.getStatus());
+        assertThat(response.participantCount()).isEqualTo(3L);
+        assertThat(response.config().get("question").asText()).isEqualTo("Q");
+    }
+
+    @Test
+    void getForParticipantNeverExposesJoinCodeOrTeamId() {
+        Session session = new Session(1L, 42L, "Retro", SessionType.WORDCLOUD, "SECRET", "{}", 10L, Instant.now());
+        when(participantRepository.countBySessionId(session.getId())).thenReturn(0L);
+
+        ParticipantSessionResponse response = service.getForParticipant(session);
+
+        // ParticipantSessionResponse carries no joinCode/teamId accessor at all — this test
+        // documents the intentional shape gap in case a future edit widens the record.
+        assertThat(response.getClass().getRecordComponents())
+                .extracting(java.lang.reflect.RecordComponent::getName)
+                .doesNotContain("joinCode", "teamId");
     }
 }
