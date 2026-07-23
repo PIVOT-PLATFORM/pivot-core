@@ -66,6 +66,10 @@
 		<!-- CVE-2026-54291 (HIGH, pgjdbc) — fixed upstream in 42.7.12, spring-boot-starter-parent
 		     4.1.0 still manages 42.7.11. Override until the parent bumps. -->
 		<postgresql.version>42.7.12</postgresql.version>
+		<!-- CVE-2026-59901/55831/55833/56745/56816 (5×HIGH, netty-codec-compression/http/http3) —
+		     fixed upstream in 4.2.16.Final, spring-boot-starter-parent 4.1.0 still manages
+		     4.2.15.Final. Override until the parent bumps. -->
+		<netty.version>4.2.16.Final</netty.version>
 	</properties>
 
 	<dependencyManagement>
