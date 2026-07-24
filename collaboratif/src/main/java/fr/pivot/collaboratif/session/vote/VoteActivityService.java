@@ -8,6 +8,7 @@ import fr.pivot.collaboratif.exception.SessionValidationException;
 import fr.pivot.collaboratif.session.Session;
 import fr.pivot.collaboratif.session.SessionStatus;
 import fr.pivot.collaboratif.session.SessionType;
+import fr.pivot.collaboratif.session.vote.dto.MatrixOptionResult;
 import fr.pivot.collaboratif.session.vote.dto.SubmitBallotRequest;
 import fr.pivot.collaboratif.session.vote.dto.VoteClosedEvent;
 import fr.pivot.collaboratif.session.vote.dto.VoteResultsDto;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -132,9 +134,11 @@ public class VoteActivityService {
             return VoteResultsDto.open(voteType, count);
         }
         List<SessionVoteBallot> ballots = ballotRepository.findAllBySessionId(session.getId());
-        return voteType == VoteType.WEIGHTED
-                ? weightedResults(session, ballots, count)
-                : fistResults(ballots, count);
+        return switch (voteType) {
+            case WEIGHTED -> weightedResults(session, ballots, count);
+            case MATRIX -> matrixResults(session, ballots, count);
+            default -> fistResults(ballots, count);
+        };
     }
 
     // --- results --------------------------------------------------------------------------------
@@ -153,7 +157,7 @@ public class VoteActivityService {
         }
         double average = n == 0 ? 0.0 : (double) sum / n;
         return new VoteResultsDto(
-                VoteType.FIST_TO_FIVE, true, count, average, consensusLevel(average), veto, List.of());
+                VoteType.FIST_TO_FIVE, true, count, average, consensusLevel(average), veto, List.of(), List.of());
     }
 
     private VoteResultsDto weightedResults(
@@ -172,7 +176,40 @@ public class VoteActivityService {
         for (int i = 0; i < options.size(); i++) {
             results.add(new WeightedOptionResult(i, options.get(i), totals[i]));
         }
-        return new VoteResultsDto(VoteType.WEIGHTED, true, count, null, null, false, results);
+        return new VoteResultsDto(VoteType.WEIGHTED, true, count, null, null, false, results, List.of());
+    }
+
+    private VoteResultsDto matrixResults(
+            final Session session, final List<SessionVoteBallot> ballots, final long count) {
+        List<String> options = readWeightedOptions(session);
+        List<Integer> weights = readCriteriaWeights(session);
+        int optionCount = options.size();
+        int criterionCount = weights.size();
+
+        // Sum each cell [option][criterion] across ballots, then mean, then weight and sum per option.
+        long[][] cellSums = new long[optionCount][criterionCount];
+        for (SessionVoteBallot ballot : ballots) {
+            List<List<Integer>> scores = readScores(ballot.getPayload());
+            for (int i = 0; i < optionCount && i < scores.size(); i++) {
+                List<Integer> row = scores.get(i);
+                for (int j = 0; j < criterionCount && j < row.size(); j++) {
+                    cellSums[i][j] += row.get(j);
+                }
+            }
+        }
+
+        int ballotCount = ballots.size();
+        List<MatrixOptionResult> results = new ArrayList<>(optionCount);
+        for (int i = 0; i < optionCount; i++) {
+            double weighted = 0.0;
+            for (int j = 0; j < criterionCount; j++) {
+                double mean = ballotCount == 0 ? 0.0 : (double) cellSums[i][j] / ballotCount;
+                weighted += weights.get(j) * mean;
+            }
+            results.add(new MatrixOptionResult(i, options.get(i), weighted));
+        }
+        results.sort(Comparator.comparingDouble(MatrixOptionResult::score).reversed());
+        return new VoteResultsDto(VoteType.MATRIX, true, count, null, null, false, List.of(), results);
     }
 
     private String consensusLevel(final double average) {
@@ -185,9 +222,11 @@ public class VoteActivityService {
     // --- ballot validation ----------------------------------------------------------------------
 
     private String validateAndSerialize(final Session session, final SubmitBallotRequest request) {
-        return readVoteType(session) == VoteType.WEIGHTED
-                ? serializeWeighted(session, request)
-                : serializeFist(request);
+        return switch (readVoteType(session)) {
+            case WEIGHTED -> serializeWeighted(session, request);
+            case MATRIX -> serializeMatrix(session, request);
+            default -> serializeFist(request);
+        };
     }
 
     private String serializeFist(final SubmitBallotRequest request) {
@@ -221,6 +260,28 @@ public class VoteActivityService {
                     "INVALID_BALLOT", "Allocated points must sum to " + budget);
         }
         return write(Map.of("allocations", normalized));
+    }
+
+    private String serializeMatrix(final Session session, final SubmitBallotRequest request) {
+        List<List<Integer>> scores = request.scores();
+        int optionCount = readWeightedOptions(session).size();
+        int criterionCount = readCriteriaWeights(session).size();
+        if (scores == null || scores.size() != optionCount) {
+            throw new SessionValidationException("INVALID_BALLOT", "Matrix must score every option");
+        }
+        int maxScore = readMaxScore(session);
+        for (List<Integer> row : scores) {
+            if (row == null || row.size() != criterionCount) {
+                throw new SessionValidationException("INVALID_BALLOT", "Each option must score every criterion");
+            }
+            for (Integer cell : row) {
+                if (cell == null || cell < 0 || cell > maxScore) {
+                    throw new SessionValidationException(
+                            "INVALID_BALLOT", "Each score must be 0 to " + maxScore);
+                }
+            }
+        }
+        return write(Map.of("scores", scores));
     }
 
     private int parseIndex(final String rawKey, final int optionCount) {
@@ -264,6 +325,44 @@ public class VoteActivityService {
     private int readPointsPerParticipant(final Session session) {
         JsonNode points = config(session).get("pointsPerParticipant");
         return points != null ? points.asInt(DEFAULT_POINTS) : DEFAULT_POINTS;
+    }
+
+    private List<Integer> readCriteriaWeights(final Session session) {
+        JsonNode criteria = config(session).get("criteria");
+        if (criteria == null || !criteria.isArray() || criteria.isEmpty()) {
+            throw new SessionValidationException("INVALID_BALLOT", "MATRIX vote has no criteria configured");
+        }
+        List<Integer> weights = new ArrayList<>(criteria.size());
+        for (JsonNode criterion : criteria) {
+            JsonNode weight = criterion.get("weight");
+            weights.add(weight != null ? weight.asInt(1) : 1);
+        }
+        return weights;
+    }
+
+    private int readMaxScore(final Session session) {
+        JsonNode max = config(session).get("maxScore");
+        return max != null ? max.asInt(MAX_RATING) : MAX_RATING;
+    }
+
+    private List<List<Integer>> readScores(final String payload) {
+        List<List<Integer>> result = new ArrayList<>();
+        try {
+            JsonNode scores = objectMapper.readTree(payload).get("scores");
+            if (scores == null || !scores.isArray()) {
+                return result;
+            }
+            for (JsonNode row : scores) {
+                List<Integer> cells = new ArrayList<>();
+                for (JsonNode cell : row) {
+                    cells.add(cell.asInt(0));
+                }
+                result.add(cells);
+            }
+        } catch (Exception e) {
+            return result;
+        }
+        return result;
     }
 
     private JsonNode config(final Session session) {

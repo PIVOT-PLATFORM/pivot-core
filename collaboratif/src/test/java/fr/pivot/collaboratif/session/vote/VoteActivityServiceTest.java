@@ -36,6 +36,11 @@ class VoteActivityServiceTest {
     private static final String WEIGHTED_CONFIG =
             "{\"voteType\":\"WEIGHTED\",\"options\":[\"A\",\"B\"],\"pointsPerParticipant\":5}";
 
+    private static final String MATRIX_CONFIG =
+            "{\"voteType\":\"MATRIX\",\"options\":[\"A\",\"B\"],"
+                    + "\"criteria\":[{\"label\":\"Cost\",\"weight\":3},{\"label\":\"Security\",\"weight\":5}],"
+                    + "\"maxScore\":5}";
+
     @Mock
     private SessionVoteBallotRepository ballotRepository;
     @Mock
@@ -66,7 +71,7 @@ class VoteActivityServiceTest {
     void submitRejectsWhenSessionIsNotLive() {
         Session session = new Session(1L, null, "T", SessionType.VOTE, "ABCDEF", "{}", 10L, Instant.now());
 
-        assertThatThrownBy(() -> service.submitBallot(session, UUID.randomUUID(), new SubmitBallotRequest(3, null)))
+        assertThatThrownBy(() -> service.submitBallot(session, UUID.randomUUID(), new SubmitBallotRequest(3, null, null)))
                 .isInstanceOf(InvalidSessionStatusException.class);
         verify(ballotRepository, never()).save(any());
     }
@@ -78,7 +83,7 @@ class VoteActivityServiceTest {
         when(stateRepository.findBySessionId(session.getId())).thenReturn(Optional.empty());
         when(ballotRepository.existsBySessionIdAndParticipantId(session.getId(), pid)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.submitBallot(session, pid, new SubmitBallotRequest(6, null)))
+        assertThatThrownBy(() -> service.submitBallot(session, pid, new SubmitBallotRequest(6, null, null)))
                 .isInstanceOf(SessionValidationException.class);
         verify(ballotRepository, never()).save(any());
     }
@@ -91,7 +96,7 @@ class VoteActivityServiceTest {
         when(ballotRepository.existsBySessionIdAndParticipantId(session.getId(), pid)).thenReturn(false);
         when(ballotRepository.countBySessionId(session.getId())).thenReturn(1L);
 
-        service.submitBallot(session, pid, new SubmitBallotRequest(5, null));
+        service.submitBallot(session, pid, new SubmitBallotRequest(5, null, null));
 
         verify(ballotRepository).save(any());
         verify(messagingTemplate).convertAndSend(anyString(), any(Object.class));
@@ -104,7 +109,7 @@ class VoteActivityServiceTest {
         when(stateRepository.findBySessionId(session.getId())).thenReturn(Optional.empty());
         when(ballotRepository.existsBySessionIdAndParticipantId(session.getId(), pid)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.submitBallot(session, pid, new SubmitBallotRequest(3, null)))
+        assertThatThrownBy(() -> service.submitBallot(session, pid, new SubmitBallotRequest(3, null, null)))
                 .isInstanceOf(SessionConflictException.class)
                 .satisfies(ex -> assertThat(((SessionConflictException) ex).getCode()).isEqualTo("ALREADY_VOTED"));
     }
@@ -115,7 +120,7 @@ class VoteActivityServiceTest {
         when(stateRepository.findBySessionId(session.getId()))
                 .thenReturn(Optional.of(new SessionVoteState(session.getId(), true)));
 
-        assertThatThrownBy(() -> service.submitBallot(session, UUID.randomUUID(), new SubmitBallotRequest(3, null)))
+        assertThatThrownBy(() -> service.submitBallot(session, UUID.randomUUID(), new SubmitBallotRequest(3, null, null)))
                 .isInstanceOf(SessionConflictException.class)
                 .satisfies(ex -> assertThat(((SessionConflictException) ex).getCode()).isEqualTo("VOTE_CLOSED"));
     }
@@ -127,7 +132,7 @@ class VoteActivityServiceTest {
         when(stateRepository.findBySessionId(session.getId())).thenReturn(Optional.empty());
         when(ballotRepository.existsBySessionIdAndParticipantId(session.getId(), pid)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.submitBallot(session, pid, new SubmitBallotRequest(null, Map.of("0", 3, "1", 1))))
+        assertThatThrownBy(() -> service.submitBallot(session, pid, new SubmitBallotRequest(null, Map.of("0", 3, "1", 1), null)))
                 .isInstanceOf(SessionValidationException.class);
         verify(ballotRepository, never()).save(any());
     }
@@ -140,7 +145,7 @@ class VoteActivityServiceTest {
         when(ballotRepository.existsBySessionIdAndParticipantId(session.getId(), pid)).thenReturn(false);
         when(ballotRepository.countBySessionId(session.getId())).thenReturn(1L);
 
-        service.submitBallot(session, pid, new SubmitBallotRequest(null, Map.of("0", 3, "1", 2)));
+        service.submitBallot(session, pid, new SubmitBallotRequest(null, Map.of("0", 3, "1", 2), null));
 
         verify(ballotRepository).save(any());
         verify(messagingTemplate).convertAndSend(anyString(), any(Object.class));
@@ -212,5 +217,64 @@ class VoteActivityServiceTest {
 
         assertThat(results.options()).extracting(o -> o.optionIndex() + ":" + o.points())
                 .containsExactly("0:8", "1:2");
+    }
+
+    // --- MATRIX -------------------------------------------------------------------------------
+
+    @Test
+    void submitMatrixRejectsAGridWithTheWrongDimensions() {
+        Session session = liveVote(MATRIX_CONFIG);
+        UUID pid = UUID.randomUUID();
+        when(stateRepository.findBySessionId(session.getId())).thenReturn(Optional.empty());
+        when(ballotRepository.existsBySessionIdAndParticipantId(session.getId(), pid)).thenReturn(false);
+
+        // 2 options × 2 criteria expected; this grid has only one option row.
+        assertThatThrownBy(() -> service.submitBallot(
+                session, pid, new SubmitBallotRequest(null, null, List.of(List.of(4, 2)))))
+                .isInstanceOf(SessionValidationException.class);
+        verify(ballotRepository, never()).save(any());
+    }
+
+    @Test
+    void submitMatrixRejectsAnOutOfRangeCell() {
+        Session session = liveVote(MATRIX_CONFIG);
+        UUID pid = UUID.randomUUID();
+        when(stateRepository.findBySessionId(session.getId())).thenReturn(Optional.empty());
+        when(ballotRepository.existsBySessionIdAndParticipantId(session.getId(), pid)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.submitBallot(
+                session, pid, new SubmitBallotRequest(null, null, List.of(List.of(4, 2), List.of(2, 9)))))
+                .isInstanceOf(SessionValidationException.class);
+    }
+
+    @Test
+    void submitMatrixPersistsAValidGrid() {
+        Session session = liveVote(MATRIX_CONFIG);
+        UUID pid = UUID.randomUUID();
+        when(stateRepository.findBySessionId(session.getId())).thenReturn(Optional.empty());
+        when(ballotRepository.existsBySessionIdAndParticipantId(session.getId(), pid)).thenReturn(false);
+        when(ballotRepository.countBySessionId(session.getId())).thenReturn(1L);
+
+        service.submitBallot(session, pid, new SubmitBallotRequest(null, null, List.of(List.of(4, 2), List.of(2, 5))));
+
+        verify(ballotRepository).save(any());
+        verify(messagingTemplate).convertAndSend(anyString(), any(Object.class));
+    }
+
+    @Test
+    void getResultsRanksMatrixOptionsByWeightedMean() {
+        Session session = liveVote(MATRIX_CONFIG);
+        when(stateRepository.findBySessionId(session.getId()))
+                .thenReturn(Optional.of(new SessionVoteState(session.getId(), true)));
+        when(ballotRepository.countBySessionId(session.getId())).thenReturn(2L);
+        when(ballotRepository.findAllBySessionId(session.getId())).thenReturn(List.of(
+                ballot(session.getId(), "{\"scores\":[[4,2],[2,5]]}"),
+                ballot(session.getId(), "{\"scores\":[[4,4],[2,5]]}")));
+
+        VoteResultsDto results = service.getResults(session);
+
+        // weights [3,5]; A mean [4,3] → 3*4+5*3 = 27 ; B mean [2,5] → 3*2+5*5 = 31 → B ranks first.
+        assertThat(results.matrix()).extracting(m -> m.optionIndex() + ":" + m.score())
+                .containsExactly("1:31.0", "0:27.0");
     }
 }
