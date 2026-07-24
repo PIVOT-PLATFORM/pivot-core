@@ -20,7 +20,12 @@ package fr.pivot.collaboratif.context;
  * CollaboratifRequestPrincipalResolver}'s Javadoc. This record is renamed alongside it purely for
  * naming symmetry/clarity, not because the record itself would fail to compile or run unrenamed.
  *
+ * <p>{@code role} was added for US19.1.2 (Module Session lifecycle authorization, "owner-or-
+ * ROLE_ADMIN only") — every pre-existing caller of the record only ever read {@code userId}/
+ * {@code tenantId}, so this is a purely additive component.
+ *
  * @param userId   the caller's {@code public.users.id}
  * @param tenantId the caller's {@code public.tenants.id}
+ * @param role     the caller's Spring Security role (e.g. {@code ROLE_ADMIN})
  */
-public record CollaboratifRequestPrincipal(Long userId, Long tenantId) {}
+public record CollaboratifRequestPrincipal(Long userId, Long tenantId, String role) {}

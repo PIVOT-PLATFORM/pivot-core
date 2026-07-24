@@ -70,6 +70,9 @@
 		     fixed upstream in 4.2.16.Final, spring-boot-starter-parent 4.1.0 still manages
 		     4.2.15.Final. Override until the parent bumps. -->
 		<netty.version>4.2.16.Final</netty.version>
+		<!-- CVE-2026-59889 (jackson-databind, fixed upstream in jackson-bom 3.1.5/3.2.1),
+		     spring-boot-starter-parent 4.1.0 still manages 3.1.4. Override until the parent bumps. -->
+		<jackson-bom.version>3.1.5</jackson-bom.version>
 	</properties>
 
 	<dependencyManagement>

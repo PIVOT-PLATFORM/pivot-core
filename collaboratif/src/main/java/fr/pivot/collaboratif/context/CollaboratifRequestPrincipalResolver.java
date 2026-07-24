@@ -111,7 +111,7 @@ public class CollaboratifRequestPrincipalResolver implements HandlerMethodArgume
         final AuthenticatedPrincipal principal = principalResolver.resolve(rawToken)
                 .orElseThrow(CollaboratifRequestPrincipalResolver::unauthorized);
 
-        return new CollaboratifRequestPrincipal(principal.userId(), principal.tenantId());
+        return new CollaboratifRequestPrincipal(principal.userId(), principal.tenantId(), principal.role());
     }
 
     /**

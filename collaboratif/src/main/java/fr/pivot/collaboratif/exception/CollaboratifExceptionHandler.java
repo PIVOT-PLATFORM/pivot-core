@@ -320,4 +320,99 @@ public class CollaboratifExceptionHandler {
         problem.setDetail(ex.getMessage());
         return problem;
     }
+
+    /**
+     * Returns HTTP 404 when a session id does not resolve to a session accessible to the caller
+     * (E19 — never 403, anti-enumeration).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(SessionNotFoundException.class)
+    public ProblemDetail handleSessionNotFound(final SessionNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Session not found");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 with code {@code INVALID_SESSION_TRANSITION} when a session lifecycle
+     * transition is attempted from a status that does not allow it (US19.1.2).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail carrying the code
+     */
+    @ExceptionHandler(InvalidSessionTransitionException.class)
+    public ProblemDetail handleInvalidSessionTransition(final InvalidSessionTransitionException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Invalid session transition");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "INVALID_SESSION_TRANSITION"));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 with code {@code INVALID_SESSION_STATUS} when an activity-specific action
+     * is attempted on a session of the wrong type or not currently LIVE (US19.3.2/US19.3.3).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail carrying the code
+     */
+    @ExceptionHandler(InvalidSessionStatusException.class)
+    public ProblemDetail handleInvalidSessionStatus(final InvalidSessionStatusException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Invalid session status");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "INVALID_SESSION_STATUS"));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 401 with code {@code GUEST_SESSION_EXPIRED} when a guest token does not
+     * resolve to a currently valid guest session (US19.2.1).
+     *
+     * @param ex the thrown exception
+     * @return a 401 problem detail carrying the code
+     */
+    @ExceptionHandler(SessionGuestExpiredException.class)
+    public ProblemDetail handleGuestExpired(final SessionGuestExpiredException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNAUTHORIZED);
+        problem.setTitle("Guest session expired");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "GUEST_SESSION_EXPIRED"));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 400 with a machine-readable {@code code} property for session-domain
+     * business-rule validation failures that are not expressible as a Bean Validation constraint.
+     *
+     * @param ex the thrown exception
+     * @return a 400 problem detail carrying the code
+     */
+    @ExceptionHandler(SessionValidationException.class)
+    public ProblemDetail handleSessionValidation(final SessionValidationException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Invalid request");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 with a machine-readable {@code code} property for session-domain
+     * business-rule conflicts.
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail carrying the code
+     */
+    @ExceptionHandler(SessionConflictException.class)
+    public ProblemDetail handleSessionConflict(final SessionConflictException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Conflict");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
 }
