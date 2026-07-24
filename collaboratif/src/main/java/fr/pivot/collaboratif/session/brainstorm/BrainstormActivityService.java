@@ -171,9 +171,12 @@ public class BrainstormActivityService {
     }
 
     private BrainstormCardColor parseColor(final String rawColor) {
+        if (rawColor == null) {
+            throw new SessionValidationException("INVALID_CARD", "Unknown card colour");
+        }
         try {
             return BrainstormCardColor.valueOf(rawColor.trim().toUpperCase(java.util.Locale.ROOT));
-        } catch (IllegalArgumentException | NullPointerException e) {
+        } catch (IllegalArgumentException e) {
             throw new SessionValidationException("INVALID_CARD", "Unknown card colour");
         }
     }
