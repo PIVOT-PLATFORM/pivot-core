@@ -48,7 +48,7 @@ Suite collaborative open-source — outils activables par les administrateurs, a
 | Module | Description | Statut |
 |--------|-------------|--------|
 | `whiteboard` | Tableau blanc collaboratif temps réel | ⬜ À faire |
-| `session` | Sessions live (QUIZ, POLL, WORDCLOUD, BRAINSTORM, QA) | ⬜ À faire |
+| `session` | Sessions live (QUIZ, POLL, WORDCLOUD, BRAINSTORM, QA, VOTE) | 🔵 Backend livré (recette en attente) |
 | `roadmap` | Roadmap / Gantt intégré | ⬜ À faire |
 | `survey` | Système de sondage | ⬜ À faire |
 | `quiz` | Quiz interactif gamifié | ⬜ À faire |
