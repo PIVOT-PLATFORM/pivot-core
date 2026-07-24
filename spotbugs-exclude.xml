@@ -269,6 +269,17 @@
             <Package name="fr.pivot.collaboratif.session.wordcloud"/>
             <Package name="fr.pivot.collaboratif.session.wordcloud.dto"/>
             <Package name="fr.pivot.collaboratif.session.ws"/>
+            <!-- PR2 activity subpackages (US19.3.5/US19.3.4/US19.3.6/US19.3.1) — same rationale:
+                 *ActivityService/*Controller store constructor-injected singleton beans; the dto
+                 records expose mutable Lists for JSON transport. -->
+            <Package name="fr.pivot.collaboratif.session.qa"/>
+            <Package name="fr.pivot.collaboratif.session.qa.dto"/>
+            <Package name="fr.pivot.collaboratif.session.brainstorm"/>
+            <Package name="fr.pivot.collaboratif.session.brainstorm.dto"/>
+            <Package name="fr.pivot.collaboratif.session.vote"/>
+            <Package name="fr.pivot.collaboratif.session.vote.dto"/>
+            <Package name="fr.pivot.collaboratif.session.quiz"/>
+            <Package name="fr.pivot.collaboratif.session.quiz.dto"/>
         </Or>
     </Match>
 
