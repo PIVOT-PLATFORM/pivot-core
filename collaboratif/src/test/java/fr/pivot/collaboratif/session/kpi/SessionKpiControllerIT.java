@@ -4,8 +4,6 @@ import com.jayway.jsonpath.JsonPath;
 import fr.pivot.collaboratif.AbstractCollaboratifIntegrationTest;
 import fr.pivot.collaboratif.testsupport.PlatformAuthTestSupport;
 import fr.pivot.collaboratif.testsupport.PlatformAuthTestSupport.AuthFixture;
-import fr.pivot.core.team.Team;
-import fr.pivot.core.team.TeamRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,8 +39,6 @@ class SessionKpiControllerIT extends AbstractCollaboratifIntegrationTest {
 
     @Autowired
     private WebApplicationContext wac;
-    @Autowired
-    private TeamRepository teamRepository;
 
     private MockMvc mockMvc;
     private AuthFixture userA;
@@ -123,9 +119,11 @@ class SessionKpiControllerIT extends AbstractCollaboratifIntegrationTest {
 
     @Test
     void resolve_teamScopeForAnotherTenantsTeam_returns404() throws Exception {
-        Team otherTenantTeam = teamRepository.save(new Team(userB.tenantId(), "Other tenant's team"));
+        long otherTenantTeamId = PlatformAuthTestSupport.seedTeam(
+                postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword(),
+                userB.tenantId(), "Other tenant's team");
 
-        mockMvc.perform(get(KPI_BASE_PATH + "/session.avg_participants?scope=team&teamId=" + otherTenantTeam.getId())
+        mockMvc.perform(get(KPI_BASE_PATH + "/session.avg_participants?scope=team&teamId=" + otherTenantTeamId)
                         .header("Authorization", userA.authorizationHeader()))
                 .andExpect(status().isNotFound());
     }
