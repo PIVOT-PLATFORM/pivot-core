@@ -89,4 +89,27 @@ public interface SessionKpiRepository extends Repository<Session, UUID> {
             LEFT JOIN interaction_counts ic ON ic.session_id = ss.id
             """, nativeQuery = true)
     SessionKpiAggregate aggregate(@Param("tenantId") Long tenantId, @Param("teamId") Long teamId);
+
+    /**
+     * Checks that a {@code teamId} scope belongs to the caller's own tenant, without going
+     * through {@code fr.pivot.core.team.TeamRepository}.
+     *
+     * <p>{@code fr.pivot.core.team.Team}'s {@code @Table} carries no explicit {@code schema =
+     * "public"} — resolving it via JPA from inside this module's own persistence context resolves
+     * against {@code collaboratif}'s own {@code hibernate.default_schema} instead of {@code
+     * public}, failing with {@code relation "collaboratif.teams" does not exist} (discovered by
+     * this enabler's own integration test — every existing collaboratif caller of team data goes
+     * through {@code TeamMemberRepository} instead, whose narrower query surface apparently never
+     * exercised this same resolution path against a real database). A native, explicitly
+     * schema-qualified {@code public.teams} check sidesteps the defect entirely rather than fixing
+     * the shared entity mapping (out of scope for a Session-live-only enabler, and a starter-wide
+     * change with broader blast radius than this PR should carry).
+     *
+     * @param teamId   the team to check
+     * @param tenantId the caller's tenant
+     * @return {@code true} if {@code teamId} exists and belongs to {@code tenantId}
+     */
+    @Query(value = "SELECT EXISTS(SELECT 1 FROM public.teams WHERE id = :teamId AND tenant_id = :tenantId)",
+            nativeQuery = true)
+    boolean teamBelongsToTenant(@Param("teamId") Long teamId, @Param("tenantId") Long tenantId);
 }

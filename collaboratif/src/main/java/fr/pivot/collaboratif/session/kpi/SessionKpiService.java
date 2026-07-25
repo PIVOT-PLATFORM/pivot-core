@@ -6,8 +6,6 @@ import fr.pivot.collaboratif.exception.SessionForbiddenException;
 import fr.pivot.collaboratif.exception.SessionValidationException;
 import fr.pivot.collaboratif.session.kpi.dto.KpiDefinitionResponse;
 import fr.pivot.collaboratif.session.kpi.dto.KpiRefResponse;
-import fr.pivot.core.team.Team;
-import fr.pivot.core.team.TeamRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,18 +35,16 @@ public class SessionKpiService {
     private static final String CODE_ACCESS_DENIED = "KPI_ACCESS_DENIED";
 
     private final SessionKpiRepository kpiRepository;
-    private final TeamRepository teamRepository;
 
     /**
-     * Creates the service with its required dependencies.
+     * Creates the service with its required dependency.
      *
-     * @param kpiRepository the aggregate query
-     * @param teamRepository used to validate a {@code teamId} scope belongs to the caller's
-     *                        tenant
+     * @param kpiRepository the aggregate query, also used to validate a {@code teamId} scope
+     *                       belongs to the caller's tenant (see {@link
+     *                       SessionKpiRepository#teamBelongsToTenant})
      */
-    public SessionKpiService(final SessionKpiRepository kpiRepository, final TeamRepository teamRepository) {
+    public SessionKpiService(final SessionKpiRepository kpiRepository) {
         this.kpiRepository = kpiRepository;
-        this.teamRepository = teamRepository;
     }
 
     /**
@@ -108,8 +104,7 @@ public class SessionKpiService {
             if (teamId == null) {
                 throw new SessionValidationException(CODE_UNSUPPORTED_SCOPE, "teamId is required for scope=team");
             }
-            Team team = teamRepository.findById(teamId).orElseThrow(() -> new KpiNotFoundException("Team not found"));
-            if (!team.getTenantId().equals(principal.tenantId())) {
+            if (!kpiRepository.teamBelongsToTenant(teamId, principal.tenantId())) {
                 throw new KpiNotFoundException("Team not found");
             }
             scopedTeamId = teamId;

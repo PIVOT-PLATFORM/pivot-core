@@ -6,8 +6,6 @@ import fr.pivot.collaboratif.exception.SessionForbiddenException;
 import fr.pivot.collaboratif.exception.SessionValidationException;
 import fr.pivot.collaboratif.session.kpi.dto.KpiDefinitionResponse;
 import fr.pivot.collaboratif.session.kpi.dto.KpiRefResponse;
-import fr.pivot.core.team.Team;
-import fr.pivot.core.team.TeamRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,7 +13,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,13 +24,10 @@ import static org.mockito.Mockito.when;
 class SessionKpiServiceTest {
 
     private static final Long TENANT_ID = 1L;
-    private static final Long OTHER_TENANT_ID = 2L;
     private static final Long TEAM_ID = 42L;
 
     @Mock
     private SessionKpiRepository kpiRepository;
-    @Mock
-    private TeamRepository teamRepository;
 
     private SessionKpiService kpiService;
     private CollaboratifRequestPrincipal userPrincipal;
@@ -41,7 +35,7 @@ class SessionKpiServiceTest {
 
     @BeforeEach
     void setUp() {
-        kpiService = new SessionKpiService(kpiRepository, teamRepository);
+        kpiService = new SessionKpiService(kpiRepository);
         userPrincipal = new CollaboratifRequestPrincipal(10L, TENANT_ID, "ROLE_USER");
         guestPrincipal = new CollaboratifRequestPrincipal(10L, TENANT_ID, "ROLE_GUEST");
     }
@@ -123,8 +117,7 @@ class SessionKpiServiceTest {
 
     @Test
     void resolve_teamScopeForAnotherTenantsTeam_throwsKpiNotFound() {
-        Team otherTenantTeam = new Team(OTHER_TENANT_ID, "Other tenant team");
-        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(otherTenantTeam));
+        when(kpiRepository.teamBelongsToTenant(TEAM_ID, TENANT_ID)).thenReturn(false);
 
         assertThatThrownBy(() -> kpiService.resolve("session.avg_participants", "team", TEAM_ID, userPrincipal))
                 .isInstanceOf(KpiNotFoundException.class);
@@ -132,7 +125,7 @@ class SessionKpiServiceTest {
 
     @Test
     void resolve_teamScopeForUnknownTeam_throwsKpiNotFound() {
-        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.empty());
+        when(kpiRepository.teamBelongsToTenant(TEAM_ID, TENANT_ID)).thenReturn(false);
 
         assertThatThrownBy(() -> kpiService.resolve("session.avg_participants", "team", TEAM_ID, userPrincipal))
                 .isInstanceOf(KpiNotFoundException.class);
@@ -155,8 +148,7 @@ class SessionKpiServiceTest {
 
     @Test
     void resolve_teamScope_returnsTheAggregateCompletionRateAndTeamScope() {
-        Team team = new Team(TENANT_ID, "My team");
-        when(teamRepository.findById(TEAM_ID)).thenReturn(Optional.of(team));
+        when(kpiRepository.teamBelongsToTenant(TEAM_ID, TENANT_ID)).thenReturn(true);
         when(kpiRepository.aggregate(TENANT_ID, TEAM_ID)).thenReturn(aggregate(4, 4, 3.5, 80.0, 75.0));
 
         KpiRefResponse response = kpiService.resolve("session.completion_rate", "team", TEAM_ID, userPrincipal);
