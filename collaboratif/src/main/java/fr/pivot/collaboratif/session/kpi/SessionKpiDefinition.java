@@ -91,7 +91,7 @@ public enum SessionKpiDefinition {
      * @return an immutable list containing {@code "tenant"} and/or {@code "team"}
      */
     public List<String> supportedScopes() {
-        return supportedScopes;
+        return List.copyOf(supportedScopes);
     }
 
     /**

@@ -23,4 +23,34 @@ public record KpiDefinitionResponse(
         List<String> supportedScopes,
         String refreshHint,
         List<String> visibility) {
+
+    /**
+     * Defensively copies both list components (SpotBugs {@code EI_EXPOSE_REP2}) — every caller of
+     * this record's canonical constructor passes {@link fr.pivot.collaboratif.session.kpi.SessionKpiDefinition}'s
+     * own already-immutable lists, but this record has no control over future callers.
+     */
+    public KpiDefinitionResponse {
+        supportedScopes = List.copyOf(supportedScopes);
+        visibility = List.copyOf(visibility);
+    }
+
+    /**
+     * Returns the granularities this KPI can be resolved at.
+     *
+     * @return an immutable, defensively-copied list (SpotBugs {@code EI_EXPOSE_REP})
+     */
+    @Override
+    public List<String> supportedScopes() {
+        return List.copyOf(supportedScopes);
+    }
+
+    /**
+     * Returns the roles allowed to see/resolve this KPI.
+     *
+     * @return an immutable, defensively-copied list (SpotBugs {@code EI_EXPOSE_REP})
+     */
+    @Override
+    public List<String> visibility() {
+        return List.copyOf(visibility);
+    }
 }
