@@ -4,6 +4,7 @@ import fr.pivot.collaboratif.context.CollaboratifRequestPrincipal;
 import fr.pivot.collaboratif.exception.InvalidSessionTransitionException;
 import fr.pivot.collaboratif.session.dto.CreateSessionRequest;
 import fr.pivot.collaboratif.session.dto.SessionResponse;
+import fr.pivot.collaboratif.session.kpi.SessionKpiEventPublisher;
 import fr.pivot.collaboratif.session.poll.PollActivityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,6 +46,8 @@ class ModuleSessionServiceTest {
     private PollActivityService pollActivityService;
     @Mock
     private SimpMessagingTemplate messagingTemplate;
+    @Mock
+    private SessionKpiEventPublisher kpiEventPublisher;
 
     private ModuleSessionService sessionService;
     private ObjectMapper objectMapper;
@@ -55,7 +58,7 @@ class ModuleSessionServiceTest {
         objectMapper = new ObjectMapper();
         sessionService = new ModuleSessionService(
                 sessionRepository, activityRepository, participantRepository, accessService,
-                joinCodeGenerator, pollActivityService, messagingTemplate, objectMapper);
+                joinCodeGenerator, pollActivityService, messagingTemplate, objectMapper, kpiEventPublisher);
         principal = new CollaboratifRequestPrincipal(CREATOR_ID, TENANT_ID, "ROLE_USER");
     }
 
@@ -132,6 +135,7 @@ class ModuleSessionServiceTest {
         assertThat(session.getStatus()).isEqualTo(SessionStatus.LIVE);
         assertThat(session.getStartedAt()).isNotNull();
         verify(messagingTemplate).convertAndSend(anyString(), any(Object.class));
+        verify(kpiEventPublisher).publishRecalculation(TENANT_ID, session.getTeamId(), session.getStartedAt());
     }
 
     @Test
@@ -172,6 +176,7 @@ class ModuleSessionServiceTest {
 
         assertThat(session.getStatus()).isEqualTo(SessionStatus.COMPLETED);
         assertThat(session.getEndedAt()).isNotNull();
+        verify(kpiEventPublisher).publishRecalculation(TENANT_ID, session.getTeamId(), session.getEndedAt());
     }
 
     @Test
