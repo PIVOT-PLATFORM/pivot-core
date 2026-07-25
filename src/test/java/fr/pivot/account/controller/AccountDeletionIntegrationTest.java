@@ -7,6 +7,7 @@ import fr.pivot.account.service.AccountDeletionService;
 import fr.pivot.auth.entity.AuthMethod;
 import fr.pivot.auth.entity.User;
 import fr.pivot.auth.repository.AccessTokenRepository;
+import fr.pivot.auth.repository.AuditEventRepository;
 import fr.pivot.auth.repository.UserRepository;
 import fr.pivot.auth.service.EmailService;
 import fr.pivot.auth.service.TokenService;
@@ -32,6 +33,8 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -97,12 +100,23 @@ class AccountDeletionIntegrationTest extends AbstractIntegrationTest {
     @Autowired private UserRepository userRepo;
     @Autowired private TenantRepository tenantRepo;
     @Autowired private AccessTokenRepository tokenRepo;
+    @Autowired private AuditEventRepository auditEventRepo;
     @Autowired private TokenService tokenService;
     @Autowired private EmailService emailService;
     @Autowired private AccountDeletionService accountDeletionService;
     @Autowired private AccountDeletionRequestRepository deletionRequestRepo;
 
     private MockMvc mockMvc;
+
+    /**
+     * Users created by {@link #createLocalUser}/{@link #createOidcUser} — cleaned up in {@link
+     * #tearDown()} so this class never leaves stray rows behind on the shared seeded {@code
+     * pivot-saas} tenant (pivot-core#277: {@code SessionService#login} — see {@code
+     * saasDefaultTenant()} — is hardcoded to that tenant for local-password login, so unlike most
+     * other IT classes these users can't be hung off a disposable throwaway tenant instead; the
+     * fix has to actually clean them up).
+     */
+    private final List<Long> createdUserIds = new ArrayList<>();
 
     private MockMvc mockMvc() {
         if (mockMvc == null) {
@@ -114,53 +128,46 @@ class AccountDeletionIntegrationTest extends AbstractIntegrationTest {
     }
 
     /**
-     * No user-row cleanup here: every test creates a user with a fresh random-UUID email, so
-     * there is no cross-test collision risk, and {@code audit_events} rows written against these
-     * users (accountability RGPD Art. 5.2 — {@code ON DELETE RESTRICT}, see V1 schema) would
-     * make a hard {@code DELETE} of the user row fail anyway. The Testcontainers Postgres
-     * instance is destroyed with the JVM at the end of the whole test run.
-     *
-     * <p>{@link #createLocalUser}/{@link #createOidcUser} therefore hang their users off a fresh
-     * throwaway tenant per user (never the shared seeded {@code pivot-saas}) — a leaked
-     * unique-slug tenant is invisible to every other test, whereas leaked users on the shared
-     * seeded tenant previously corrupted {@code
-     * fr.pivot.tenant.api.SuperAdminTenantIntegrationTest#ac_userCount_reflectsActualUserCountPerTenant}'s
-     * count whenever this class ran first in the same Testcontainers-shared JVM
-     * (pivot-core#277 — same non-cleanup design intent, just no longer against a shared fixture).
+     * {@code access_tokens} (fk_at_user) and {@code account_deletion_requests} (fk_adr_user) both
+     * cascade on user delete (V1 schema) — only {@code audit_events} (fk_audit_user, RESTRICT,
+     * RGPD Art. 5.2 accountability) needs explicit cleanup first.
      */
     @AfterEach
     void tearDown() {
+        createdUserIds.forEach(
+            userId -> auditEventRepo.deleteAll(auditEventRepo.findByUserIdOrderByCreatedAtDesc(userId)));
+        createdUserIds.forEach(userRepo::deleteById);
+        createdUserIds.clear();
         SecurityContextHolder.clearContext();
         reset(emailService);
     }
 
     private User createLocalUser(final String emailPrefix) {
+        final Tenant tenant = tenantRepo.findBySlug("pivot-saas").orElseThrow();
         final User user = new User();
-        user.setTenant(createThrowawayTenant());
+        user.setTenant(tenant);
         user.setEmail(emailPrefix + "-" + UUID.randomUUID() + "@pivot.test");
         user.setPasswordHash(TEST_PASSWORD_HASH);
         user.setFirstName("Test");
         user.setLastName("User");
         user.setEmailVerified(true);
-        return userRepo.save(user);
+        final User saved = userRepo.save(user);
+        createdUserIds.add(saved.getId());
+        return saved;
     }
 
     private User createOidcUser(final String emailPrefix) {
+        final Tenant tenant = tenantRepo.findBySlug("pivot-saas").orElseThrow();
         final User user = new User();
-        user.setTenant(createThrowawayTenant());
+        user.setTenant(tenant);
         user.setEmail(emailPrefix + "-" + UUID.randomUUID() + "@pivot.test");
         user.setOidcSubject("oidc-subject-" + UUID.randomUUID());
         user.setFirstName("Oidc");
         user.setLastName("User");
         user.setEmailVerified(true);
-        return userRepo.save(user);
-    }
-
-    private Tenant createThrowawayTenant() {
-        final Tenant tenant = new Tenant();
-        tenant.setSlug("acct-deletion-it-" + UUID.randomUUID());
-        tenant.setName("Account Deletion IT");
-        return tenantRepo.save(tenant);
+        final User saved = userRepo.save(user);
+        createdUserIds.add(saved.getId());
+        return saved;
     }
 
     private String issueToken(final User user) {
