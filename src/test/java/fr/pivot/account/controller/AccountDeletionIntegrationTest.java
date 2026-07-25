@@ -119,6 +119,14 @@ class AccountDeletionIntegrationTest extends AbstractIntegrationTest {
      * users (accountability RGPD Art. 5.2 — {@code ON DELETE RESTRICT}, see V1 schema) would
      * make a hard {@code DELETE} of the user row fail anyway. The Testcontainers Postgres
      * instance is destroyed with the JVM at the end of the whole test run.
+     *
+     * <p>{@link #createLocalUser}/{@link #createOidcUser} therefore hang their users off a fresh
+     * throwaway tenant per user (never the shared seeded {@code pivot-saas}) — a leaked
+     * unique-slug tenant is invisible to every other test, whereas leaked users on the shared
+     * seeded tenant previously corrupted {@code
+     * fr.pivot.tenant.api.SuperAdminTenantIntegrationTest#ac_userCount_reflectsActualUserCountPerTenant}'s
+     * count whenever this class ran first in the same Testcontainers-shared JVM
+     * (pivot-core#277 — same non-cleanup design intent, just no longer against a shared fixture).
      */
     @AfterEach
     void tearDown() {
@@ -127,9 +135,8 @@ class AccountDeletionIntegrationTest extends AbstractIntegrationTest {
     }
 
     private User createLocalUser(final String emailPrefix) {
-        final Tenant tenant = tenantRepo.findBySlug("pivot-saas").orElseThrow();
         final User user = new User();
-        user.setTenant(tenant);
+        user.setTenant(createThrowawayTenant());
         user.setEmail(emailPrefix + "-" + UUID.randomUUID() + "@pivot.test");
         user.setPasswordHash(TEST_PASSWORD_HASH);
         user.setFirstName("Test");
@@ -139,15 +146,21 @@ class AccountDeletionIntegrationTest extends AbstractIntegrationTest {
     }
 
     private User createOidcUser(final String emailPrefix) {
-        final Tenant tenant = tenantRepo.findBySlug("pivot-saas").orElseThrow();
         final User user = new User();
-        user.setTenant(tenant);
+        user.setTenant(createThrowawayTenant());
         user.setEmail(emailPrefix + "-" + UUID.randomUUID() + "@pivot.test");
         user.setOidcSubject("oidc-subject-" + UUID.randomUUID());
         user.setFirstName("Oidc");
         user.setLastName("User");
         user.setEmailVerified(true);
         return userRepo.save(user);
+    }
+
+    private Tenant createThrowawayTenant() {
+        final Tenant tenant = new Tenant();
+        tenant.setSlug("acct-deletion-it-" + UUID.randomUUID());
+        tenant.setName("Account Deletion IT");
+        return tenantRepo.save(tenant);
     }
 
     private String issueToken(final User user) {
