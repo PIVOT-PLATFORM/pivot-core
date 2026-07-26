@@ -8,6 +8,7 @@ import fr.pivot.collaboratif.session.dto.CreateSessionRequest;
 import fr.pivot.collaboratif.session.dto.SessionLifecycleEvent;
 import fr.pivot.collaboratif.session.dto.SessionResponse;
 import fr.pivot.collaboratif.session.dto.SessionStartedEvent;
+import fr.pivot.collaboratif.session.kpi.SessionKpiEventPublisher;
 import fr.pivot.collaboratif.session.poll.PollActivityService;
 import fr.pivot.collaboratif.session.ws.SessionDestinations;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -36,6 +37,7 @@ public class ModuleSessionService {
     private final PollActivityService pollActivityService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
+    private final SessionKpiEventPublisher kpiEventPublisher;
 
     /**
      * Creates the service with its required dependencies.
@@ -48,6 +50,8 @@ public class ModuleSessionService {
      * @param pollActivityService   materializes POLL options at creation time
      * @param messagingTemplate     STOMP broadcaster for lifecycle events
      * @param objectMapper          JSON (de)serializer for {@code config}
+     * @param kpiEventPublisher     publishes {@code kpi.updated} on {@link #start}/{@link #end}
+     *                              (EN19.4)
      */
     public ModuleSessionService(
             final SessionRepository sessionRepository,
@@ -57,7 +61,8 @@ public class ModuleSessionService {
             final SessionJoinCodeGenerator joinCodeGenerator,
             final PollActivityService pollActivityService,
             final SimpMessagingTemplate messagingTemplate,
-            final ObjectMapper objectMapper) {
+            final ObjectMapper objectMapper,
+            final SessionKpiEventPublisher kpiEventPublisher) {
         this.sessionRepository = sessionRepository;
         this.activityRepository = activityRepository;
         this.participantRepository = participantRepository;
@@ -66,6 +71,7 @@ public class ModuleSessionService {
         this.pollActivityService = pollActivityService;
         this.messagingTemplate = messagingTemplate;
         this.objectMapper = objectMapper;
+        this.kpiEventPublisher = kpiEventPublisher;
     }
 
     /**
@@ -138,6 +144,7 @@ public class ModuleSessionService {
         sessionRepository.save(session);
         messagingTemplate.convertAndSend(
                 SessionDestinations.topicFor(sessionId), new SessionStartedEvent(toResponse(session)));
+        kpiEventPublisher.publishRecalculation(session.getTenantId(), session.getTeamId(), now);
     }
 
     /**
@@ -183,10 +190,12 @@ public class ModuleSessionService {
             throw new InvalidSessionTransitionException(
                     "Cannot end a session in status " + session.getStatus());
         }
+        Instant now = Instant.now();
         session.setStatus(SessionStatus.COMPLETED);
-        session.setEndedAt(Instant.now());
+        session.setEndedAt(now);
         sessionRepository.save(session);
         broadcastLifecycle(sessionId, SessionLifecycleEvent.ENDED);
+        kpiEventPublisher.publishRecalculation(session.getTenantId(), session.getTeamId(), now);
     }
 
     private void requireTransition(final Session session, final SessionStatus expectedCurrent) {

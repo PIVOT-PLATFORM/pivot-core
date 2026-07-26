@@ -133,6 +133,40 @@ public final class PlatformAuthTestSupport {
     }
 
     /**
+     * Inserts a team row directly via JDBC, bypassing {@code TeamRepository}.
+     *
+     * <p>{@code fr.pivot.core.team.Team}'s {@code @Table} carries no explicit {@code schema =
+     * "public"} — a module's own Hibernate session resolves it against that module's own {@code
+     * hibernate.default_schema} instead (e.g. {@code collaboratif}), not {@code public}, so {@code
+     * teamRepository.save(...)} from inside a domain module's test fails with a {@code relation
+     * "<module>.teams" does not exist}. Every other cross-schema seed in this class already goes
+     * through raw JDBC for exactly this reason (see {@link #seedTenant}/{@link #seedUser}) — this
+     * mirrors that pattern for teams.
+     *
+     * @param jdbcUrl  the JDBC URL
+     * @param username the database username
+     * @param password the database password
+     * @param tenantId the owning tenant's id
+     * @param name     the team's name (unique per tenant, {@code uq_teams_tenant_name})
+     * @return the generated {@code public.teams.id}
+     * @throws SQLException if the insert fails
+     */
+    public static long seedTeam(
+            final String jdbcUrl, final String username, final String password,
+            final long tenantId, final String name) throws SQLException {
+        final String sql = "INSERT INTO public.teams (tenant_id, name) VALUES (?, ?) RETURNING id";
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, tenantId);
+            ps.setString(2, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    /**
      * Inserts a tenant row.
      *
      * @param jdbcUrl                the JDBC URL

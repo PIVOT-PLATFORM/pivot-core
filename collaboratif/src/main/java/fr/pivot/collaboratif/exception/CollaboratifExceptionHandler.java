@@ -337,6 +337,22 @@ public class CollaboratifExceptionHandler {
     }
 
     /**
+     * Returns HTTP 404 when a {@code kpiKey} is unknown or a {@code teamId} scope does not
+     * resolve within the caller's tenant (EN19.4, anti-enumeration — see {@link
+     * KpiNotFoundException}).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(KpiNotFoundException.class)
+    public ProblemDetail handleKpiNotFound(final KpiNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("KPI not found");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
      * Returns HTTP 409 with code {@code INVALID_SESSION_TRANSITION} when a session lifecycle
      * transition is attempted from a status that does not allow it (US19.1.2).
      *
