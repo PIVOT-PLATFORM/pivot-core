@@ -499,4 +499,65 @@ public class CollaboratifExceptionHandler {
         problem.setDetail(ex.getMessage());
         return problem;
     }
+
+    /**
+     * Returns HTTP 404 when a meeting id does not resolve within the caller's tenant (US12.4.1,
+     * anti-enumeration — never 403 for tenant isolation).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(MeetingNotFoundException.class)
+    public ProblemDetail handleMeetingNotFound(final MeetingNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Meeting not found");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 403 when a same-tenant caller who is not the meeting's organizer attempts to
+     * confirm/adjust it (US12.4.1 "Sécurité — autorisation validation").
+     *
+     * @param ex the thrown exception
+     * @return a 403 problem detail
+     */
+    @ExceptionHandler(MeetingForbiddenException.class)
+    public ProblemDetail handleMeetingForbidden(final MeetingForbiddenException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Forbidden");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 with a machine-readable {@code code} property for a booking-flow state
+     * conflict — most notably double confirmation (US12.4.1).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail carrying the code
+     */
+    @ExceptionHandler(MeetingConflictException.class)
+    public ProblemDetail handleMeetingConflict(final MeetingConflictException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Conflict");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 422 when a confirm/adjust request targets a {@code slotId} absent from the
+     * meeting's own {@code proposed_slots} (US12.4.1).
+     *
+     * @param ex the thrown exception
+     * @return a 422 problem detail
+     */
+    @ExceptionHandler(MeetingSlotInvalidException.class)
+    public ProblemDetail handleMeetingSlotInvalid(final MeetingSlotInvalidException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
+        problem.setTitle("Invalid slot");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
 }
