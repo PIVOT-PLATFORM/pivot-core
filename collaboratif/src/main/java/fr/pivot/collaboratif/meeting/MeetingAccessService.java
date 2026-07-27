@@ -81,7 +81,8 @@ public class MeetingAccessService {
         boolean isOwner = meeting.getCreatedBy().equals(principal.userId());
         boolean isAdmin = ROLE_ADMIN.equals(principal.role());
         if (!isOwner && !isAdmin) {
-            throw new MeetingForbiddenException("NOT_MEETING_OWNER", "Caller is not the meeting's owner or an admin");
+            throw new MeetingForbiddenException(
+                    "MEETING_FACILITATOR_ONLY", "Caller is not the meeting's owner or an admin");
         }
         return meeting;
     }

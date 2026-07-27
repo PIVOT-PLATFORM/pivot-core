@@ -16,7 +16,7 @@ public class MeetingConflictException extends RuntimeException {
     /**
      * Creates the exception with its machine-readable error code.
      *
-     * @param code    the error code (e.g. {@code "MEETING_ALREADY_IN_PROGRESS"})
+     * @param code    the error code (e.g. {@code "MEETING_ALREADY_STARTED"})
      * @param message a human-readable description
      */
     public MeetingConflictException(final String code, final String message) {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import fr.pivot.collaboratif.meeting.AgendaItem;
 import fr.pivot.collaboratif.meeting.Meeting;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,6 +33,8 @@ import java.util.UUID;
  * @param overtime        {@code true} once {@code remainingSeconds} goes negative (AC-04)
  * @param overtimeSeconds {@code max(0, -remainingSeconds)}
  * @param agendaItems     every agenda item, in display order, with its own animation status
+ * @param serverTime      the server instant this state was computed at — lets a client compute
+ *                         and correct its own clock offset rather than trusting local receipt time
  */
 public record MeetingLiveStateDto(
         UUID meetingId,
@@ -43,7 +46,8 @@ public record MeetingLiveStateDto(
         long remainingSeconds,
         boolean overtime,
         long overtimeSeconds,
-        List<AgendaItemStateDto> agendaItems) {
+        List<AgendaItemStateDto> agendaItems,
+        Instant serverTime) {
 
     /**
      * Builds the live-state shape from a persisted {@link Meeting} and a server-computed timer
@@ -55,11 +59,14 @@ public record MeetingLiveStateDto(
      * @param remainingSeconds server-computed remaining seconds ({@code 0} if none)
      * @param overtime         server-computed overtime flag ({@code false} if none)
      * @param overtimeSeconds  server-computed overtime seconds ({@code 0} if none)
+     * @param now              the server-authoritative instant this state was computed at (AC-S4
+     *                         — always the caller's own {@code clock.instant()}, never {@link
+     *                         Instant#now()} taken directly)
      * @return the live-state DTO
      */
     public static MeetingLiveStateDto from(
             final Meeting meeting, final long elapsedSeconds, final long remainingSeconds,
-            final boolean overtime, final long overtimeSeconds) {
+            final boolean overtime, final long overtimeSeconds, final Instant now) {
         List<AgendaItemStateDto> items = meeting.getAgendaItems().stream()
                 .map(AgendaItemStateDto::from)
                 .toList();
@@ -68,7 +75,7 @@ public record MeetingLiveStateDto(
                 : indexOf(meeting.getAgendaItems(), currentId);
         return new MeetingLiveStateDto(
                 meeting.getId(), meeting.getStatus().name(), currentIndex, items.size(), currentId,
-                elapsedSeconds, remainingSeconds, overtime, overtimeSeconds, items);
+                elapsedSeconds, remainingSeconds, overtime, overtimeSeconds, items, now);
     }
 
     private static Integer indexOf(final List<AgendaItem> items, final UUID id) {

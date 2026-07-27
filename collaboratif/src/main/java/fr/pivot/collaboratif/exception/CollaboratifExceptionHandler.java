@@ -549,18 +549,19 @@ public class CollaboratifExceptionHandler {
     }
 
     /**
-     * Returns HTTP 422 Unprocessable Entity when {@code start} is attempted on a meeting with no
-     * agenda items (US12.2.1 AC-E3).
+     * Returns HTTP 409 with a machine-readable {@code code} property when {@code start} is
+     * attempted on a meeting with no agenda items (US12.2.1 AC-E3, finalized code {@code
+     * MEETING_HAS_NO_AGENDA}).
      *
      * @param ex the thrown exception
-     * @return a 422 problem detail
+     * @return a 409 problem detail carrying the code
      */
     @ExceptionHandler(MeetingEmptyAgendaException.class)
     public ProblemDetail handleMeetingEmptyAgenda(final MeetingEmptyAgendaException ex) {
-        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         problem.setTitle("Nothing to animate");
         problem.setDetail(ex.getMessage());
-        problem.setProperties(Map.of("code", "EMPTY_AGENDA"));
+        problem.setProperties(Map.of("code", "MEETING_HAS_NO_AGENDA"));
         return problem;
     }
 }

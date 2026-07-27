@@ -127,7 +127,7 @@ class MeetingAnimationServiceTest {
         assertThatThrownBy(() -> service.start(meeting.getId(), principal()))
                 .isInstanceOf(MeetingConflictException.class)
                 .extracting(ex -> ((MeetingConflictException) ex).getCode())
-                .isEqualTo("MEETING_ALREADY_IN_PROGRESS");
+                .isEqualTo("MEETING_ALREADY_STARTED");
         verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
         verify(meetingRepository, never()).save(any());
     }
@@ -381,10 +381,15 @@ class MeetingAnimationServiceTest {
         assertThat(next.getItemStatus()).isEqualTo(AgendaItemStatus.CURRENT);
         assertThat(meeting.getCurrentAgendaItemId()).isEqualTo(next.getId());
         verify(meetingRepository).save(meeting);
+        // AC-05: "jamais de tick overtime émis avant l'avance auto" — this item is never observed
+        // in overtime by a client, so no TIMER_TICK is broadcast for this tick at all, only the
+        // AGENDA_ITEM_CHANGED advancing straight past it.
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(TimerTickEvent.class));
+        ArgumentCaptor<AgendaItemChangedEvent> changed = ArgumentCaptor.forClass(AgendaItemChangedEvent.class);
         verify(messagingTemplate).convertAndSend(
-                eq(MeetingDestinations.topicFor(meeting.getId())), any(TimerTickEvent.class));
-        verify(messagingTemplate).convertAndSend(
-                eq(MeetingDestinations.topicFor(meeting.getId())), any(AgendaItemChangedEvent.class));
+                eq(MeetingDestinations.topicFor(meeting.getId())), changed.capture());
+        assertThat(changed.getValue().trigger()).isEqualTo(AgendaItemChangedEvent.Trigger.TIMER_EXPIRED);
+        assertThat(changed.getValue().previousAgendaItemId()).isEqualTo(current.getId());
     }
 
     /** AC-05: "sur le dernier point expiré aucune clôture automatique n'a lieu". */

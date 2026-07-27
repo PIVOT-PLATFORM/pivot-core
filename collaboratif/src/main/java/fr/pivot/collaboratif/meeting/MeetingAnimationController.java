@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -53,11 +52,11 @@ public class MeetingAnimationController {
      *
      * @param id        the meeting's UUID
      * @param principal the resolved caller identity
+     * @return {@code 200} with the resulting live animation state
      */
     @PostMapping("/start")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void start(@PathVariable final UUID id, final CollaboratifRequestPrincipal principal) {
-        animationService.start(id, principal);
+    public MeetingLiveStateDto start(@PathVariable final UUID id, final CollaboratifRequestPrincipal principal) {
+        return animationService.start(id, principal);
     }
 
     /**
@@ -66,11 +65,11 @@ public class MeetingAnimationController {
      *
      * @param id        the meeting's UUID
      * @param principal the resolved caller identity
+     * @return {@code 200} with the resulting live animation state
      */
     @PostMapping("/agenda/next")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void next(@PathVariable final UUID id, final CollaboratifRequestPrincipal principal) {
-        animationService.next(id, principal);
+    public MeetingLiveStateDto next(@PathVariable final UUID id, final CollaboratifRequestPrincipal principal) {
+        return animationService.next(id, principal);
     }
 
     /**
@@ -78,11 +77,11 @@ public class MeetingAnimationController {
      *
      * @param id        the meeting's UUID
      * @param principal the resolved caller identity
+     * @return {@code 200} with the resulting live animation state
      */
     @PostMapping("/end")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void end(@PathVariable final UUID id, final CollaboratifRequestPrincipal principal) {
-        animationService.end(id, principal);
+    public MeetingLiveStateDto end(@PathVariable final UUID id, final CollaboratifRequestPrincipal principal) {
+        return animationService.end(id, principal);
     }
 
     /**

@@ -21,7 +21,7 @@ public class MeetingForbiddenException extends RuntimeException {
     /**
      * Creates the exception with its machine-readable error code.
      *
-     * @param code    the error code (e.g. {@code "NOT_MEETING_OWNER"})
+     * @param code    the error code (e.g. {@code "MEETING_FACILITATOR_ONLY"})
      * @param message a human-readable description
      */
     public MeetingForbiddenException(final String code, final String message) {

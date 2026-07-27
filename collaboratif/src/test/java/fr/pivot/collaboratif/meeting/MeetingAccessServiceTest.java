@@ -126,7 +126,7 @@ class MeetingAccessServiceTest {
                 MEETING_ID, principal(OTHER_USER_ID, TENANT_A, "ROLE_USER")))
                 .isInstanceOf(MeetingForbiddenException.class)
                 .extracting(ex -> ((MeetingForbiddenException) ex).getCode())
-                .isEqualTo("NOT_MEETING_OWNER");
+                .isEqualTo("MEETING_FACILITATOR_ONLY");
     }
 
     // -------------------------------------------------------------------------

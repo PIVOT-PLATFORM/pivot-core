@@ -74,13 +74,15 @@ public class MeetingAnimationService {
      * @param principal the caller
      * @throws MeetingConflictException     if the meeting is already {@code IN_PROGRESS} or
      *                                       {@code ENDED} (409, AC-E1)
-     * @throws MeetingEmptyAgendaException  if the meeting has no agenda items (422, AC-E3)
+     * @throws MeetingEmptyAgendaException  if the meeting has no agenda items (409, AC-E3)
+     * @return the resulting live animation state (AC-01: {@code 200} with a full {@code
+     *         MeetingLiveStateResponse} body, not {@code 204})
      */
     @Transactional
-    public void start(final UUID meetingId, final CollaboratifRequestPrincipal principal) {
+    public MeetingLiveStateDto start(final UUID meetingId, final CollaboratifRequestPrincipal principal) {
         Meeting meeting = accessService.resolveMeetingForOwnerOrAdmin(meetingId, principal);
         if (meeting.getStatus() == MeetingStatus.IN_PROGRESS) {
-            throw new MeetingConflictException("MEETING_ALREADY_IN_PROGRESS", "Meeting is already in progress");
+            throw new MeetingConflictException("MEETING_ALREADY_STARTED", "Meeting is already in progress");
         }
         if (meeting.getStatus() == MeetingStatus.ENDED) {
             throw new MeetingConflictException("MEETING_ALREADY_ENDED", "Meeting has already ended");
@@ -94,6 +96,7 @@ public class MeetingAnimationService {
         meetingRepository.save(meeting);
         MeetingLiveStateDto state = liveState(meeting, now);
         messagingTemplate.convertAndSend(MeetingDestinations.topicFor(meetingId), new MeetingStartedEvent(state));
+        return state;
     }
 
     /**
@@ -104,9 +107,10 @@ public class MeetingAnimationService {
      * @param principal the caller
      * @throws MeetingConflictException if the meeting is not currently {@code IN_PROGRESS} (409,
      *                                   AC-E2)
+     * @return the resulting live animation state ({@code 200} with a full body, not {@code 204})
      */
     @Transactional
-    public void next(final UUID meetingId, final CollaboratifRequestPrincipal principal) {
+    public MeetingLiveStateDto next(final UUID meetingId, final CollaboratifRequestPrincipal principal) {
         Meeting meeting = accessService.resolveMeetingForOwnerOrAdmin(meetingId, principal);
         requireInProgress(meeting);
         Instant now = clock.instant();
@@ -115,15 +119,16 @@ public class MeetingAnimationService {
         if (next.isPresent()) {
             meeting.advanceTo(current, next.get(), now);
             meetingRepository.save(meeting);
-            broadcastAgendaChanged(meeting, next.get());
+            broadcastAgendaChanged(meeting, next.get(), AgendaItemChangedEvent.Trigger.MANUAL, current.getId(), now);
         } else {
             // Gate 1 decision (pivot-docs PR #317): advancing past the last item closes the
             // meeting, same as an explicit POST .../end.
             meeting.end(current, now);
             meetingRepository.save(meeting);
             messagingTemplate.convertAndSend(
-                    MeetingDestinations.topicFor(meetingId), new MeetingEndedEvent(meetingId));
+                    MeetingDestinations.topicFor(meetingId), new MeetingEndedEvent(meetingId, now));
         }
+        return liveState(meeting, now);
     }
 
     /**
@@ -133,16 +138,18 @@ public class MeetingAnimationService {
      * @param principal the caller
      * @throws MeetingConflictException if the meeting is not currently {@code IN_PROGRESS} (409,
      *                                   AC-E2)
+     * @return the resulting live animation state ({@code 200} with a full body, not {@code 204})
      */
     @Transactional
-    public void end(final UUID meetingId, final CollaboratifRequestPrincipal principal) {
+    public MeetingLiveStateDto end(final UUID meetingId, final CollaboratifRequestPrincipal principal) {
         Meeting meeting = accessService.resolveMeetingForOwnerOrAdmin(meetingId, principal);
         requireInProgress(meeting);
         Instant now = clock.instant();
         AgendaItem current = meeting.getCurrentAgendaItem().orElse(null);
         meeting.end(current, now);
         meetingRepository.save(meeting);
-        messagingTemplate.convertAndSend(MeetingDestinations.topicFor(meetingId), new MeetingEndedEvent(meetingId));
+        messagingTemplate.convertAndSend(MeetingDestinations.topicFor(meetingId), new MeetingEndedEvent(meetingId, now));
+        return liveState(meeting, now);
     }
 
     /**
@@ -216,22 +223,26 @@ public class MeetingAnimationService {
         }
         Instant now = clock.instant();
         MeetingTimerMath.Snapshot snapshot = MeetingTimerMath.compute(current, now);
+        if (snapshot.overtime() && meeting.isAutoAdvance()) {
+            Optional<AgendaItem> next = findNext(meeting, current);
+            if (next.isPresent()) {
+                // AC-05: "jamais de tick overtime émis avant l'avance auto" — advance straight to
+                // AGENDA_ITEM_CHANGED, no TIMER_TICK for this tick at all, so this item is never
+                // observed in overtime by a client when auto-advance is enabled.
+                meeting.advanceTo(current, next.get(), now);
+                meetingRepository.save(meeting);
+                broadcastAgendaChanged(
+                        meeting, next.get(), AgendaItemChangedEvent.Trigger.TIMER_EXPIRED, current.getId(), now);
+                return;
+            }
+            // Last item expired with auto-advance on: no next item to advance to, stays in
+            // overtime, no auto-close (AC-05) — falls through to broadcast the tick below.
+        }
         messagingTemplate.convertAndSend(
                 MeetingDestinations.topicFor(meetingId),
                 new TimerTickEvent(
                         meetingId, current.getId(), snapshot.elapsedSeconds(), snapshot.remainingSeconds(),
-                        snapshot.overtimeSeconds()));
-        if (!snapshot.overtime() || !meeting.isAutoAdvance()) {
-            return;
-        }
-        Optional<AgendaItem> next = findNext(meeting, current);
-        if (next.isEmpty()) {
-            // Last item expired with auto-advance on: stays in overtime, no auto-close (AC-05).
-            return;
-        }
-        meeting.advanceTo(current, next.get(), now);
-        meetingRepository.save(meeting);
-        broadcastAgendaChanged(meeting, next.get());
+                        snapshot.overtime(), snapshot.overtimeSeconds(), now));
     }
 
     private void requireInProgress(final Meeting meeting) {
@@ -252,12 +263,14 @@ public class MeetingAnimationService {
         return items.stream().filter(item -> item.getPosition() == nextPosition).findFirst();
     }
 
-    private void broadcastAgendaChanged(final Meeting meeting, final AgendaItem newCurrent) {
+    private void broadcastAgendaChanged(
+            final Meeting meeting, final AgendaItem newCurrent, final AgendaItemChangedEvent.Trigger trigger,
+            final UUID previousAgendaItemId, final Instant now) {
         messagingTemplate.convertAndSend(
                 MeetingDestinations.topicFor(meeting.getId()),
                 new AgendaItemChangedEvent(
                         meeting.getId(), newCurrent.getPosition(), meeting.getAgendaItems().size(),
-                        newCurrent.getId()));
+                        newCurrent.getId(), previousAgendaItemId, trigger, now));
     }
 
     private MeetingLiveStateDto liveState(final Meeting meeting, final Instant now) {
@@ -265,6 +278,6 @@ public class MeetingAnimationService {
         MeetingTimerMath.Snapshot snapshot = MeetingTimerMath.compute(current, now);
         return MeetingLiveStateDto.from(
                 meeting, snapshot.elapsedSeconds(), snapshot.remainingSeconds(), snapshot.overtime(),
-                snapshot.overtimeSeconds());
+                snapshot.overtimeSeconds(), now);
     }
 }

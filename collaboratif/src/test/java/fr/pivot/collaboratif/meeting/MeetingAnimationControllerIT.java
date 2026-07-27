@@ -84,7 +84,7 @@ class MeetingAnimationControllerIT extends AbstractCollaboratifIntegrationTest {
     private void start(final AuthFixture caller, final String meetingId) throws Exception {
         mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/start")
                         .header("Authorization", caller.authorizationHeader()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
     }
 
     // -------------------------------------------------------------------------
@@ -92,7 +92,7 @@ class MeetingAnimationControllerIT extends AbstractCollaboratifIntegrationTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void start_ac01_happyPath_returns204AndLiveStateShowsFirstItemCurrent() throws Exception {
+    void start_ac01_happyPath_returns200AndLiveStateShowsFirstItemCurrent() throws Exception {
         String meetingId = createMeetingWithTwoItems(owner);
 
         start(owner, meetingId);
@@ -115,7 +115,7 @@ class MeetingAnimationControllerIT extends AbstractCollaboratifIntegrationTest {
         mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/start")
                         .header("Authorization", owner.authorizationHeader()))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("MEETING_ALREADY_IN_PROGRESS"));
+                .andExpect(jsonPath("$.code").value("MEETING_ALREADY_STARTED"));
     }
 
     @Test
@@ -124,7 +124,7 @@ class MeetingAnimationControllerIT extends AbstractCollaboratifIntegrationTest {
         start(owner, meetingId);
         mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/end")
                         .header("Authorization", owner.authorizationHeader()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
 
         mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/start")
                         .header("Authorization", owner.authorizationHeader()))
@@ -133,12 +133,13 @@ class MeetingAnimationControllerIT extends AbstractCollaboratifIntegrationTest {
     }
 
     @Test
-    void start_ac_e3_whenNoAgendaItems_returns422() throws Exception {
+    void start_ac_e3_whenNoAgendaItems_returns409() throws Exception {
         String meetingId = createMeeting(owner, "[]");
 
         mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/start")
                         .header("Authorization", owner.authorizationHeader()))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MEETING_HAS_NO_AGENDA"));
     }
 
     @Test
@@ -157,7 +158,7 @@ class MeetingAnimationControllerIT extends AbstractCollaboratifIntegrationTest {
         mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/start")
                         .header("Authorization", sameTenantNonOwner.authorizationHeader()))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("NOT_MEETING_OWNER"));
+                .andExpect(jsonPath("$.code").value("MEETING_FACILITATOR_ONLY"));
     }
 
     @Test
@@ -177,14 +178,11 @@ class MeetingAnimationControllerIT extends AbstractCollaboratifIntegrationTest {
         String meetingId = createMeetingWithTwoItems(owner);
         start(owner, meetingId);
 
-        mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/agenda/next")
+        MvcResult result = mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/agenda/next")
                         .header("Authorization", owner.authorizationHeader()))
-                .andExpect(status().isNoContent());
-
-        MvcResult live = mockMvc.perform(get(MEETINGS_PATH + "/" + meetingId + "/live")
-                        .header("Authorization", owner.authorizationHeader()))
+                .andExpect(status().isOk())
                 .andReturn();
-        String body = live.getResponse().getContentAsString();
+        String body = result.getResponse().getContentAsString();
         assertThat((String) JsonPath.read(body, "$.status")).isEqualTo("IN_PROGRESS");
         assertThat((Integer) JsonPath.read(body, "$.currentIndex")).isEqualTo(1);
     }
@@ -194,14 +192,11 @@ class MeetingAnimationControllerIT extends AbstractCollaboratifIntegrationTest {
         String meetingId = createMeetingWithOneItem(owner);
         start(owner, meetingId);
 
-        mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/agenda/next")
+        MvcResult result = mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/agenda/next")
                         .header("Authorization", owner.authorizationHeader()))
-                .andExpect(status().isNoContent());
-
-        MvcResult live = mockMvc.perform(get(MEETINGS_PATH + "/" + meetingId + "/live")
-                        .header("Authorization", owner.authorizationHeader()))
+                .andExpect(status().isOk())
                 .andReturn();
-        assertThat((String) JsonPath.read(live.getResponse().getContentAsString(), "$.status")).isEqualTo("ENDED");
+        assertThat((String) JsonPath.read(result.getResponse().getContentAsString(), "$.status")).isEqualTo("ENDED");
     }
 
     @Test
@@ -219,18 +214,15 @@ class MeetingAnimationControllerIT extends AbstractCollaboratifIntegrationTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void end_ac06_happyPath_returns204AndLiveStateShowsEnded() throws Exception {
+    void end_ac06_happyPath_returns200AndLiveStateShowsEnded() throws Exception {
         String meetingId = createMeetingWithTwoItems(owner);
         start(owner, meetingId);
 
-        mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/end")
+        MvcResult result = mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/end")
                         .header("Authorization", owner.authorizationHeader()))
-                .andExpect(status().isNoContent());
-
-        MvcResult live = mockMvc.perform(get(MEETINGS_PATH + "/" + meetingId + "/live")
-                        .header("Authorization", owner.authorizationHeader()))
+                .andExpect(status().isOk())
                 .andReturn();
-        assertThat((String) JsonPath.read(live.getResponse().getContentAsString(), "$.status")).isEqualTo("ENDED");
+        assertThat((String) JsonPath.read(result.getResponse().getContentAsString(), "$.status")).isEqualTo("ENDED");
     }
 
     @Test
