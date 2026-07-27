@@ -292,12 +292,21 @@
         singleton beans (repository, module check); DTO records (CreateMeetingRequest,
         AgendaItemRequest, MeetingResponse, AgendaItemResponse) expose mutable List for JSON
         transport (same rationale as the whiteboard/session dto packages above).
+
+        US12.2.1 (animation) extends this: MeetingAnimationService/MeetingAnimationController/
+        MeetingAccessService/MeetingTimerScheduler store constructor-injected singleton beans
+        (repositories, SimpMessagingTemplate, the qualified meetOpsClock); MeetingAction is a JPA
+        entity (same Hibernate rationale); MeetingLiveStateDto/AgendaItemStateDto expose mutable
+        List for JSON transport. fr.pivot.collaboratif.meeting.ws mirrors
+        fr.pivot.collaboratif.session.ws exactly: MeetingChannelInterceptor/
+        MeetingMembershipCacheService store constructor-injected StringRedisTemplate/repositories.
     -->
     <Match>
         <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
         <Or>
             <Package name="fr.pivot.collaboratif.meeting"/>
             <Package name="fr.pivot.collaboratif.meeting.dto"/>
+            <Package name="fr.pivot.collaboratif.meeting.ws"/>
         </Or>
     </Match>
 

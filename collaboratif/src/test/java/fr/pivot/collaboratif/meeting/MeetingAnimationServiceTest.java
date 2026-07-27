@@ -31,6 +31,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -127,7 +128,7 @@ class MeetingAnimationServiceTest {
                 .isInstanceOf(MeetingConflictException.class)
                 .extracting(ex -> ((MeetingConflictException) ex).getCode())
                 .isEqualTo("MEETING_ALREADY_IN_PROGRESS");
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
         verify(meetingRepository, never()).save(any());
     }
 
@@ -140,7 +141,7 @@ class MeetingAnimationServiceTest {
                 .isInstanceOf(MeetingConflictException.class)
                 .extracting(ex -> ((MeetingConflictException) ex).getCode())
                 .isEqualTo("MEETING_ALREADY_ENDED");
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
     }
 
     @Test
@@ -150,7 +151,7 @@ class MeetingAnimationServiceTest {
 
         assertThatThrownBy(() -> service.start(meeting.getId(), principal()))
                 .isInstanceOf(MeetingEmptyAgendaException.class);
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
         verify(meetingRepository, never()).save(any());
     }
 
@@ -413,7 +414,7 @@ class MeetingAnimationServiceTest {
 
         service.tick(meeting.getId());
 
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
     }
 
     @Test
@@ -423,7 +424,7 @@ class MeetingAnimationServiceTest {
 
         service.tick(meeting.getId());
 
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
     }
 
     @Test
@@ -433,6 +434,6 @@ class MeetingAnimationServiceTest {
 
         service.tick(unknownId);
 
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any());
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
     }
 }
