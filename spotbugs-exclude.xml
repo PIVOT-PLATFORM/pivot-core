@@ -283,4 +283,22 @@
         </Or>
     </Match>
 
+    <!--
+        E12 Module MeetOps (Sprint 23, US12.1.1) — same centralized-exclusion rationale as the
+        collaboratif blocks above: Meeting/AgendaItem are JPA entities (mutable getters/setters
+        required by Hibernate; Meeting#getAgendaItems() exposes the live, mutable, aggregate-owned
+        collection by design, same pattern as fr.pivot.agilite.wheel.Wheel#getEntries());
+        MeetingService/MeetingController/DefaultMeetOpsModuleCheck store constructor-injected
+        singleton beans (repository, module check); DTO records (CreateMeetingRequest,
+        AgendaItemRequest, MeetingResponse, AgendaItemResponse) expose mutable List for JSON
+        transport (same rationale as the whiteboard/session dto packages above).
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Or>
+            <Package name="fr.pivot.collaboratif.meeting"/>
+            <Package name="fr.pivot.collaboratif.meeting.dto"/>
+        </Or>
+    </Match>
+
 </FindBugsFilter>

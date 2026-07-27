@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -293,6 +294,25 @@ public class CollaboratifExceptionHandler {
     }
 
     /**
+     * Returns HTTP 400 with code {@code INVALID_REQUEST_BODY} when the request body cannot even
+     * be parsed — malformed JSON, or a value that does not match its target type (e.g. a
+     * non-ISO-8601 {@code scheduledAt} string on {@code CreateMeetingRequest}, US12.1.1 AC6).
+     * This fires <strong>before</strong> Bean Validation runs (Jackson binding fails first), so
+     * it cannot report a specific field — {@link #handleValidation} covers every other
+     * field-level validation failure once binding has actually succeeded.
+     *
+     * @param ex the message-not-readable exception
+     * @return a 400 problem detail carrying the code
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail handleMessageNotReadable(final HttpMessageNotReadableException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Malformed request body");
+        problem.setProperties(Map.of("code", "INVALID_REQUEST_BODY"));
+        return problem;
+    }
+
+    /**
      * Returns HTTP 400 for parameter constraint violations (e.g. {@code @Min} / {@code @Max}
      * on request parameters).
      *
@@ -447,6 +467,36 @@ public class CollaboratifExceptionHandler {
         problem.setTitle("Forbidden");
         problem.setDetail(ex.getMessage());
         problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 403 when the MeetOps module is disabled for the caller's tenant (US12.1.1
+     * AC8).
+     *
+     * @param ex the thrown exception
+     * @return a 403 problem detail
+     */
+    @ExceptionHandler(MeetOpsModuleDisabledException.class)
+    public ProblemDetail handleMeetOpsModuleDisabled(final MeetOpsModuleDisabledException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Module disabled");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 404 when a meeting creation request's {@code teamId} does not resolve to a
+     * team of the caller's tenant (US12.1.1 AC7, anti-enumeration).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(MeetingTeamNotFoundException.class)
+    public ProblemDetail handleMeetingTeamNotFound(final MeetingTeamNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Team not found");
+        problem.setDetail(ex.getMessage());
         return problem;
     }
 }
