@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 
 import java.security.Principal;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -62,12 +63,18 @@ import java.util.Optional;
  * authentication must run before authorization, and {@code ChannelInterceptor}s execute in
  * registration order.
  *
- * <p><strong>Guest credential (US19.2.1, additive).</strong> A CONNECT frame carrying no
- * {@code Authorization} bearer header is no longer rejected outright: it may instead carry an
- * {@code X-Guest-Token} native header, resolved via {@link GuestPrincipalResolver} (a Module
- * Session {@code guestToken}, US19.2.1 anonymous participation). The bearer-token path itself is
- * completely unchanged — this is purely an additional fallback for callers with no bearer token
- * at all, still hard-rejected the same way if neither credential validates.
+ * <p><strong>Guest credential (US19.2.1, additive; widened to a chain for US47.1.1).</strong> A
+ * CONNECT frame carrying no {@code Authorization} bearer header is no longer rejected outright:
+ * it may instead carry an {@code X-Guest-Token} native header, resolved via one of possibly
+ * several {@link GuestPrincipalResolver} beans, tried in the order Spring injects them until one
+ * resolves the token — originally a single Module Session {@code guestToken} resolver
+ * (US19.2.1), joined by a Bingo {@code (roomId, accessToken)} resolver (US47.1.1,
+ * {@code fr.pivot.collaboratif.bingo.ws.BingoGuestPrincipalResolver}) without any change to this
+ * already-tested, security-critical class beyond this constructor's parameter type — exactly the
+ * extension seam {@link GuestPrincipalResolver}'s own Javadoc anticipates. The bearer-token path
+ * itself is completely unchanged — this is purely an additional fallback for callers with no
+ * bearer token at all, still hard-rejected the same way if no resolver in the list validates the
+ * token.
  */
 @Component
 public class StompAuthenticationChannelInterceptor implements ChannelInterceptor {
@@ -80,26 +87,29 @@ public class StompAuthenticationChannelInterceptor implements ChannelInterceptor
 
     private final AuthenticatedPrincipalResolver principalResolver;
     private final WhiteboardSessionRegistry sessionRegistry;
-    private final GuestPrincipalResolver guestPrincipalResolver;
+    private final List<GuestPrincipalResolver> guestPrincipalResolvers;
 
     /**
      * Constructs the interceptor with the shared {@link AuthenticatedPrincipalResolver} bean,
-     * the session registry used to force-close a session on rejected authentication, and the
-     * guest-credential fallback resolver.
+     * the session registry used to force-close a session on rejected authentication, and every
+     * guest-credential fallback resolver in the context.
      *
-     * @param principalResolver      the bean that validates a raw bearer token against {@code
-     *                               public.access_tokens}/{@code public.users}/{@code public.tenants}
-     * @param sessionRegistry        registry used to force-close a session whose CONNECT frame
-     *                               fails authentication
-     * @param guestPrincipalResolver resolver for the {@code X-Guest-Token} fallback credential
+     * @param principalResolver       the bean that validates a raw bearer token against {@code
+     *                                public.access_tokens}/{@code public.users}/{@code public.tenants}
+     * @param sessionRegistry         registry used to force-close a session whose CONNECT frame
+     *                                fails authentication
+     * @param guestPrincipalResolvers every {@code X-Guest-Token} fallback credential resolver in
+     *                                the context, tried in order (Spring's default {@code
+     *                                List<Bean>} injection order — each resolver only recognizes
+     *                                its own token shape, so ordering does not affect correctness)
      */
     public StompAuthenticationChannelInterceptor(
             final AuthenticatedPrincipalResolver principalResolver,
             final WhiteboardSessionRegistry sessionRegistry,
-            final GuestPrincipalResolver guestPrincipalResolver) {
+            final List<GuestPrincipalResolver> guestPrincipalResolvers) {
         this.principalResolver = principalResolver;
         this.sessionRegistry = sessionRegistry;
-        this.guestPrincipalResolver = guestPrincipalResolver;
+        this.guestPrincipalResolvers = guestPrincipalResolvers;
     }
 
     /**
@@ -139,9 +149,10 @@ public class StompAuthenticationChannelInterceptor implements ChannelInterceptor
 
     /**
      * Fallback path for CONNECT frames with no bearer token — attempts the {@code
-     * X-Guest-Token} native header via {@link GuestPrincipalResolver} (US19.2.1). Rejects with
-     * the same generic outcome as a failed bearer token if no guest token is present either or
-     * it does not resolve.
+     * X-Guest-Token} native header against every {@link GuestPrincipalResolver} in {@link
+     * #guestPrincipalResolvers}, in order, stopping at the first one that resolves it (US19.2.1,
+     * widened for US47.1.1). Rejects with the same generic outcome as a failed bearer token if no
+     * guest token is present, or no resolver in the list resolves it.
      *
      * @param message  the CONNECT frame
      * @param accessor the mutable STOMP header accessor
@@ -153,13 +164,15 @@ public class StompAuthenticationChannelInterceptor implements ChannelInterceptor
             LOG.warn("STOMP CONNECT rejected: missing Authorization and X-Guest-Token headers");
             return reject(message, accessor.getSessionId());
         }
-        Optional<Principal> guestPrincipal = guestPrincipalResolver.resolveGuest(guestToken);
-        if (guestPrincipal.isEmpty()) {
-            LOG.warn("STOMP CONNECT rejected: guest token rejected");
-            return reject(message, accessor.getSessionId());
+        for (GuestPrincipalResolver resolver : guestPrincipalResolvers) {
+            Optional<Principal> guestPrincipal = resolver.resolveGuest(guestToken);
+            if (guestPrincipal.isPresent()) {
+                accessor.setUser(guestPrincipal.get());
+                return message;
+            }
         }
-        accessor.setUser(guestPrincipal.get());
-        return message;
+        LOG.warn("STOMP CONNECT rejected: guest token rejected by every resolver");
+        return reject(message, accessor.getSessionId());
     }
 
     /**

@@ -1,5 +1,8 @@
 package fr.pivot.collaboratif.exception;
 
+import fr.pivot.collaboratif.bingo.exception.BingoRoomNotFoundException;
+import fr.pivot.collaboratif.bingo.exception.InvalidCodeException;
+import fr.pivot.collaboratif.bingo.exception.InvalidDisplayNameException;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -303,6 +306,55 @@ public class CollaboratifExceptionHandler {
     public ProblemDetail handleConstraintViolation(final ConstraintViolationException ex) {
         ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         problem.setTitle("Validation failed");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 400 with code {@code INVALID_CODE} when a Bingo join's invite code fails shape
+     * validation (US47.1.1, AC-47.1.1-15).
+     *
+     * @param ex the thrown exception
+     * @return a 400 problem detail carrying the code
+     */
+    @ExceptionHandler(InvalidCodeException.class)
+    public ProblemDetail handleBingoInvalidCode(final InvalidCodeException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Invalid code");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "INVALID_CODE"));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 400 with code {@code INVALID_DISPLAY_NAME} when an anonymous Bingo join's
+     * pseudonym fails validation (US47.1.1, AC-47.1.1-17).
+     *
+     * @param ex the thrown exception
+     * @return a 400 problem detail carrying the code
+     */
+    @ExceptionHandler(InvalidDisplayNameException.class)
+    public ProblemDetail handleBingoInvalidDisplayName(final InvalidDisplayNameException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Invalid display name");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "INVALID_DISPLAY_NAME"));
+        return problem;
+    }
+
+    /**
+     * Returns a generic HTTP 404 when a Bingo invite code does not resolve to a currently
+     * joinable room, or a {@code roomId}/accessToken pair has no valid grant (US47.1.1,
+     * AC-47.1.1-16/20) — deliberately indistinguishable across every cause (anti-enumeration),
+     * never 403.
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(BingoRoomNotFoundException.class)
+    public ProblemDetail handleBingoRoomNotFound(final BingoRoomNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Room not found");
         problem.setDetail(ex.getMessage());
         return problem;
     }

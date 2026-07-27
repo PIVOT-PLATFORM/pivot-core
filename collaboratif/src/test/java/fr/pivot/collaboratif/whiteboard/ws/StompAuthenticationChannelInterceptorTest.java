@@ -16,6 +16,7 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.web.socket.CloseStatus;
 
 import java.security.Principal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -57,7 +58,7 @@ class StompAuthenticationChannelInterceptorTest {
     @BeforeEach
     void setUp() {
         interceptor = new StompAuthenticationChannelInterceptor(
-                principalResolver, sessionRegistry, guestPrincipalResolver);
+                principalResolver, sessionRegistry, List.of(guestPrincipalResolver));
     }
 
     @Test
