@@ -6,21 +6,21 @@ import fr.pivot.collaboratif.meeting.dto.MeetingStartedEvent;
 import fr.pivot.collaboratif.testsupport.PlatformAuthTestSupport;
 import fr.pivot.collaboratif.testsupport.PlatformAuthTestSupport.AuthFixture;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
@@ -35,6 +35,8 @@ import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Integration tests for MeetOps meeting animation WebSocket room isolation (US12.2.1 AC-S3) —
@@ -49,18 +51,31 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
  *
  * <p>Unlike whiteboard's channel, MeetOps animation is broadcast-only (no client {@code SEND}, see
  * {@link MeetingDestinations}'s own Javadoc) — the broadcast under test here is triggered via the
- * real {@code POST .../start} REST call (AC-01), not a STOMP {@code SEND} frame.
+ * real {@code POST .../start} REST call (AC-01), issued through {@link MockMvc} (this module's
+ * standard REST test client, see {@code fr.pivot.collaboratif.meeting.MeetingAnimationControllerIT})
+ * rather than a STOMP {@code SEND} frame.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class MeetingWebSocketIT extends AbstractCollaboratifIntegrationTest {
 
+    private static final String MEETINGS_PATH = "/collaboratif/meetings";
+
     @LocalServerPort
     private int port;
 
-    private final TestRestTemplate restTemplate = new TestRestTemplate();
+    @Autowired
+    private WebApplicationContext wac;
+
+    private MockMvc mockMvc;
 
     /** Keeps track of open sessions so they can be disconnected in teardown. */
     private final List<StompSession> openSessions = new ArrayList<>();
+
+    /** Builds {@link #mockMvc} against the full Spring context, mirroring the REST ITs. */
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(wac).build();
+    }
 
     /** Tears down all open WebSocket sessions after each test to prevent resource leaks. */
     @AfterEach
@@ -192,19 +207,17 @@ class MeetingWebSocketIT extends AbstractCollaboratifIntegrationTest {
      * @param caller the authenticated organizer
      * @return the created meeting's id
      */
-    private String createMeetingWithOneItem(final AuthFixture caller) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", caller.authorizationHeader());
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        String body = """
-                {"title":"Sprint Review","scheduledAt":"2026-08-01T10:00:00Z",
-                 "totalDurationMinutes":30,
-                 "agendaItems":[{"title":"Point A","durationMinutes":5,"type":"INFO"}]}""";
-        ResponseEntity<String> response = restTemplate.exchange(
-                "http://localhost:" + port + "/api/collaboratif/meetings",
-                HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        return JsonPath.read(response.getBody(), "$.id");
+    private String createMeetingWithOneItem(final AuthFixture caller) throws Exception {
+        MvcResult result = mockMvc.perform(post(MEETINGS_PATH)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", caller.authorizationHeader())
+                        .content("""
+                                {"title":"Sprint Review","scheduledAt":"2026-08-01T10:00:00Z",
+                                 "totalDurationMinutes":30,
+                                 "agendaItems":[{"title":"Point A","durationMinutes":5,"type":"INFO"}]}"""))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return JsonPath.read(result.getResponse().getContentAsString(), "$.id");
     }
 
     /**
@@ -214,13 +227,10 @@ class MeetingWebSocketIT extends AbstractCollaboratifIntegrationTest {
      * @param caller    the authenticated organizer
      * @param meetingId the meeting's id
      */
-    private void startMeeting(final AuthFixture caller, final String meetingId) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", caller.authorizationHeader());
-        ResponseEntity<String> response = restTemplate.exchange(
-                "http://localhost:" + port + "/api/collaboratif/meetings/" + meetingId + "/start",
-                HttpMethod.POST, new HttpEntity<>(headers), String.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    private void startMeeting(final AuthFixture caller, final String meetingId) throws Exception {
+        mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/start")
+                        .header("Authorization", caller.authorizationHeader()))
+                .andExpect(status().isOk());
     }
 
     /**
