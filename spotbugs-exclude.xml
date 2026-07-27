@@ -301,4 +301,28 @@
         </Or>
     </Match>
 
+    <!--
+        E12 Module MeetOps — booking flow (Sprint 23, US12.4.1) — same centralized-exclusion
+        rationale as the fr.pivot.collaboratif.meeting block above: ProposedSlot/MeetingParticipant
+        are JPA entities (mutable getters/setters required by Hibernate; #getMeeting() exposes the
+        owning entity by design, same pattern as AgendaItem#getMeeting()/WheelEntry#getWheel());
+        BookingService/BookingController/MeetingChannelInterceptor/MeetingRealtimePublisher/
+        MeetingInvitationSender/WindowEventListener store constructor-injected singleton beans
+        (repositories, BestSlotEngine, SimpMessagingTemplate, ApplicationEventPublisher); DTO/event
+        records (MeetingBookingResponse, WindowCreatedEvent, WindowUpdatedEvent,
+        MeetingInvitationsSentEvent, ...) expose mutable List for JSON transport / in-process event
+        payload (same rationale as the meeting.dto/session.*.dto packages above).
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Or>
+            <Package name="fr.pivot.collaboratif.meetops.booking"/>
+            <Package name="fr.pivot.collaboratif.meetops.booking.dto"/>
+            <Package name="fr.pivot.collaboratif.meetops.booking.ws"/>
+            <Package name="fr.pivot.collaboratif.meetops.bus"/>
+            <Package name="fr.pivot.collaboratif.meetops.bestslot"/>
+            <Package name="fr.pivot.collaboratif.meetops.availability"/>
+        </Or>
+    </Match>
+
 </FindBugsFilter>
