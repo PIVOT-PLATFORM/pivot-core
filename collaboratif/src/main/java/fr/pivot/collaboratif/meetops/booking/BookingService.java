@@ -191,6 +191,7 @@ public class BookingService {
 
         LOG.info("Cancelling PRE_RESERVED meeting on window.deleted: meeting={} eventRef={}",
                 meeting.getId(), event.eventRef());
+        realtimePublisher.publishCancelled(meeting.getId(), event.eventRef());
         meetingRepository.delete(meeting);
     }
 

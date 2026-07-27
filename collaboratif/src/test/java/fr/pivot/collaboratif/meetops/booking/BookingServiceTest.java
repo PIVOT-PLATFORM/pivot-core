@@ -210,6 +210,17 @@ class BookingServiceTest {
         verify(eventPublisher, never()).publishEvent(any());
     }
 
+    @Test
+    void consumeWindowDeleted_preReservedMeeting_broadcastsCancellationBeforeDeleting() {
+        Meeting meeting = mockMeeting();
+        when(meetingRepository.findByTenantIdAndEventRef(TENANT_ID, "evt-1")).thenReturn(Optional.of(meeting));
+
+        bookingService.consumeWindowDeleted(new WindowDeletedEvent(TENANT_ID, "evt-1"));
+
+        verify(realtimePublisher).publishCancelled(MEETING_ID, "evt-1");
+        verify(meetingRepository).delete(meeting);
+    }
+
     // -------------------------------------------------------------------------
     // adjustSlot — validation
     // -------------------------------------------------------------------------

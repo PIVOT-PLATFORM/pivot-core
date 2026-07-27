@@ -38,10 +38,21 @@ public class BestSlotEngine {
     /** Granularity, in minutes, at which candidate slot starts are generated. */
     static final int GRANULARITY_MINUTES = 30;
 
-    /** Trailing buffer, in minutes, required after a candidate slot before the next commitment. */
+    /**
+     * Trailing buffer, in minutes, required after a candidate slot before the next commitment.
+     * <strong>Known, documented default</strong> (like {@link WorkingHoursCalendar}'s locality
+     * gap): the AC only asks for "durée demandée + tampon" without pinning an exact duration —
+     * 15 minutes is this engine's deliberate choice, not a value derived from the AC text. Making
+     * this per-tenant configurable is a follow-up, not attempted here.
+     */
     static final int BUFFER_MINUTES = 15;
 
-    /** Maximum number of ranked candidates returned/persisted. */
+    /**
+     * Maximum number of ranked candidates returned/persisted.
+     * <strong>Known, documented default</strong>: the AC only asks for "N créneaux classés"
+     * without pinning an exact N — 5 is this engine's deliberate choice, not a value derived from
+     * the AC text. Making this per-tenant configurable is a follow-up, not attempted here.
+     */
     static final int MAX_CANDIDATES = 5;
 
     private static final String OUT_OF_WORKING_HOURS_REASON =
