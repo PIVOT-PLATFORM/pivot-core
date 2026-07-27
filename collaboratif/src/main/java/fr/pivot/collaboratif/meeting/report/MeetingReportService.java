@@ -1,6 +1,7 @@
 package fr.pivot.collaboratif.meeting.report;
 
 import fr.pivot.collaboratif.context.CollaboratifRequestPrincipal;
+import fr.pivot.collaboratif.exception.MeetingConflictException;
 import fr.pivot.collaboratif.exception.MeetingReportUnsupportedFormatException;
 import fr.pivot.collaboratif.meeting.AgendaItem;
 import fr.pivot.collaboratif.meeting.AgendaItemStatus;
@@ -174,6 +175,33 @@ public class MeetingReportService {
         reportRepository.save(snapshot);
         messagingTemplate.convertAndSend(
                 MeetingDestinations.topicFor(meeting.getId()), new MeetingReportReadyEvent(meeting.getId(), now, false));
+    }
+
+    /**
+     * Explicitly shares a closed meeting's compte-rendu with the team (AC7/AC8) — owner or
+     * {@code ROLE_ADMIN} only, same gate as every other organizer-only animation action ({@code
+     * MeetingAccessService#resolveMeetingForOwnerOrAdmin}: tenant isolation first, 404 anti-
+     * enumeration, then a distinct 403). Broadcasts {@code MEETING_REPORT_SHARED} on this
+     * meeting's room — the real-time signal every visible participant/team member's client uses to
+     * notify of the share (AC Security: the full report content is never itself broadcast, only
+     * this pointer event; every subscriber refetches via {@code GET .../report} under its own
+     * caller-scoped authorization).
+     *
+     * @param meetingId the meeting's UUID
+     * @param principal the caller — must be the meeting's organizer or a {@code ROLE_ADMIN}
+     * @throws MeetingConflictException if the meeting is not {@link MeetingStatus#ENDED} (409,
+     *                                   AC-E, code {@code MEETING_NOT_CLOSED})
+     */
+    @Transactional
+    public void share(final UUID meetingId, final CollaboratifRequestPrincipal principal) {
+        Meeting meeting = accessService.resolveMeetingForOwnerOrAdmin(meetingId, principal);
+        if (meeting.getStatus() != MeetingStatus.ENDED) {
+            throw new MeetingConflictException("MEETING_NOT_CLOSED", "Meeting report cannot be shared before closure");
+        }
+        Instant now = clock.instant();
+        messagingTemplate.convertAndSend(
+                MeetingDestinations.topicFor(meetingId),
+                new MeetingReportSharedEvent(meetingId, principal.userId(), now));
     }
 
     private MeetingReportDto assemble(final Meeting meeting, final boolean draft, final Instant now) {

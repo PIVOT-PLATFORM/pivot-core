@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -83,5 +84,17 @@ public class MeetingReportController {
             return ResponseEntity.ok().contentType(TEXT_MARKDOWN).body(reportService.exportMarkdown(report));
         }
         return ResponseEntity.ok(report);
+    }
+
+    /**
+     * Explicitly shares a closed meeting's compte-rendu with the team (AC7/AC8) — organizer or
+     * {@code ROLE_ADMIN} only.
+     *
+     * @param meetingId the meeting's UUID
+     * @param principal the resolved caller identity
+     */
+    @PostMapping("/share")
+    public void share(@PathVariable final UUID meetingId, final CollaboratifRequestPrincipal principal) {
+        reportService.share(meetingId, principal);
     }
 }

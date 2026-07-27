@@ -79,13 +79,13 @@ class MeetingReportControllerIT extends AbstractCollaboratifIntegrationTest {
     private void start(final AuthFixture caller, final String meetingId) throws Exception {
         mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/start")
                         .header("Authorization", caller.authorizationHeader()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
     }
 
     private void end(final AuthFixture caller, final String meetingId) throws Exception {
         mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/end")
                         .header("Authorization", caller.authorizationHeader()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
     }
 
     private void addAction(final AuthFixture caller, final String meetingId) throws Exception {
@@ -298,7 +298,7 @@ class MeetingReportControllerIT extends AbstractCollaboratifIntegrationTest {
         mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/end")
                         .header("Authorization", sameTenantNonOwner.authorizationHeader()))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("NOT_MEETING_OWNER"));
+                .andExpect(jsonPath("$.code").value("MEETING_FACILITATOR_ONLY"));
 
         // The meeting is still IN_PROGRESS and its report still a live draft — proof no snapshot
         // was frozen by the rejected attempt.
@@ -308,5 +308,54 @@ class MeetingReportControllerIT extends AbstractCollaboratifIntegrationTest {
         String body = result.getResponse().getContentAsString();
         assertThat((Boolean) JsonPath.read(body, "$.draft")).isTrue();
         assertThat((String) JsonPath.read(body, "$.status")).isEqualTo("IN_PROGRESS");
+    }
+
+    // -------------------------------------------------------------------------
+    // share — AC7/AC8/AC-E/AC-Security
+    // -------------------------------------------------------------------------
+
+    @Test
+    void share_closedMeeting_byOwner_returns200() throws Exception {
+        String meetingId = createMeetingWithOneItem(owner);
+        start(owner, meetingId);
+        end(owner, meetingId);
+
+        mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/report/share")
+                        .header("Authorization", owner.authorizationHeader()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void share_meetingNotClosed_returns409() throws Exception {
+        String meetingId = createMeetingWithOneItem(owner);
+        start(owner, meetingId);
+
+        mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/report/share")
+                        .header("Authorization", owner.authorizationHeader()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MEETING_NOT_CLOSED"));
+    }
+
+    @Test
+    void share_byNonOwnerNonAdmin_returns403() throws Exception {
+        String meetingId = createMeetingWithOneItem(owner);
+        start(owner, meetingId);
+        end(owner, meetingId);
+
+        mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/report/share")
+                        .header("Authorization", sameTenantNonOwner.authorizationHeader()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("MEETING_FACILITATOR_ONLY"));
+    }
+
+    @Test
+    void share_crossTenantMeeting_returns404() throws Exception {
+        String meetingId = createMeetingWithOneItem(owner);
+        start(owner, meetingId);
+        end(owner, meetingId);
+
+        mockMvc.perform(post(MEETINGS_PATH + "/" + meetingId + "/report/share")
+                        .header("Authorization", otherTenantUser.authorizationHeader()))
+                .andExpect(status().isNotFound());
     }
 }

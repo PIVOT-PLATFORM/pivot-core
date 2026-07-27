@@ -1,6 +1,8 @@
 package fr.pivot.collaboratif.meeting.report;
 
 import fr.pivot.collaboratif.context.CollaboratifRequestPrincipal;
+import fr.pivot.collaboratif.exception.MeetingConflictException;
+import fr.pivot.collaboratif.exception.MeetingForbiddenException;
 import fr.pivot.collaboratif.exception.MeetingReportUnsupportedFormatException;
 import fr.pivot.collaboratif.meeting.AgendaItem;
 import fr.pivot.collaboratif.meeting.AgendaItemStatus;
@@ -255,6 +257,50 @@ class MeetingReportServiceTest {
                 eq(MeetingDestinations.topicFor(meeting.getId())), eventCaptor.capture());
         assertThat(eventCaptor.getValue().meetingId()).isEqualTo(meeting.getId());
         assertThat(eventCaptor.getValue().draft()).isFalse();
+    }
+
+    // -------------------------------------------------------------------------
+    // share — AC7/AC8/AC-E/AC-Security
+    // -------------------------------------------------------------------------
+
+    @Test
+    void share_endedMeeting_ownerOrAdmin_broadcastsMeetingReportSharedEvent() {
+        Meeting meeting = meeting(MeetingStatus.ENDED, TEAM_ID);
+        when(accessService.resolveMeetingForOwnerOrAdmin(meeting.getId(), principal())).thenReturn(meeting);
+
+        service.share(meeting.getId(), principal());
+
+        ArgumentCaptor<MeetingReportSharedEvent> eventCaptor = ArgumentCaptor.forClass(MeetingReportSharedEvent.class);
+        verify(messagingTemplate).convertAndSend(
+                eq(MeetingDestinations.topicFor(meeting.getId())), eventCaptor.capture());
+        assertThat(eventCaptor.getValue().meetingId()).isEqualTo(meeting.getId());
+        assertThat(eventCaptor.getValue().sharedBy()).isEqualTo(OWNER_ID);
+        assertThat(eventCaptor.getValue().type()).isEqualTo(MeetingReportSharedEvent.EVENT_TYPE);
+    }
+
+    @Test
+    void share_meetingNotEnded_throwsConflictAndNeverBroadcasts() {
+        Meeting meeting = meeting(MeetingStatus.IN_PROGRESS, TEAM_ID);
+        when(accessService.resolveMeetingForOwnerOrAdmin(meeting.getId(), principal())).thenReturn(meeting);
+
+        assertThatThrownBy(() -> service.share(meeting.getId(), principal()))
+                .isInstanceOf(MeetingConflictException.class)
+                .extracting(ex -> ((MeetingConflictException) ex).getCode())
+                .isEqualTo("MEETING_NOT_CLOSED");
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
+    }
+
+    @Test
+    void share_nonOwnerNonAdmin_propagatesForbiddenFromAccessServiceBeforeAnyBroadcast() {
+        Meeting meeting = meeting(MeetingStatus.ENDED, TEAM_ID);
+        UUID meetingId = meeting.getId();
+        when(accessService.resolveMeetingForOwnerOrAdmin(eq(meetingId), any()))
+                .thenThrow(new MeetingForbiddenException(
+                        "MEETING_FACILITATOR_ONLY", "Caller is not the meeting's owner or an admin"));
+
+        assertThatThrownBy(() -> service.share(meetingId, principal()))
+                .isInstanceOf(MeetingForbiddenException.class);
+        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     // -------------------------------------------------------------------------
