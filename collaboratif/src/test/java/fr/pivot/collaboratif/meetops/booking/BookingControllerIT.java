@@ -20,9 +20,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -395,11 +395,11 @@ class BookingControllerIT extends AbstractCollaboratifIntegrationTest {
      * publishes, so their publication can be asserted directly (US12.4.1 "Confirmation → CONFIRMED
      * + bus" / "cohérence window.updated/deleted" ACs).
      *
-     * <p>Each event type gets its own concrete {@link ApplicationListener} bean (rather than a
-     * single generic {@code List<T>} bean autowired by field) — Spring's collection-injection
-     * support for {@code @Autowired List<T>} aggregates beans of element type {@code T}, not a
-     * bean whose own type happens to be {@code List<T>}; using distinct recorder types avoids
-     * that ambiguity entirely and keeps each recorder unambiguously type-matchable.
+     * <p>Each event type gets its own concrete recorder bean (rather than a single generic
+     * {@code List<T>} bean autowired by field) — Spring's collection-injection support for
+     * {@code @Autowired List<T>} aggregates beans of element type {@code T}, not a bean whose own
+     * type happens to be {@code List<T>}; using distinct recorder types avoids that ambiguity
+     * entirely and keeps each recorder unambiguously type-matchable.
      */
     @TestConfiguration
     static class EventRecordingConfig {
@@ -420,35 +420,44 @@ class BookingControllerIT extends AbstractCollaboratifIntegrationTest {
         }
     }
 
-    /** Captures every {@link BookingConfirmedEvent} published during a test. */
-    static class BookingConfirmedRecorder implements ApplicationListener<BookingConfirmedEvent> {
+    /**
+     * Captures every {@link BookingConfirmedEvent} published during a test.
+     *
+     * <p>Uses an {@code @EventListener}-annotated method rather than {@code implements
+     * ApplicationListener<BookingConfirmedEvent>} — the classic {@code ApplicationListener<E>}
+     * interface requires {@code E extends ApplicationEvent}, which none of this module's
+     * in-process bus records do (see {@code WindowCreatedEvent}'s Javadoc: {@code
+     * ApplicationEventPublisher#publishEvent(Object)}'s arbitrary-payload support, the same
+     * mechanism {@code @EventListener} dispatches on).
+     */
+    static class BookingConfirmedRecorder {
 
         private final List<BookingConfirmedEvent> events = new CopyOnWriteArrayList<>();
 
-        @Override
-        public void onApplicationEvent(final BookingConfirmedEvent event) {
+        @EventListener
+        void onEvent(final BookingConfirmedEvent event) {
             events.add(event);
         }
     }
 
     /** Captures every {@link MeetingInvitationsSentEvent} published during a test. */
-    static class InvitationRecorder implements ApplicationListener<MeetingInvitationsSentEvent> {
+    static class InvitationRecorder {
 
         private final List<MeetingInvitationsSentEvent> events = new CopyOnWriteArrayList<>();
 
-        @Override
-        public void onApplicationEvent(final MeetingInvitationsSentEvent event) {
+        @EventListener
+        void onEvent(final MeetingInvitationsSentEvent event) {
             events.add(event);
         }
     }
 
     /** Captures every {@link RescheduleRequestedEvent} published during a test. */
-    static class RescheduleRecorder implements ApplicationListener<RescheduleRequestedEvent> {
+    static class RescheduleRecorder {
 
         private final List<RescheduleRequestedEvent> events = new CopyOnWriteArrayList<>();
 
-        @Override
-        public void onApplicationEvent(final RescheduleRequestedEvent event) {
+        @EventListener
+        void onEvent(final RescheduleRequestedEvent event) {
             events.add(event);
         }
     }
