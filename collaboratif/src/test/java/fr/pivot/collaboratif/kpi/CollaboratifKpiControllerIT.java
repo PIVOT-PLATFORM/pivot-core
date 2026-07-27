@@ -91,7 +91,7 @@ class CollaboratifKpiControllerIT extends AbstractCollaboratifIntegrationTest {
         String id = JsonPath.read(body, "$.id");
         mockMvc.perform(post(MEETINGS_BASE_PATH + "/" + id + "/start")
                         .header("Authorization", owner.authorizationHeader()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
     }
 
     // -------------------------------------------------------------------------
