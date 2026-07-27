@@ -499,4 +499,68 @@ public class CollaboratifExceptionHandler {
         problem.setDetail(ex.getMessage());
         return problem;
     }
+
+    /**
+     * Returns HTTP 404 when a meeting id does not resolve to a meeting accessible to the caller
+     * (US12.2.1 AC-S1 — never 403, anti-enumeration).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(MeetingNotFoundException.class)
+    public ProblemDetail handleMeetingNotFound(final MeetingNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Meeting not found");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 403 with a machine-readable {@code code} property when an animation action is
+     * attempted by a caller who is neither the meeting's owner nor {@code ROLE_ADMIN} (US12.2.1
+     * AC-S2).
+     *
+     * @param ex the thrown exception
+     * @return a 403 problem detail carrying the code
+     */
+    @ExceptionHandler(MeetingForbiddenException.class)
+    public ProblemDetail handleMeetingForbidden(final MeetingForbiddenException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Forbidden");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 with a machine-readable {@code code} property for a meeting-domain
+     * lifecycle conflict (US12.2.1 AC-E1/AC-E2).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail carrying the code
+     */
+    @ExceptionHandler(MeetingConflictException.class)
+    public ProblemDetail handleMeetingConflict(final MeetingConflictException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Conflict");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 422 Unprocessable Entity when {@code start} is attempted on a meeting with no
+     * agenda items (US12.2.1 AC-E3).
+     *
+     * @param ex the thrown exception
+     * @return a 422 problem detail
+     */
+    @ExceptionHandler(MeetingEmptyAgendaException.class)
+    public ProblemDetail handleMeetingEmptyAgenda(final MeetingEmptyAgendaException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
+        problem.setTitle("Nothing to animate");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "EMPTY_AGENDA"));
+        return problem;
+    }
 }

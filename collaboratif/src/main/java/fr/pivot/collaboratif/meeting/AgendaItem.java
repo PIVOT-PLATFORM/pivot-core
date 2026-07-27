@@ -11,6 +11,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -56,6 +58,40 @@ public class AgendaItem {
     /** Optional free-text facilitator display name, or {@code null}. */
     @Column(length = 200)
     private String facilitator;
+
+    /** Animation status (US12.2.1) — {@link AgendaItemStatus#PENDING} at creation. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "item_status", nullable = false, length = 20)
+    private AgendaItemStatus itemStatus = AgendaItemStatus.PENDING;
+
+    /**
+     * Server timestamp this item became {@link AgendaItemStatus#CURRENT} (US12.2.1 AC-01/AC-03)
+     * — the sole authority the timer (AC-02/AC-04) and {@code GET .../live} (AC-07) compute
+     * {@code elapsedSeconds}/{@code remainingSeconds} from. {@code null} until the item becomes
+     * current, and never cleared afterward (kept for {@link #actualSeconds}'s own derivation).
+     */
+    @Column(name = "current_item_started_at")
+    private Instant currentItemStartedAt;
+
+    /** Server timestamp this item became {@link AgendaItemStatus#DONE}, or {@code null}. */
+    @Column(name = "ended_at")
+    private Instant endedAt;
+
+    /**
+     * Actual time spent on this item, in whole seconds — computed server-side as
+     * {@code ended_at - current_item_started_at} at {@link #markDone}, {@code null} until then.
+     */
+    @Column(name = "actual_seconds")
+    private Integer actualSeconds;
+
+    /**
+     * Whether this item ran past its allotted {@link #durationMinutes} (AC-04) — computed and
+     * persisted at {@link #markDone}, {@code false} until then (the live overtime indicator while
+     * the item is still {@code CURRENT} is always recomputed on the fly, never read from this
+     * column — see {@code MeetingTimerMath}).
+     */
+    @Column(nullable = false)
+    private boolean overtime;
 
     /** No-arg constructor required by JPA. */
     protected AgendaItem() {
@@ -143,5 +179,78 @@ public class AgendaItem {
      */
     public String getFacilitator() {
         return facilitator;
+    }
+
+    /**
+     * Returns the animation status.
+     *
+     * @return the item status
+     */
+    public AgendaItemStatus getItemStatus() {
+        return itemStatus;
+    }
+
+    /**
+     * Returns the server timestamp this item became current.
+     *
+     * @return the currentItemStartedAt instant, or {@code null}
+     */
+    public Instant getCurrentItemStartedAt() {
+        return currentItemStartedAt;
+    }
+
+    /**
+     * Returns the server timestamp this item became done.
+     *
+     * @return the endedAt instant, or {@code null}
+     */
+    public Instant getEndedAt() {
+        return endedAt;
+    }
+
+    /**
+     * Returns the actual time spent on this item, in whole seconds.
+     *
+     * @return the actualSeconds, or {@code null} until the item is done
+     */
+    public Integer getActualSeconds() {
+        return actualSeconds;
+    }
+
+    /**
+     * Returns whether this item ran past its allotted duration.
+     *
+     * @return {@code true} if this item finished in overtime
+     */
+    public boolean isOvertime() {
+        return overtime;
+    }
+
+    /**
+     * Marks this item {@link AgendaItemStatus#CURRENT}, resetting {@link #currentItemStartedAt}
+     * to {@code now} — the server-authoritative anchor every subsequent timer computation for
+     * this item derives from (AC-01/AC-03, AC-S4).
+     *
+     * @param now server-authoritative timestamp
+     */
+    public void markCurrent(final Instant now) {
+        this.itemStatus = AgendaItemStatus.CURRENT;
+        this.currentItemStartedAt = now;
+    }
+
+    /**
+     * Marks this item {@link AgendaItemStatus#DONE}, computing and persisting {@link
+     * #actualSeconds} and {@link #overtime} from {@link #currentItemStartedAt} (never from any
+     * client-supplied value, AC-S4).
+     *
+     * @param now server-authoritative timestamp
+     */
+    public void markDone(final Instant now) {
+        this.itemStatus = AgendaItemStatus.DONE;
+        this.endedAt = now;
+        long elapsedSeconds = currentItemStartedAt == null
+                ? 0L : Duration.between(currentItemStartedAt, now).getSeconds();
+        this.actualSeconds = (int) elapsedSeconds;
+        this.overtime = elapsedSeconds > (long) durationMinutes * 60;
     }
 }
