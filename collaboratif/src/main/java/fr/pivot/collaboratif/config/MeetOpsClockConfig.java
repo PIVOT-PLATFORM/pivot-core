@@ -1,6 +1,5 @@
 package fr.pivot.collaboratif.config;
 
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -32,7 +31,6 @@ public class MeetOpsClockConfig {
      * @return {@link Clock#systemUTC()}
      */
     @Bean
-    @Qualifier("meetOpsClock")
     public Clock meetOpsClock() {
         return Clock.systemUTC();
     }
