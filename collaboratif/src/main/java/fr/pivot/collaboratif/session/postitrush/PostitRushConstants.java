@@ -53,8 +53,13 @@ public final class PostitRushConstants {
     /** Upper bound of the above-softCap spawn gap range. */
     public static final int SPAWN_GAP_MAX_MS_DEGRADED = 2000;
 
-    /** Non-color visual identity keys a spawn is randomly assigned (WCAG 1.4.1). */
-    public static final String[] COLOR_KEYS = {"amber", "rose", "sky", "lime", "violet", "teal"};
+    /**
+     * Non-color visual identity keys a spawn is randomly assigned (WCAG 1.4.1). Package-protected
+     * (not {@code public}) — SpotBugs {@code MS_PKGPROTECT}: a mutable array constant must never be
+     * {@code public} (a caller could mutate the shared backing array); only
+     * {@link PostitRushActivityService}, in the same package, reads it.
+     */
+    static final String[] COLOR_KEYS = {"amber", "rose", "sky", "lime", "violet", "teal"};
 
     /** Maximum plausible human clicks per second before a participant is rate-limited (429). */
     public static final int CLICK_RATE_LIMIT_PER_SECOND = 8;

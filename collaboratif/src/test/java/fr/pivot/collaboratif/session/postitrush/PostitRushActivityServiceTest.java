@@ -165,7 +165,10 @@ class PostitRushActivityServiceTest {
         assertThat(response.score()).isEqualTo(10);
         assertThat(response.currentCombo()).isEqualTo(1);
         assertThat(spawn.getClaimedBy()).isEqualTo(participantId);
-        org.mockito.Mockito.verify(messagingTemplate).convertAndSend(anyString(), any(Object.class));
+        // Two broadcasts for this first-ever hit of the round: POSTIT_CLAIMED, then an immediate
+        // LEADERBOARD_UPDATED (never throttled — the round has never broadcast a leaderboard yet).
+        org.mockito.Mockito.verify(messagingTemplate, org.mockito.Mockito.times(2))
+                .convertAndSend(anyString(), any(Object.class));
     }
 
     @Test
@@ -187,7 +190,7 @@ class PostitRushActivityServiceTest {
         assertThat(response.currentCombo()).isEqualTo(3);
         assertThat(response.multiplier()).isEqualTo(2);
         assertThat(response.pointsAwarded()).isEqualTo(20);
-        assertThat(response.score()).isEqualTo(20); // 10 + 10 (tier 1) + 20 (tier 2, this hit)
+        assertThat(response.score()).isEqualTo(40); // 10 + 10 (tier 1 x2) + 20 (tier 2, this hit)
     }
 
     @Test

@@ -194,9 +194,11 @@ public class PostitRushActivityService {
                 .findBySessionIdAndEndedAtIsNull(session.getId())
                 .filter(r -> !r.isElapsed(now));
 
-        UUID activeRoundId = activeRound.map(SessionPostitRushRound::getId).orElse(null);
-        SessionPostitRushParticipantRound myState = activeRoundId == null ? null
-                : participantRoundRepository.findByIdRoundIdAndIdParticipantId(activeRoundId, participantId)
+        // Checked on Optional#isEmpty(), never by testing a derived id for null — the round
+        // being present is what matters, regardless of what its id happens to be.
+        SessionPostitRushParticipantRound myState = activeRound.isEmpty() ? null
+                : participantRoundRepository
+                        .findByIdRoundIdAndIdParticipantId(activeRound.get().getId(), participantId)
                         .orElse(null);
         int myScore = myState == null ? 0 : myState.getScore();
         int myCombo = myState == null ? 0 : myState.getCurrentCombo();
