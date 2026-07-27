@@ -28,6 +28,7 @@ import org.springframework.web.socket.messaging.WebSocketStompClient;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -102,19 +103,18 @@ class MeetingWebSocketIT extends AbstractCollaboratifIntegrationTest {
         String meetingId = createMeetingWithOneItem(owner);
 
         StompSession session = connectAs(owner.rawToken());
-        CompletableFuture<MeetingStartedEvent> startedFuture = new CompletableFuture<>();
+        CompletableFuture<String> startedFuture = new CompletableFuture<>();
         session.subscribe("/topic/collaboratif/meeting/" + meetingId,
-                frameHandler(MeetingStartedEvent.class, startedFuture));
+                eventTypeFrameHandler(MeetingStartedEvent.EVENT_TYPE, startedFuture));
 
         Thread.sleep(150);
         startMeeting(owner, meetingId);
 
         // Only the event's own arrival matters here (the positive control for the cross-tenant
-        // test below) — not a full payload round-trip, which would additionally exercise this
-        // test client's bare (no java.time module) Jackson ObjectMapper against MeetingLiveStateDto's
-        // Instant field, an unrelated concern to AC-S3's room-isolation guarantee under test.
-        MeetingStartedEvent event = startedFuture.get(5, TimeUnit.SECONDS);
-        assertThat(event.type()).isEqualTo(MeetingStartedEvent.EVENT_TYPE);
+        // test below), filtered by type rather than assuming it is the first frame on the topic:
+        // the globally-running MeetingTimerScheduler (1 Hz, every IN_PROGRESS meeting) can and
+        // does interleave a TIMER_TICK for this same meeting around the same instant.
+        assertThat(startedFuture.get(5, TimeUnit.SECONDS)).isEqualTo(MeetingStartedEvent.EVENT_TYPE);
     }
 
     /**
@@ -134,9 +134,9 @@ class MeetingWebSocketIT extends AbstractCollaboratifIntegrationTest {
                 postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
 
         StompSession crossTenantSession = connectAs(otherTenantUser.rawToken());
-        CompletableFuture<MeetingStartedEvent> startedFuture = new CompletableFuture<>();
+        CompletableFuture<String> startedFuture = new CompletableFuture<>();
         crossTenantSession.subscribe("/topic/collaboratif/meeting/" + meetingId,
-                frameHandler(MeetingStartedEvent.class, startedFuture));
+                eventTypeFrameHandler(MeetingStartedEvent.EVENT_TYPE, startedFuture));
 
         Thread.sleep(150);
         startMeeting(owner, meetingId);
@@ -238,25 +238,36 @@ class MeetingWebSocketIT extends AbstractCollaboratifIntegrationTest {
     }
 
     /**
-     * Returns a {@link StompFrameHandler} that completes the given future with the received
-     * payload.
+     * Returns a {@link StompFrameHandler} that decodes every frame on the subscription as a raw
+     * {@code Map} and completes the given future with {@code expectedType} the first time a frame
+     * whose {@code type} property equals it arrives — every other frame (e.g. an interleaved
+     * {@code TIMER_TICK} from the globally-running scheduler) is silently ignored rather than
+     * assumed absent. Deliberately does not deserialize into the event's own record type: this
+     * test client's bare Jackson {@code ObjectMapper} (no {@code java.time} module, unlike the
+     * server's Spring-configured one) cannot round-trip {@code MeetingLiveStateDto}'s
+     * {@code Instant} field, an orthogonal concern to the room-isolation guarantee under test here.
      *
-     * @param type   the expected payload class
-     * @param future the future to complete
-     * @param <T>    the payload type
+     * @param expectedType the {@code type} discriminator value to wait for (e.g. {@link
+     *                      MeetingStartedEvent#EVENT_TYPE})
+     * @param future       the future to complete once a matching frame arrives
      * @return a frame handler
      */
-    private <T> StompFrameHandler frameHandler(final Class<T> type, final CompletableFuture<T> future) {
+    @SuppressWarnings("unchecked")
+    private StompFrameHandler eventTypeFrameHandler(final String expectedType, final CompletableFuture<String> future) {
         return new StompFrameHandler() {
             @Override
             public Type getPayloadType(final StompHeaders headers) {
-                return type;
+                return Map.class;
             }
 
             @Override
             public void handleFrame(final StompHeaders headers, final Object payload) {
-                if (!future.isDone()) {
-                    future.complete(type.cast(payload));
+                if (future.isDone()) {
+                    return;
+                }
+                Map<String, Object> frame = (Map<String, Object>) payload;
+                if (expectedType.equals(frame.get("type"))) {
+                    future.complete(expectedType);
                 }
             }
         };
