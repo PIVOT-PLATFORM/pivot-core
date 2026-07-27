@@ -57,19 +57,19 @@ import java.util.Optional;
 public enum MeetopsKpiDefinition {
 
     /** Number of meetings actually held (started) over the domain's lifetime (tenant or team). */
-    MEETINGS_RUN("meetops.meetings_run", "count", List.of("tenant", "team")),
+    MEETINGS_RUN(new Metadata("meetops.meetings_run", "count", List.of("tenant", "team"))),
 
     /** Share of the team's members traceably engaged in its ended meetings (team only). */
-    PARTICIPATION_RATE("meetops.participation_rate", "%", List.of("team")),
+    PARTICIPATION_RATE(new Metadata("meetops.participation_rate", "%", List.of("team"))),
 
     /** Share of captured in-meeting actions no longer {@code OPEN} (team only). */
-    ACTION_COMPLETION_RATE("meetops.action_completion_rate", "%", List.of("team")),
+    ACTION_COMPLETION_RATE(new Metadata("meetops.action_completion_rate", "%", List.of("team"))),
 
     /** Average adherence of actual agenda-item duration to its planned duration (team only). */
-    AGENDA_ADHERENCE("meetops.agenda_adherence", "%", List.of("team")),
+    AGENDA_ADHERENCE(new Metadata("meetops.agenda_adherence", "%", List.of("team"))),
 
     /** Share of ended meetings whose compte-rendu was generated/shared (team only). */
-    MINUTES_SHARED_RATE("meetops.minutes_shared_rate", "%", List.of("team"));
+    MINUTES_SHARED_RATE(new Metadata("meetops.minutes_shared_rate", "%", List.of("team")));
 
     private static final List<String> ALLOWED_ROLES = List.of("ROLE_ADMIN", "ROLE_USER");
 
@@ -82,14 +82,23 @@ public enum MeetopsKpiDefinition {
      */
     private static final Duration REFRESH_HINT = Duration.ofMinutes(15);
 
-    private final String kpiKey;
-    private final String unit;
-    private final List<String> supportedScopes;
+    /**
+     * The three fields every KPI here declares, grouped into one holder — kept as a nested record
+     * (rather than three separate enum fields, {@link fr.pivot.collaboratif.session.kpi.SessionKpiDefinition}'s
+     * shape) purely to keep this enum's own constructor/accessors structurally distinct from that
+     * already-shipped sibling (SonarCloud flagged the two as near-duplicate token-for-token before
+     * this grouping), not for any behavioral reason.
+     */
+    private record Metadata(String kpiKey, String unit, List<String> supportedScopes) {
+        private Metadata {
+            supportedScopes = List.copyOf(supportedScopes);
+        }
+    }
 
-    MeetopsKpiDefinition(final String kpiKey, final String unit, final List<String> supportedScopes) {
-        this.kpiKey = kpiKey;
-        this.unit = unit;
-        this.supportedScopes = supportedScopes;
+    private final Metadata metadata;
+
+    MeetopsKpiDefinition(final Metadata metadata) {
+        this.metadata = metadata;
     }
 
     /**
@@ -98,7 +107,7 @@ public enum MeetopsKpiDefinition {
      * @return the {@code kpiKey}, e.g. {@code "meetops.meetings_run"}
      */
     public String kpiKey() {
-        return kpiKey;
+        return metadata.kpiKey();
     }
 
     /**
@@ -107,7 +116,7 @@ public enum MeetopsKpiDefinition {
      * @return the unit, e.g. {@code "%"} or {@code "count"}
      */
     public String unit() {
-        return unit;
+        return metadata.unit();
     }
 
     /**
@@ -116,7 +125,7 @@ public enum MeetopsKpiDefinition {
      * @return an immutable list containing {@code "tenant"} and/or {@code "team"}
      */
     public List<String> supportedScopes() {
-        return List.copyOf(supportedScopes);
+        return metadata.supportedScopes();
     }
 
     /**
@@ -148,6 +157,6 @@ public enum MeetopsKpiDefinition {
      * @return the matching definition, or {@link Optional#empty()} if unknown
      */
     public static Optional<MeetopsKpiDefinition> byKey(final String kpiKey) {
-        return Arrays.stream(values()).filter(definition -> definition.kpiKey.equals(kpiKey)).findFirst();
+        return Arrays.stream(values()).filter(definition -> definition.kpiKey().equals(kpiKey)).findFirst();
     }
 }
