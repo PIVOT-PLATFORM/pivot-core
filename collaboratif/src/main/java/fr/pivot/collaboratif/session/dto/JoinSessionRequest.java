@@ -11,6 +11,9 @@ import jakarta.validation.constraints.Size;
  * @param code        6-character session join code
  * @param displayName display name for this session (1-40 chars, escaped for display, never
  *                    interpreted as HTML)
+ * @param spectator   US47.2.1 {@code POSTIT_RUSH} only: {@code true} to explicitly accept the
+ *                    spectator fallback offered on a prior {@code 409 ROOM_FULL} response.
+ *                    Ignored (never causes a hard failure) for every other session type.
  */
 public record JoinSessionRequest(
         @NotBlank(message = "INVALID_CODE")
@@ -19,5 +22,18 @@ public record JoinSessionRequest(
 
         @NotBlank(message = "INVALID_DISPLAY_NAME")
         @Size(max = 40, message = "INVALID_DISPLAY_NAME")
-        String displayName) {
+        String displayName,
+
+        Boolean spectator) {
+
+    /**
+     * Convenience constructor for callers that never set the {@code spectator} fallback flag —
+     * every non-{@code POSTIT_RUSH} caller and every existing test.
+     *
+     * @param code        6-character session join code
+     * @param displayName display name for this session
+     */
+    public JoinSessionRequest(final String code, final String displayName) {
+        this(code, displayName, null);
+    }
 }
