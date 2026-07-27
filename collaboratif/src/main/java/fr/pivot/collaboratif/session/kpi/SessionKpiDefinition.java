@@ -13,11 +13,13 @@ import java.util.Optional;
  *
  * <p><strong>Scope of this enum, precisely.</strong> EN28.14 itself — the transverse, reusable
  * {@code KpiRef} contract meant to be implemented by every future PIVOT domain — has no code
- * anywhere in this repository yet (verified at the time this enabler, EN19.4, was implemented).
- * This enum does not attempt to build that shared abstraction; it only reproduces the {@code
- * KpiRef} *shape* for this one domain, so {@link SessionKpiController}/{@link SessionKpiService}
- * already speak the contract a future generic EN28.14 implementation (or a future OKR consumer,
- * US27.8.3) would expect, without itself becoming — or blocking on — that shared abstraction.
+ * anywhere in this repository yet (verified at the time this enabler, EN19.4, was implemented;
+ * EN12.3 later added {@code fr.pivot.collaboratif.kpi.CollaboratifKpiProvider}, a small seam
+ * letting several domains share one HTTP surface, but that is still not EN28.14's own generic
+ * contract). This enum does not attempt to build that shared abstraction; it only reproduces the
+ * {@code KpiRef} *shape* for this one domain, so {@link SessionKpiService} already speaks the
+ * contract a future generic EN28.14 implementation (or a future OKR consumer, US27.8.3) would
+ * expect, without itself becoming — or blocking on — that shared abstraction.
  *
  * <p><strong>Visibility.</strong> All five KPIs are team/tenant-level aggregates with no
  * participant-level breakdown (no name, no user id, no per-participant answer) — same RGPD

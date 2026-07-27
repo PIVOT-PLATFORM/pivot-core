@@ -4,9 +4,18 @@ import java.util.List;
 
 /**
  * Metadata-only listing entry returned by {@code GET /api/collaboratif/kpi} — the {@code KpiRef}
- * fields that describe a KPI without resolving any value (that is {@link
- * fr.pivot.collaboratif.session.kpi.SessionKpiController}'s pull endpoint's job), per EN28.14's
- * list surface: "chacun déclarant {@code unit}, {@code supportedScopes} et {@code refreshHint}".
+ * fields that describe a KPI without resolving any value (that is {@code
+ * fr.pivot.collaboratif.kpi.CollaboratifKpiController}'s pull endpoint's job), per EN28.14's list
+ * surface: "chacun déclarant {@code unit}, {@code supportedScopes} et {@code refreshHint}".
+ *
+ * <p><strong>Shared across every module domain that produces KPIs</strong> — introduced for
+ * {@code fr.pivot.collaboratif.session.kpi.SessionKpiService} (EN19.4) and, unchanged, reused by
+ * {@code fr.pivot.collaboratif.meeting.kpi.MeetopsKpiService} (EN12.3) rather than duplicated
+ * under a {@code meetops.kpi.dto} package — see {@code
+ * fr.pivot.collaboratif.kpi.CollaboratifKpiProvider}'s Javadoc for the seam that lets both domains
+ * share this one shape and this one HTTP surface. Still living under {@code session.kpi.dto} (not
+ * relocated to a neutral package) purely to keep EN12.3's diff minimal — a follow-up cleanup, not
+ * a functional concern.
  *
  * @param source          the emitting domain, always {@code "collaboratif"} for this producer
  * @param kpiKey          the KPI's stable identifier, e.g. {@code "session.sessions_run"}

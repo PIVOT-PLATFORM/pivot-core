@@ -167,6 +167,31 @@ public final class PlatformAuthTestSupport {
     }
 
     /**
+     * Inserts a {@code public.team_members} row directly via JDBC, bypassing {@code
+     * TeamMemberRepository} — same cross-schema reasoning as {@link #seedTeam}: a module's own
+     * Hibernate session cannot resolve {@code fr.pivot.core.team.TeamMember} against {@code
+     * public} from inside a domain module's test.
+     *
+     * @param jdbcUrl  the JDBC URL
+     * @param username the database username
+     * @param password the database password
+     * @param teamId   the owning team's {@code public.teams.id}
+     * @param userId   the member's {@code public.users.id}
+     * @throws SQLException if the insert fails
+     */
+    public static void seedTeamMember(
+            final String jdbcUrl, final String username, final String password,
+            final long teamId, final long userId) throws SQLException {
+        final String sql = "INSERT INTO public.team_members (team_id, user_id) VALUES (?, ?)";
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+                PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, teamId);
+            ps.setLong(2, userId);
+            ps.executeUpdate();
+        }
+    }
+
+    /**
      * Inserts a tenant row.
      *
      * @param jdbcUrl                the JDBC URL

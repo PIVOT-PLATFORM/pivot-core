@@ -11,6 +11,7 @@ import fr.pivot.collaboratif.meeting.dto.MeetingEndedEvent;
 import fr.pivot.collaboratif.meeting.dto.MeetingLiveStateDto;
 import fr.pivot.collaboratif.meeting.dto.MeetingStartedEvent;
 import fr.pivot.collaboratif.meeting.dto.TimerTickEvent;
+import fr.pivot.collaboratif.meeting.kpi.MeetopsKpiEventPublisher;
 import fr.pivot.collaboratif.meeting.report.MeetingReportService;
 import fr.pivot.collaboratif.meeting.ws.MeetingDestinations;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -44,6 +45,7 @@ public class MeetingAnimationService {
     private final MeetingActionRepository actionRepository;
     private final MeetingAccessService accessService;
     private final MeetingReportService reportService;
+    private final MeetopsKpiEventPublisher kpiEventPublisher;
     private final SimpMessagingTemplate messagingTemplate;
     private final Clock clock;
 
@@ -54,6 +56,8 @@ public class MeetingAnimationService {
      * @param actionRepository  repository for captured in-meeting actions
      * @param accessService     resolves meetings with tenant/authorization enforcement
      * @param reportService     freezes the compte-rendu snapshot on closure (US12.3.1)
+     * @param kpiEventPublisher publishes {@code kpi.updated} for the MeetOps KPIs a meeting
+     *                          closure recomputes (EN12.3)
      * @param messagingTemplate STOMP broadcaster
      * @param clock             the shared {@code meetOpsClock}, overridable in tests
      */
@@ -62,12 +66,14 @@ public class MeetingAnimationService {
             final MeetingActionRepository actionRepository,
             final MeetingAccessService accessService,
             final MeetingReportService reportService,
+            final MeetopsKpiEventPublisher kpiEventPublisher,
             final SimpMessagingTemplate messagingTemplate,
             @Qualifier("meetOpsClock") final Clock clock) {
         this.meetingRepository = meetingRepository;
         this.actionRepository = actionRepository;
         this.accessService = accessService;
         this.reportService = reportService;
+        this.kpiEventPublisher = kpiEventPublisher;
         this.messagingTemplate = messagingTemplate;
         this.clock = clock;
     }
@@ -136,6 +142,10 @@ public class MeetingAnimationService {
             // meeting transitions to ENDED (see #end below, and MeetingReportService's own
             // Javadoc for why no separate /close route exists).
             reportService.freezeOnClose(meeting, principal);
+            // EN12.3: the MeetOps KPIs recomputed by this closure ("réunion clôturée" and
+            // "compte-rendu partagé" — the same commit here, see MeetopsKpiEventPublisher's own
+            // Javadoc) are worth a kpi.updated signal, published after both writes above.
+            kpiEventPublisher.publishRecalculation(meeting.getTenantId(), meeting.getTeamId(), now);
         }
         return liveState(meeting, now);
     }
@@ -161,6 +171,9 @@ public class MeetingAnimationService {
         // US12.3.1: freeze the compte-rendu snapshot — the other of the two places a meeting
         // transitions to ENDED (see the last-item branch of #next above).
         reportService.freezeOnClose(meeting, principal);
+        // EN12.3: see the matching call in #next above for why one signal here covers both the
+        // "réunion clôturée" and "compte-rendu partagé" trigger events.
+        kpiEventPublisher.publishRecalculation(meeting.getTenantId(), meeting.getTeamId(), now);
         return liveState(meeting, now);
     }
 

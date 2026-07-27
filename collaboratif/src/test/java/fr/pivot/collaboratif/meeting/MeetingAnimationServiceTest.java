@@ -11,6 +11,7 @@ import fr.pivot.collaboratif.meeting.dto.MeetingEndedEvent;
 import fr.pivot.collaboratif.meeting.dto.MeetingLiveStateDto;
 import fr.pivot.collaboratif.meeting.dto.MeetingStartedEvent;
 import fr.pivot.collaboratif.meeting.dto.TimerTickEvent;
+import fr.pivot.collaboratif.meeting.kpi.MeetopsKpiEventPublisher;
 import fr.pivot.collaboratif.meeting.report.MeetingReportService;
 import fr.pivot.collaboratif.meeting.ws.MeetingDestinations;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +61,8 @@ class MeetingAnimationServiceTest {
     @Mock
     private MeetingReportService reportService;
     @Mock
+    private MeetopsKpiEventPublisher kpiEventPublisher;
+    @Mock
     private SimpMessagingTemplate messagingTemplate;
 
     private MeetingAnimationService service;
@@ -68,7 +71,8 @@ class MeetingAnimationServiceTest {
     void setUp() {
         Clock fixedClock = Clock.fixed(NOW, ZoneOffset.UTC);
         service = new MeetingAnimationService(
-                meetingRepository, actionRepository, accessService, reportService, messagingTemplate, fixedClock);
+                meetingRepository, actionRepository, accessService, reportService, kpiEventPublisher,
+                messagingTemplate, fixedClock);
     }
 
     private CollaboratifRequestPrincipal principal() {
@@ -208,6 +212,8 @@ class MeetingAnimationServiceTest {
         // US12.3.1: advancing past the last item is one of the two closure paths that must
         // freeze the compte-rendu snapshot.
         verify(reportService).freezeOnClose(meeting, principal());
+        // EN12.3: the same closure publishes a kpi.updated recalculation signal.
+        verify(kpiEventPublisher).publishRecalculation(TENANT_ID, meeting.getTeamId(), NOW);
     }
 
     @Test
@@ -220,6 +226,7 @@ class MeetingAnimationServiceTest {
                 .extracting(ex -> ((MeetingConflictException) ex).getCode())
                 .isEqualTo("MEETING_NOT_IN_PROGRESS");
         verify(reportService, never()).freezeOnClose(any(), any());
+        verify(kpiEventPublisher, never()).publishRecalculation(any(), any(), any());
     }
 
     @Test
@@ -233,6 +240,7 @@ class MeetingAnimationServiceTest {
         service.next(meeting.getId(), principal());
 
         verify(reportService, never()).freezeOnClose(any(), any());
+        verify(kpiEventPublisher, never()).publishRecalculation(any(), any(), any());
     }
 
     // -------------------------------------------------------------------------
@@ -259,6 +267,8 @@ class MeetingAnimationServiceTest {
         // US12.3.1: explicit end() is the other of the two closure paths that must freeze the
         // compte-rendu snapshot — invoked only after the ENDED transition is already persisted.
         verify(reportService).freezeOnClose(meeting, principal());
+        // EN12.3: the same closure publishes a kpi.updated recalculation signal.
+        verify(kpiEventPublisher).publishRecalculation(TENANT_ID, meeting.getTeamId(), NOW);
     }
 
     @Test
@@ -271,6 +281,7 @@ class MeetingAnimationServiceTest {
                 .extracting(ex -> ((MeetingConflictException) ex).getCode())
                 .isEqualTo("MEETING_NOT_IN_PROGRESS");
         verify(reportService, never()).freezeOnClose(any(), any());
+        verify(kpiEventPublisher, never()).publishRecalculation(any(), any(), any());
     }
 
     // -------------------------------------------------------------------------

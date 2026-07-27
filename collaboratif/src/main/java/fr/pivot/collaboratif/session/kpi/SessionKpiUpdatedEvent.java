@@ -9,8 +9,9 @@ import java.time.Instant;
  * already uses (there is no dedicated {@code PivotAdapter}/message-broker bus in this codebase
  * today — see {@link SessionKpiEventPublisher}'s Javadoc).
  *
- * <p>Carries no value — {@link SessionKpiController}'s pull endpoint stays the source of truth,
- * recomputed on every {@code GET} (see {@link SessionKpiService}'s Javadoc), so this is only a
+ * <p>Carries no value — {@code fr.pivot.collaboratif.kpi.CollaboratifKpiController}'s pull
+ * endpoint stays the source of truth, recomputed on every {@code GET} (see {@link
+ * SessionKpiService}'s Javadoc), so this is only a
  * "this KPI is worth re-pulling" signal for a future push-side consumer (e.g. a cache
  * invalidation or a dashboard live-refresh), not the payload itself.
  *
