@@ -80,7 +80,7 @@ public class WorkingHoursCalendar {
      */
     private boolean isWeekend(final ZonedDateTime zonedDateTime) {
         DayOfWeek dayOfWeek = zonedDateTime.getDayOfWeek();
-        return dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY;
+        return dayOfWeek.equals(DayOfWeek.SATURDAY) || dayOfWeek.equals(DayOfWeek.SUNDAY);
     }
 
     /**

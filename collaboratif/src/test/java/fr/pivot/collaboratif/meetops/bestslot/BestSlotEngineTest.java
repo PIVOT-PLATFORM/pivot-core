@@ -117,7 +117,7 @@ class BestSlotEngineTest {
         Instant windowStart = MONDAY_9AM.minus(Duration.ofMinutes(15));
         List<SlotCandidate> ranked = engine.rank(windowStart, MONDAY_9AM.plus(Duration.ofHours(1)), 30, List.of("a@pivot.test"));
 
-        assertThat(ranked).allMatch(c -> !c.start().isBefore(MONDAY_9AM));
+        assertThat(ranked).isNotEmpty().allMatch(c -> !c.start().isBefore(MONDAY_9AM));
     }
 
     // -------------------------------------------------------------------------
