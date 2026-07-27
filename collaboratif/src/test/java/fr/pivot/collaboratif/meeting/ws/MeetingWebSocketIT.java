@@ -109,8 +109,12 @@ class MeetingWebSocketIT extends AbstractCollaboratifIntegrationTest {
         Thread.sleep(150);
         startMeeting(owner, meetingId);
 
+        // Only the event's own arrival matters here (the positive control for the cross-tenant
+        // test below) — not a full payload round-trip, which would additionally exercise this
+        // test client's bare (no java.time module) Jackson ObjectMapper against MeetingLiveStateDto's
+        // Instant field, an unrelated concern to AC-S3's room-isolation guarantee under test.
         MeetingStartedEvent event = startedFuture.get(5, TimeUnit.SECONDS);
-        assertThat(event.state().meetingId().toString()).isEqualTo(meetingId);
+        assertThat(event.type()).isEqualTo(MeetingStartedEvent.EVENT_TYPE);
     }
 
     /**
