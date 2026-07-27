@@ -13,6 +13,15 @@ import java.time.Instant;
  * only a "this KPI is worth re-pulling" signal for a future push-side consumer, not the payload
  * itself.
  *
+ * <p><strong>Known, documented gap against the enabler's exact wording.</strong> {@code
+ * en-exposer-kpi}'s AC asks for {@code kpi.updated} "signé, idempotent" on "le bus PIVOT (ADR-025,
+ * EN28.4)". Spring's {@code ApplicationEventPublisher} is neither signed nor a durable/idempotent
+ * delivery mechanism (a same-process synchronous call, replayed on every relevant mutation with no
+ * dedup key) — an accurate re-pull nudge for a same-process future consumer, but not yet the
+ * platform-bus contract as literally specified. Inherited, not introduced here: {@code
+ * SessionKpiUpdatedEvent} (EN19.4) already ships this exact same gap; both wait on a real {@code
+ * PivotAdapter}/message-broker bus existing in this codebase before either can close it.
+ *
  * @param tenantId   the owning tenant's {@code public.tenants.id}
  * @param teamId     the meeting's owning team, or {@code null} for a team-less (personal) meeting
  *                   — a consumer of a team-scoped KPI (every MeetOps KPI but {@code

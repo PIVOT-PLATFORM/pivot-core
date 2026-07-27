@@ -52,6 +52,13 @@ import java.util.Optional;
  *       reflecting real completions the moment that capability ships — until then it reports
  *       {@code 0} for every real tenant, an accurate reflection of "no action can be closed yet",
  *       not a defect in this producer.
+ *   <li>{@link #ACTION_COMPLETION_RATE}'s {@code supportedScopes} is {@code List.of("team")} only,
+ *       while the enabler's own KPI table asks for granularity "équipe/<strong>projet</strong>".
+ *       There is no project concept reachable from this branch's schema at all — {@code
+ *       meetings}/{@code meeting_actions} carry no project reference; that correlation id
+ *       ({@code project_ref}) is introduced by US12.4.1's booking flow (V20), a sibling branch not
+ *       merged as of this US. Adding a real {@code "project"} scope here is a follow-up gated on
+ *       that schema landing first, not an omission fixable in this file alone.
  * </ul>
  */
 public enum MeetopsKpiDefinition {
