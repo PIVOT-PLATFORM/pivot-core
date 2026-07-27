@@ -51,6 +51,37 @@ public record MeetingReportDto(
         Instant generatedAt) {
 
     /**
+     * Defensively copies every list so this record neither stores nor exposes a caller/internal
+     * mutable reference (SpotBugs EI_EXPOSE_REP/EI_EXPOSE_REP2).
+     */
+    public MeetingReportDto {
+        participants = List.copyOf(participants);
+        agendaItems = List.copyOf(agendaItems);
+        decisions = List.copyOf(decisions);
+        actions = List.copyOf(actions);
+    }
+
+    @Override
+    public List<ParticipantReportDto> participants() {
+        return List.copyOf(participants);
+    }
+
+    @Override
+    public List<AgendaItemReportDto> agendaItems() {
+        return List.copyOf(agendaItems);
+    }
+
+    @Override
+    public List<DecisionReportDto> decisions() {
+        return List.copyOf(decisions);
+    }
+
+    @Override
+    public List<ActionReportDto> actions() {
+        return List.copyOf(actions);
+    }
+
+    /**
      * A participant present at the meeting (US12.3.1 AC nominal).
      *
      * <p><strong>Interpretation of a genuine spec gap:</strong> this module has no dedicated

@@ -33,7 +33,10 @@ import java.util.UUID;
 @RequestMapping(CollaboratifApiPaths.BASE + "/meetings/{meetingId}/report")
 public class MeetingReportController {
 
-    private static final MediaType TEXT_MARKDOWN = MediaType.parseMediaType("text/markdown");
+    // Charset spelled out explicitly: Spring's StringHttpMessageConverter defaults an
+    // unqualified "text/*" media type to ISO-8859-1, which mangles the accented French text
+    // this renderer produces (e.g. "Durée" -> "DurÃ©e") unless UTF-8 is declared here.
+    private static final MediaType TEXT_MARKDOWN = MediaType.parseMediaType("text/markdown;charset=UTF-8");
 
     private final MeetingReportService reportService;
 
