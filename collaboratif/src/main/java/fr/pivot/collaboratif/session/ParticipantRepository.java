@@ -64,25 +64,4 @@ public interface ParticipantRepository extends JpaRepository<Participant, UUID> 
      * @return the participant, if the user has joined this session
      */
     Optional<Participant> findBySessionIdAndUserId(UUID sessionId, Long userId);
-
-    /**
-     * Checks whether a display name is already used by a current participant of a session
-     * (case-insensitive) — US47.2.1 {@code POSTIT_RUSH} duplicate-name join rejection
-     * ({@code 400 INVALID_DISPLAY_NAME}).
-     *
-     * @param sessionId   the owning session's UUID
-     * @param displayName the candidate display name
-     * @return {@code true} if a participant of this session already uses that name
-     */
-    boolean existsBySessionIdAndDisplayNameIgnoreCase(UUID sessionId, String displayName);
-
-    /**
-     * Counts participants of a session with a given role — US47.2.1 {@code POSTIT_RUSH} softCap
-     * progressive-degradation threshold (active {@code PLAYER} count, excluding spectators).
-     *
-     * @param sessionId the owning session's UUID
-     * @param role      the role to filter by
-     * @return the count of participants with that role
-     */
-    long countBySessionIdAndRole(UUID sessionId, ParticipantRole role);
 }

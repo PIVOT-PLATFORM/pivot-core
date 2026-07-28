@@ -280,14 +280,6 @@
             <Package name="fr.pivot.collaboratif.session.vote.dto"/>
             <Package name="fr.pivot.collaboratif.session.quiz"/>
             <Package name="fr.pivot.collaboratif.session.quiz.dto"/>
-            <!-- US47.2.1 (E47/F47.2) — POSTIT_RUSH activity: same rationale as the quiz
-                 subpackage above — PostitRushActivityService/PostitRushController/
-                 PostitRushScheduler/PostitRushClickRateLimitService store constructor-injected
-                 singleton beans (repositories, SimpMessagingTemplate, ObjectMapper,
-                 StringRedisTemplate); the dto records (PostitRushStateDto, PostitRushResultsDto,
-                 LeaderboardUpdatedEvent, ...) expose mutable Lists for JSON transport. -->
-            <Package name="fr.pivot.collaboratif.session.postitrush"/>
-            <Package name="fr.pivot.collaboratif.session.postitrush.dto"/>
         </Or>
     </Match>
 
