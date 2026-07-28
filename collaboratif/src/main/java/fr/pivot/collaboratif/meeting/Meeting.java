@@ -66,8 +66,14 @@ public class Meeting {
     @Column(nullable = false, length = 20)
     private MeetingStatus status = MeetingStatus.DRAFT;
 
-    /** User who created this meeting — the authenticated principal, never client-supplied. */
-    @Column(name = "created_by", nullable = false, updatable = false)
+    /**
+     * User who created this meeting. Always the authenticated principal for a US12.1.1
+     * manually-created meeting (never client-supplied). For a US12.4.1 booking-flow meeting this
+     * is instead the best-effort-resolved organizer (see {@code BookingService}'s Javadoc) and
+     * may be {@code null} when it cannot be resolved to a platform user — hence {@code
+     * updatable = true}/nullable (V20 dropped the original {@code NOT NULL}).
+     */
+    @Column(name = "created_by", updatable = true)
     private Long createdBy;
 
     /** Timestamp when this meeting was first persisted. */
@@ -112,6 +118,39 @@ public class Meeting {
     @OrderBy("position ASC")
     private List<AgendaItem> agendaItems = new ArrayList<>();
 
+    /**
+     * Start of the roadmap-supplied booking window this meeting was pre-reserved from (US12.4.1),
+     * or {@code null} for a US12.1.1 manually-created meeting.
+     */
+    @Column(name = "booking_window_start")
+    private Instant bookingWindowStart;
+
+    /** End of the roadmap-supplied booking window (US12.4.1), or {@code null}. */
+    @Column(name = "booking_window_end")
+    private Instant bookingWindowEnd;
+
+    /**
+     * Correlation identifier of the upstream {@code roadmap.event.window.*} event (US12.4.1) —
+     * a plain string, never a foreign key (ADR-006/008: no cross-module FK). Unique together with
+     * {@code tenant_id} (partial index, {@code V20}) — this is what makes at-least-once redelivery
+     * of {@code window.created} idempotent.
+     */
+    @Column(name = "event_ref", length = 100)
+    private String eventRef;
+
+    /** Correlation identifier of the upstream roadmap project (US12.4.1), or {@code null}. */
+    @Column(name = "project_ref", length = 100)
+    private String projectRef;
+
+    /**
+     * Timestamp of the last time a {@code window.updated}/{@code window.deleted} event was
+     * received for this meeting <strong>after</strong> it was already {@link
+     * MeetingStatus#CONFIRMED} — i.e. a reprogramming request is pending organizer attention.
+     * {@code null} while no such request is outstanding (US12.4.1, "cohérence window.updated/deleted").
+     */
+    @Column(name = "reschedule_requested_at")
+    private Instant rescheduleRequestedAt;
+
     /** No-arg constructor required by JPA. */
     protected Meeting() {
     }
@@ -147,6 +186,107 @@ public class Meeting {
         this.status = MeetingStatus.DRAFT;
         this.createdBy = createdBy;
         this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    /**
+     * Creates a new meeting in {@link MeetingStatus#PRE_RESERVED}, from a {@code
+     * roadmap.event.window.created} event (US12.4.1). {@code scheduledAt} is initialized to
+     * {@code bookingWindowStart} as a placeholder — the column is {@code NOT NULL} but the actual
+     * slot is not chosen yet; it is overwritten with the confirmed slot's start by {@link
+     * #confirm}. {@code createdBy} is the resolved organizer (best-effort — see {@code
+     * BookingService}'s Javadoc for how it is derived from the event's {@code participants[]}),
+     * possibly {@code null} if it could not be resolved to a platform user.
+     *
+     * @param tenantId              owning tenant's {@code public.tenants.id}
+     * @param title                 the event's {@code titre}
+     * @param bookingWindowStart    start of the candidate period
+     * @param bookingWindowEnd      end of the candidate period
+     * @param totalDurationMinutes  requested meeting duration in minutes
+     * @param eventRef              upstream roadmap event correlation id
+     * @param projectRef            upstream roadmap project correlation id, or {@code null}
+     * @param createdBy             resolved organizer's {@code public.users.id}, or {@code null}
+     *                              if not resolvable
+     * @param now                   timestamp used for {@code createdAt}/{@code updatedAt}
+     * @return the new, not-yet-persisted, {@code PRE_RESERVED} meeting
+     */
+    public static Meeting preReserve(
+            final Long tenantId,
+            final String title,
+            final Instant bookingWindowStart,
+            final Instant bookingWindowEnd,
+            final Integer totalDurationMinutes,
+            final String eventRef,
+            final String projectRef,
+            final Long createdBy,
+            final Instant now) {
+        Meeting meeting = new Meeting();
+        meeting.tenantId = tenantId;
+        meeting.title = title;
+        meeting.scheduledAt = bookingWindowStart;
+        meeting.totalDurationMinutes = totalDurationMinutes;
+        meeting.status = MeetingStatus.PRE_RESERVED;
+        meeting.bookingWindowStart = bookingWindowStart;
+        meeting.bookingWindowEnd = bookingWindowEnd;
+        meeting.eventRef = eventRef;
+        meeting.projectRef = projectRef;
+        meeting.createdBy = createdBy;
+        meeting.createdAt = now;
+        meeting.updatedAt = now;
+        return meeting;
+    }
+
+    /**
+     * Re-applies a {@code window.updated} payload to this still-{@code PRE_RESERVED} meeting
+     * (US12.4.1) — the caller is responsible for discarding/recomputing {@code proposed_slots}
+     * afterward.
+     *
+     * @param title                new title
+     * @param bookingWindowStart   new candidate period start
+     * @param bookingWindowEnd     new candidate period end
+     * @param totalDurationMinutes new requested duration
+     * @param projectRef           new project correlation id, or {@code null}
+     * @param now                  timestamp for {@code updatedAt}
+     */
+    public void applyWindowUpdate(
+            final String title,
+            final Instant bookingWindowStart,
+            final Instant bookingWindowEnd,
+            final Integer totalDurationMinutes,
+            final String projectRef,
+            final Instant now) {
+        this.title = title;
+        this.scheduledAt = bookingWindowStart;
+        this.bookingWindowStart = bookingWindowStart;
+        this.bookingWindowEnd = bookingWindowEnd;
+        this.totalDurationMinutes = totalDurationMinutes;
+        this.projectRef = projectRef;
+        this.updatedAt = now;
+    }
+
+    /**
+     * Confirms this meeting on the given slot (US12.4.1) — {@code PRE_RESERVED} → {@code
+     * CONFIRMED}. The caller ({@code BookingService#confirm}) is responsible for the state-machine
+     * guard (slot must belong to {@code proposed_slots}, status must be {@code PRE_RESERVED}) —
+     * this method only performs the mutation once those invariants are already established.
+     *
+     * @param slotStart the confirmed slot's start
+     * @param now       timestamp for {@code updatedAt}
+     */
+    public void confirm(final Instant slotStart, final Instant now) {
+        this.status = MeetingStatus.CONFIRMED;
+        this.scheduledAt = slotStart;
+        this.updatedAt = now;
+    }
+
+    /**
+     * Marks a reprogramming request pending for this already-{@code CONFIRMED} meeting
+     * (US12.4.1, "cohérence window.updated/deleted") — never a silent cancellation.
+     *
+     * @param now timestamp of the request
+     */
+    public void requestReschedule(final Instant now) {
+        this.rescheduleRequestedAt = now;
         this.updatedAt = now;
     }
 
@@ -287,6 +427,61 @@ public class Meeting {
      */
     public List<AgendaItem> getAgendaItems() {
         return agendaItems;
+    }
+
+    /**
+     * Returns the start of the roadmap-supplied booking window.
+     *
+     * @return the booking window start, or {@code null} for a US12.1.1 manually-created meeting
+     */
+    public Instant getBookingWindowStart() {
+        return bookingWindowStart;
+    }
+
+    /**
+     * Returns the end of the roadmap-supplied booking window.
+     *
+     * @return the booking window end, or {@code null} for a US12.1.1 manually-created meeting
+     */
+    public Instant getBookingWindowEnd() {
+        return bookingWindowEnd;
+    }
+
+    /**
+     * Returns the upstream roadmap event correlation identifier.
+     *
+     * @return the event ref, or {@code null} for a US12.1.1 manually-created meeting
+     */
+    public String getEventRef() {
+        return eventRef;
+    }
+
+    /**
+     * Returns the upstream roadmap project correlation identifier.
+     *
+     * @return the project ref, or {@code null}
+     */
+    public String getProjectRef() {
+        return projectRef;
+    }
+
+    /**
+     * Returns whether a reprogramming request is currently pending organizer attention.
+     *
+     * @return {@code true} if {@code window.updated}/{@code window.deleted} was received while
+     *     this meeting was already {@code CONFIRMED}
+     */
+    public boolean isRescheduleRequested() {
+        return rescheduleRequestedAt != null;
+    }
+
+    /**
+     * Returns when the pending reprogramming request was raised.
+     *
+     * @return the timestamp, or {@code null} if none is pending
+     */
+    public Instant getRescheduleRequestedAt() {
+        return rescheduleRequestedAt;
     }
 
     /**

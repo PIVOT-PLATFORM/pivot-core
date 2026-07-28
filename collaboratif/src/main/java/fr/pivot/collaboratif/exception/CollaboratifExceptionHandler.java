@@ -581,4 +581,19 @@ public class CollaboratifExceptionHandler {
         problem.setProperties(Map.of("code", "UNSUPPORTED_EXPORT_FORMAT"));
         return problem;
     }
+
+    /**
+     * Returns HTTP 422 when a confirm/adjust request targets a {@code slotId} absent from the
+     * meeting's own {@code proposed_slots} (US12.4.1).
+     *
+     * @param ex the thrown exception
+     * @return a 422 problem detail
+     */
+    @ExceptionHandler(MeetingSlotInvalidException.class)
+    public ProblemDetail handleMeetingSlotInvalid(final MeetingSlotInvalidException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
+        problem.setTitle("Invalid slot");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
 }

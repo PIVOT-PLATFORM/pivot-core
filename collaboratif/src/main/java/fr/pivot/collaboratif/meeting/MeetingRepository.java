@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -39,4 +40,26 @@ public interface MeetingRepository extends JpaRepository<Meeting, UUID> {
      */
     @Query("select m.id from Meeting m where m.status = :status")
     List<UUID> findIdsByStatus(@Param("status") MeetingStatus status);
+
+    /**
+     * Finds the meeting previously upserted for a given {@code (tenant_id, event_ref)} pair
+     * (US12.4.1 idempotence AC) — backed by the partial unique index {@code
+     * uq_meeting_event_ref}.
+     *
+     * @param tenantId the owning tenant
+     * @param eventRef the upstream roadmap event correlation id
+     * @return the matching meeting, if one was already created for this event
+     */
+    Optional<Meeting> findByTenantIdAndEventRef(Long tenantId, String eventRef);
+
+    /**
+     * Finds a meeting scoped to a tenant — used by every booking endpoint/consumer so a
+     * cross-tenant id never resolves (US12.4.1 tenant-isolation AC, anti-IDOR), and by {@code
+     * MeetingChannelInterceptor}'s organizer/participant STOMP authorization fallback.
+     *
+     * @param id       the meeting id
+     * @param tenantId the caller's tenant
+     * @return the matching meeting, if it belongs to that tenant
+     */
+    Optional<Meeting> findByIdAndTenantId(UUID id, Long tenantId);
 }
