@@ -17,6 +17,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -76,6 +77,32 @@ public class Meeting {
     /** Timestamp of the last update; refreshed automatically before every update. */
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /**
+     * {@code id} of the {@link AgendaItem} currently being animated ({@link
+     * AgendaItemStatus#CURRENT}), or {@code null} when the meeting has not started or has ended
+     * (US12.2.1). Not a JPA association on purpose — this column is written/read purely as a
+     * scalar id (mirrors {@code current_agenda_item_id}'s own shape in V18) so {@link
+     * #getCurrentAgendaItem()} can resolve it against the already-loaded {@link #agendaItems}
+     * collection without an extra query.
+     */
+    @Column(name = "current_agenda_item_id")
+    private UUID currentAgendaItemId;
+
+    /** Timestamp the meeting was started ({@code POST .../start}, AC-01), or {@code null}. */
+    @Column(name = "started_at")
+    private Instant startedAt;
+
+    /** Timestamp the meeting was concluded (AC-03 last item / AC-06 {@code end}), or {@code null}. */
+    @Column(name = "ended_at")
+    private Instant endedAt;
+
+    /**
+     * Whether the server auto-advances the agenda when the current item's allotted duration
+     * expires (AC-05) — {@code false} by default (manual-only progression, AC-03/AC-04).
+     */
+    @Column(name = "auto_advance", nullable = false)
+    private boolean autoAdvance;
 
     /**
      * Agenda items of this meeting, aggregate-owned — cascades all persistence operations,
@@ -260,5 +287,102 @@ public class Meeting {
      */
     public List<AgendaItem> getAgendaItems() {
         return agendaItems;
+    }
+
+    /**
+     * Returns the id of the {@link AgendaItem} currently being animated.
+     *
+     * @return the current agenda item's id, or {@code null} if none
+     */
+    public UUID getCurrentAgendaItemId() {
+        return currentAgendaItemId;
+    }
+
+    /**
+     * Resolves {@link #getCurrentAgendaItemId()} against the already-loaded {@link #agendaItems}.
+     *
+     * @return the current agenda item, or empty if the meeting has no current item
+     */
+    public Optional<AgendaItem> getCurrentAgendaItem() {
+        if (currentAgendaItemId == null) {
+            return Optional.empty();
+        }
+        return agendaItems.stream().filter(item -> currentAgendaItemId.equals(item.getId())).findFirst();
+    }
+
+    /**
+     * Returns the timestamp the meeting was started.
+     *
+     * @return the startedAt instant, or {@code null} if not yet started
+     */
+    public Instant getStartedAt() {
+        return startedAt;
+    }
+
+    /**
+     * Returns the timestamp the meeting was concluded.
+     *
+     * @return the endedAt instant, or {@code null} if not yet ended
+     */
+    public Instant getEndedAt() {
+        return endedAt;
+    }
+
+    /**
+     * Returns whether the server auto-advances the agenda on expiry (AC-05).
+     *
+     * @return {@code true} if auto-advance is enabled
+     */
+    public boolean isAutoAdvance() {
+        return autoAdvance;
+    }
+
+    /**
+     * Transitions the meeting to {@link MeetingStatus#IN_PROGRESS} and makes {@code item} the
+     * current one (AC-01) — the caller is responsible for having already validated the previous
+     * status and that {@code item} belongs to this meeting.
+     *
+     * @param item the agenda item to make current (normally the first, position {@code 0})
+     * @param now  server-authoritative timestamp, used for both the meeting's {@code startedAt}
+     *             and the item's {@code currentItemStartedAt}
+     */
+    public void start(final AgendaItem item, final Instant now) {
+        this.status = MeetingStatus.IN_PROGRESS;
+        this.startedAt = now;
+        this.currentAgendaItemId = item.getId();
+        item.markCurrent(now);
+    }
+
+    /**
+     * Marks {@code current} as {@link AgendaItemStatus#DONE} and {@code next} as the new
+     * {@link AgendaItemStatus#CURRENT} item (AC-03 manual, AC-05 auto-advance) — the caller is
+     * responsible for having already validated the meeting is {@link MeetingStatus#IN_PROGRESS}.
+     *
+     * @param current the item being left, marked {@code DONE}
+     * @param next    the item being entered, marked {@code CURRENT}
+     * @param now     server-authoritative timestamp
+     */
+    public void advanceTo(final AgendaItem current, final AgendaItem next, final Instant now) {
+        current.markDone(now);
+        next.markCurrent(now);
+        this.currentAgendaItemId = next.getId();
+    }
+
+    /**
+     * Transitions the meeting to {@link MeetingStatus#ENDED} (AC-03 last item, AC-06 manual
+     * {@code end}) — marks {@code current} {@code DONE} first when one exists (a meeting can be
+     * ended with no current item only defensively; every reachable {@code IN_PROGRESS} meeting
+     * has one by construction).
+     *
+     * @param current the current item, marked {@code DONE}, or {@code null} if none
+     * @param now     server-authoritative timestamp
+     */
+    public void end(final AgendaItem current, final Instant now) {
+        if (current != null) {
+            current.markDone(now);
+        }
+        this.status = MeetingStatus.ENDED;
+        this.endedAt = now;
+        this.currentAgendaItemId = null;
     }
 }
