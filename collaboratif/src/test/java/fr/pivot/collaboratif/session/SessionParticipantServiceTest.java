@@ -1,16 +1,20 @@
 package fr.pivot.collaboratif.session;
 
 import tools.jackson.databind.ObjectMapper;
+import fr.pivot.collaboratif.exception.RoomFullException;
 import fr.pivot.collaboratif.exception.SessionGuestExpiredException;
 import fr.pivot.collaboratif.exception.SessionNotFoundException;
+import fr.pivot.collaboratif.exception.SessionValidationException;
 import fr.pivot.collaboratif.session.dto.GuestHeartbeatRequest;
 import fr.pivot.collaboratif.session.dto.JoinSessionRequest;
 import fr.pivot.collaboratif.session.dto.JoinSessionResponse;
 import fr.pivot.collaboratif.session.dto.ParticipantSessionResponse;
+import fr.pivot.collaboratif.session.postitrush.PostitRushConstants;
 import fr.pivot.core.auth.AuthenticatedPrincipal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -94,6 +98,81 @@ class SessionParticipantServiceTest {
                 new JoinSessionRequest("ABCDEF", "Alice"),
                 Optional.of(new AuthenticatedPrincipal(99L, 2L, "ROLE_USER"))))
                 .isInstanceOf(SessionNotFoundException.class);
+    }
+
+    // --- US47.2.1 POSTIT_RUSH join extension (type-gated, no other session type affected) ------
+
+    private Session postitRushSession() {
+        return new Session(1L, null, "Rush", SessionType.POSTIT_RUSH, "ABCDEF", "{}", 10L, Instant.now());
+    }
+
+    @Test
+    void joinRejectsADisplayNameAlreadyUsedInAPostitRushRoom() {
+        Session session = postitRushSession();
+        when(sessionRepository.findFirstByJoinCodeAndStatusNot("ABCDEF", SessionStatus.COMPLETED))
+                .thenReturn(Optional.of(session));
+        when(participantRepository.existsBySessionIdAndDisplayNameIgnoreCase(session.getId(), "Alice"))
+                .thenReturn(true);
+
+        assertThatThrownBy(() -> service.join(new JoinSessionRequest("ABCDEF", "Alice"), Optional.empty()))
+                .isInstanceOf(SessionValidationException.class)
+                .satisfies(ex -> assertThat(((SessionValidationException) ex).getCode()).isEqualTo("INVALID_DISPLAY_NAME"));
+    }
+
+    @Test
+    void joinAllowsTheSameDisplayNameOnANonPostitRushSession() {
+        Session session = session(); // POLL, per the base fixture
+        when(sessionRepository.findFirstByJoinCodeAndStatusNot("ABCDEF", SessionStatus.COMPLETED))
+                .thenReturn(Optional.of(session));
+        when(participantRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.join(new JoinSessionRequest("ABCDEF", "Alice"), Optional.empty());
+
+        org.mockito.Mockito.verify(participantRepository, org.mockito.Mockito.never())
+                .existsBySessionIdAndDisplayNameIgnoreCase(any(), anyString());
+    }
+
+    @Test
+    void joinAdmitsAPlayerBelowHardCap() {
+        Session session = postitRushSession();
+        when(sessionRepository.findFirstByJoinCodeAndStatusNot("ABCDEF", SessionStatus.COMPLETED))
+                .thenReturn(Optional.of(session));
+        when(participantRepository.countBySessionId(session.getId())).thenReturn(5L);
+        when(participantRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.join(new JoinSessionRequest("ABCDEF", "Alice"), Optional.empty());
+
+        ArgumentCaptor<Participant> captor = ArgumentCaptor.forClass(Participant.class);
+        org.mockito.Mockito.verify(participantRepository).save(captor.capture());
+        assertThat(captor.getValue().getRole()).isEqualTo(ParticipantRole.PLAYER);
+    }
+
+    @Test
+    void joinAtHardCapWithoutAcceptingSpectatorFallbackIsRejected() {
+        Session session = postitRushSession();
+        when(sessionRepository.findFirstByJoinCodeAndStatusNot("ABCDEF", SessionStatus.COMPLETED))
+                .thenReturn(Optional.of(session));
+        when(participantRepository.countBySessionId(session.getId()))
+                .thenReturn((long) PostitRushConstants.HARD_CAP);
+
+        assertThatThrownBy(() -> service.join(new JoinSessionRequest("ABCDEF", "Zoe", null), Optional.empty()))
+                .isInstanceOf(RoomFullException.class);
+    }
+
+    @Test
+    void joinAtHardCapWithSpectatorFallbackAcceptedAdmitsAsSpectator() {
+        Session session = postitRushSession();
+        when(sessionRepository.findFirstByJoinCodeAndStatusNot("ABCDEF", SessionStatus.COMPLETED))
+                .thenReturn(Optional.of(session));
+        when(participantRepository.countBySessionId(session.getId()))
+                .thenReturn((long) PostitRushConstants.HARD_CAP);
+        when(participantRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.join(new JoinSessionRequest("ABCDEF", "Zoe", true), Optional.empty());
+
+        ArgumentCaptor<Participant> captor = ArgumentCaptor.forClass(Participant.class);
+        org.mockito.Mockito.verify(participantRepository).save(captor.capture());
+        assertThat(captor.getValue().getRole()).isEqualTo(ParticipantRole.SPECTATOR);
     }
 
     @Test

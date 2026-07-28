@@ -2,6 +2,8 @@ package fr.pivot.collaboratif.session;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -59,12 +61,21 @@ public class Participant {
     @Column(name = "last_heartbeat_at")
     private Instant lastHeartbeatAt;
 
+    /**
+     * This participant's role (US47.2.1) — {@code PLAYER} for every session created before this
+     * field existed and for every non-{@code POSTIT_RUSH} session type; {@code SPECTATOR} only for
+     * a {@code POSTIT_RUSH} joiner admitted past the room's hard capacity.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false, length = 20)
+    private ParticipantRole role = ParticipantRole.PLAYER;
+
     /** No-arg constructor required by JPA. */
     protected Participant() {
     }
 
     /**
-     * Full constructor for creating a new participant.
+     * Full constructor for creating a new {@code PLAYER} participant.
      *
      * @param sessionId   the owning session's UUID
      * @param userId      the authenticated user's id, or {@code null} for a guest
@@ -86,6 +97,28 @@ public class Participant {
         if (guestToken != null) {
             this.lastHeartbeatAt = now;
         }
+    }
+
+    /**
+     * Full constructor for creating a participant with an explicit role (US47.2.1
+     * {@code POSTIT_RUSH} hard-capacity spectator fallback).
+     *
+     * @param sessionId   the owning session's UUID
+     * @param userId      the authenticated user's id, or {@code null} for a guest
+     * @param guestToken  the sealed guest token, or {@code null} for an authenticated participant
+     * @param displayName display name for this session (1-40 chars)
+     * @param now         timestamp used for {@code joinedAt} (and {@code lastHeartbeatAt} for guests)
+     * @param role        the participant's role; {@code null} treated as {@link ParticipantRole#PLAYER}
+     */
+    public Participant(
+            final UUID sessionId,
+            final Long userId,
+            final String guestToken,
+            final String displayName,
+            final Instant now,
+            final ParticipantRole role) {
+        this(sessionId, userId, guestToken, displayName, now);
+        this.role = role == null ? ParticipantRole.PLAYER : role;
     }
 
     /**
@@ -177,5 +210,14 @@ public class Participant {
      */
     public void refreshHeartbeat(final Instant now) {
         this.lastHeartbeatAt = now;
+    }
+
+    /**
+     * Returns this participant's role.
+     *
+     * @return the role, never {@code null}
+     */
+    public ParticipantRole getRole() {
+        return role;
     }
 }
