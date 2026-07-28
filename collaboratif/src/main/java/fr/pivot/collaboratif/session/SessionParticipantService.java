@@ -2,16 +2,13 @@ package fr.pivot.collaboratif.session;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import fr.pivot.collaboratif.exception.RoomFullException;
 import fr.pivot.collaboratif.exception.SessionGuestExpiredException;
 import fr.pivot.collaboratif.exception.SessionNotFoundException;
-import fr.pivot.collaboratif.exception.SessionValidationException;
 import fr.pivot.collaboratif.session.dto.GuestHeartbeatRequest;
 import fr.pivot.collaboratif.session.dto.JoinSessionRequest;
 import fr.pivot.collaboratif.session.dto.JoinSessionResponse;
 import fr.pivot.collaboratif.session.dto.ParticipantJoinedEvent;
 import fr.pivot.collaboratif.session.dto.ParticipantSessionResponse;
-import fr.pivot.collaboratif.session.postitrush.PostitRushConstants;
 import fr.pivot.collaboratif.session.ws.SessionDestinations;
 import fr.pivot.core.auth.AuthenticatedPrincipal;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -73,21 +70,11 @@ public class SessionParticipantService {
      * anonymous {@code ROLE_GUEST} otherwise. An unknown or already-completed session's code is
      * treated identically (404, anti-enumeration).
      *
-     * <p><strong>US47.2.1 {@code POSTIT_RUSH} extension</strong> (type-gated — no other session
-     * type is affected): rejects a display name already used by a current participant of the room
-     * ({@code 400 INVALID_DISPLAY_NAME}); at the room's hard capacity, admits the caller as
-     * {@link ParticipantRole#SPECTATOR} only if {@code request.spectator()} is explicitly
-     * {@code true}, otherwise throws {@link RoomFullException} (409, spectator fallback offered)
-     * — never a silent downgrade, never a brutal block.
-     *
      * @param request   the join request (code, display name)
      * @param principal the caller's resolved identity, or empty for an anonymous caller
      * @return the created participant's id, guest token (anonymous only), and WS topic
      * @throws SessionNotFoundException if the code does not resolve to a joinable session, or an
      *                                   authenticated caller's tenant does not own the session
-     * @throws SessionValidationException if a {@code POSTIT_RUSH} display name is already in use
-     * @throws RoomFullException          if a {@code POSTIT_RUSH} room is at hard capacity and the
-     *                                     caller did not accept the spectator fallback
      */
     @Transactional
     public JoinSessionResponse join(final JoinSessionRequest request, final Optional<AuthenticatedPrincipal> principal) {
@@ -101,23 +88,8 @@ public class SessionParticipantService {
         Instant now = Instant.now();
         Long userId = principal.map(AuthenticatedPrincipal::userId).orElse(null);
         String guestToken = principal.isPresent() ? null : generateGuestToken();
-
-        ParticipantRole role = ParticipantRole.PLAYER;
-        if (session.getType() == SessionType.POSTIT_RUSH) {
-            if (participantRepository.existsBySessionIdAndDisplayNameIgnoreCase(session.getId(), request.displayName())) {
-                throw new SessionValidationException("INVALID_DISPLAY_NAME", "Display name already in use in this room");
-            }
-            long currentCount = participantRepository.countBySessionId(session.getId());
-            if (currentCount >= PostitRushConstants.HARD_CAP) {
-                if (!Boolean.TRUE.equals(request.spectator())) {
-                    throw new RoomFullException();
-                }
-                role = ParticipantRole.SPECTATOR;
-            }
-        }
-
         Participant participant = participantRepository.save(
-                new Participant(session.getId(), userId, guestToken, request.displayName(), now, role));
+                new Participant(session.getId(), userId, guestToken, request.displayName(), now));
 
         messagingTemplate.convertAndSend(
                 SessionDestinations.topicFor(session.getId()),

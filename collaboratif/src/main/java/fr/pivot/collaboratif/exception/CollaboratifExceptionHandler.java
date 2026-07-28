@@ -449,36 +449,4 @@ public class CollaboratifExceptionHandler {
         problem.setProperties(Map.of("code", ex.getCode()));
         return problem;
     }
-
-    /**
-     * Returns HTTP 404 when a {@code postitId} does not resolve to a spawn of the active
-     * POST-IT RUSH round (US47.2.1) — unknown id or cross-room id, indistinguishable.
-     *
-     * @param ex the thrown exception
-     * @return a 404 problem detail
-     */
-    @ExceptionHandler(PostitNotFoundException.class)
-    public ProblemDetail handlePostitNotFound(final PostitNotFoundException ex) {
-        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
-        problem.setTitle("Post-it not found");
-        problem.setDetail(ex.getMessage());
-        return problem;
-    }
-
-    /**
-     * Returns HTTP 409 with code {@code ROOM_FULL} and {@code spectatorFallback: true} when a
-     * POST-IT RUSH room is at hard capacity (US47.2.1) — the client may retry the join with
-     * {@code spectator: true} rather than hitting a brutal block.
-     *
-     * @param ex the thrown exception
-     * @return a 409 problem detail offering the spectator fallback
-     */
-    @ExceptionHandler(RoomFullException.class)
-    public ProblemDetail handleRoomFull(final RoomFullException ex) {
-        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
-        problem.setTitle("Room full");
-        problem.setDetail(ex.getMessage());
-        problem.setProperties(Map.of("code", "ROOM_FULL", "spectatorFallback", true));
-        return problem;
-    }
 }
