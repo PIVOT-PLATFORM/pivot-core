@@ -307,6 +307,13 @@
             <Package name="fr.pivot.collaboratif.meeting"/>
             <Package name="fr.pivot.collaboratif.meeting.dto"/>
             <Package name="fr.pivot.collaboratif.meeting.ws"/>
+            <!-- US12.3.1 — MeetingReportService stores constructor-injected singleton beans
+                 (repositories, MeetingMarkdownRenderer, SimpMessagingTemplate, ObjectMapper,
+                 Clock) — container-managed, not externally-mutable state, same rationale as the
+                 parent fr.pivot.collaboratif.meeting package above. MeetingReportDto's own
+                 List fields are already defensively copied in its compact constructor and
+                 accessors (see the class) rather than excluded here. -->
+            <Package name="fr.pivot.collaboratif.meeting.report"/>
         </Or>
     </Match>
 

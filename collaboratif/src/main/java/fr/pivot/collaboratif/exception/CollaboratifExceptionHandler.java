@@ -564,4 +564,21 @@ public class CollaboratifExceptionHandler {
         problem.setProperties(Map.of("code", "MEETING_HAS_NO_AGENDA"));
         return problem;
     }
+
+    /**
+     * Returns HTTP 400 with code {@code UNSUPPORTED_EXPORT_FORMAT} when {@code GET
+     * .../report/export} is called with a {@code format} other than {@code json}/{@code
+     * markdown} (US12.3.1 AC error case) — no report body is returned.
+     *
+     * @param ex the thrown exception
+     * @return a 400 problem detail carrying the code
+     */
+    @ExceptionHandler(MeetingReportUnsupportedFormatException.class)
+    public ProblemDetail handleMeetingReportUnsupportedFormat(final MeetingReportUnsupportedFormatException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Unsupported export format");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "UNSUPPORTED_EXPORT_FORMAT"));
+        return problem;
+    }
 }

@@ -11,6 +11,7 @@ import fr.pivot.collaboratif.meeting.dto.MeetingEndedEvent;
 import fr.pivot.collaboratif.meeting.dto.MeetingLiveStateDto;
 import fr.pivot.collaboratif.meeting.dto.MeetingStartedEvent;
 import fr.pivot.collaboratif.meeting.dto.TimerTickEvent;
+import fr.pivot.collaboratif.meeting.report.MeetingReportService;
 import fr.pivot.collaboratif.meeting.ws.MeetingDestinations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,6 +58,8 @@ class MeetingAnimationServiceTest {
     @Mock
     private MeetingAccessService accessService;
     @Mock
+    private MeetingReportService reportService;
+    @Mock
     private SimpMessagingTemplate messagingTemplate;
 
     private MeetingAnimationService service;
@@ -65,7 +68,7 @@ class MeetingAnimationServiceTest {
     void setUp() {
         Clock fixedClock = Clock.fixed(NOW, ZoneOffset.UTC);
         service = new MeetingAnimationService(
-                meetingRepository, actionRepository, accessService, messagingTemplate, fixedClock);
+                meetingRepository, actionRepository, accessService, reportService, messagingTemplate, fixedClock);
     }
 
     private CollaboratifRequestPrincipal principal() {
@@ -201,6 +204,10 @@ class MeetingAnimationServiceTest {
         ArgumentCaptor<MeetingEndedEvent> captor = ArgumentCaptor.forClass(MeetingEndedEvent.class);
         verify(messagingTemplate).convertAndSend(eq(MeetingDestinations.topicFor(meeting.getId())), captor.capture());
         assertThat(captor.getValue().meetingId()).isEqualTo(meeting.getId());
+
+        // US12.3.1: advancing past the last item is one of the two closure paths that must
+        // freeze the compte-rendu snapshot.
+        verify(reportService).freezeOnClose(meeting, principal());
     }
 
     @Test
@@ -212,6 +219,20 @@ class MeetingAnimationServiceTest {
                 .isInstanceOf(MeetingConflictException.class)
                 .extracting(ex -> ((MeetingConflictException) ex).getCode())
                 .isEqualTo("MEETING_NOT_IN_PROGRESS");
+        verify(reportService, never()).freezeOnClose(any(), any());
+    }
+
+    @Test
+    void next_ac03_whenNotLastItem_neverFreezesReport() {
+        Meeting meeting = meetingWithAgenda(MeetingStatus.IN_PROGRESS, 2);
+        AgendaItem first = meeting.getAgendaItems().get(0);
+        first.markCurrent(NOW.minusSeconds(60));
+        ReflectionTestUtils.setField(meeting, "currentAgendaItemId", first.getId());
+        when(accessService.resolveMeetingForOwnerOrAdmin(meeting.getId(), principal())).thenReturn(meeting);
+
+        service.next(meeting.getId(), principal());
+
+        verify(reportService, never()).freezeOnClose(any(), any());
     }
 
     // -------------------------------------------------------------------------
@@ -234,6 +255,10 @@ class MeetingAnimationServiceTest {
         assertThat(meeting.getCurrentAgendaItemId()).isNull();
         verify(messagingTemplate).convertAndSend(
                 eq(MeetingDestinations.topicFor(meeting.getId())), any(MeetingEndedEvent.class));
+
+        // US12.3.1: explicit end() is the other of the two closure paths that must freeze the
+        // compte-rendu snapshot — invoked only after the ENDED transition is already persisted.
+        verify(reportService).freezeOnClose(meeting, principal());
     }
 
     @Test
@@ -245,6 +270,7 @@ class MeetingAnimationServiceTest {
                 .isInstanceOf(MeetingConflictException.class)
                 .extracting(ex -> ((MeetingConflictException) ex).getCode())
                 .isEqualTo("MEETING_NOT_IN_PROGRESS");
+        verify(reportService, never()).freezeOnClose(any(), any());
     }
 
     // -------------------------------------------------------------------------

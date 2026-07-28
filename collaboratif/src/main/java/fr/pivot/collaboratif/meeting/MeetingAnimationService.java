@@ -11,6 +11,7 @@ import fr.pivot.collaboratif.meeting.dto.MeetingEndedEvent;
 import fr.pivot.collaboratif.meeting.dto.MeetingLiveStateDto;
 import fr.pivot.collaboratif.meeting.dto.MeetingStartedEvent;
 import fr.pivot.collaboratif.meeting.dto.TimerTickEvent;
+import fr.pivot.collaboratif.meeting.report.MeetingReportService;
 import fr.pivot.collaboratif.meeting.ws.MeetingDestinations;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -42,6 +43,7 @@ public class MeetingAnimationService {
     private final MeetingRepository meetingRepository;
     private final MeetingActionRepository actionRepository;
     private final MeetingAccessService accessService;
+    private final MeetingReportService reportService;
     private final SimpMessagingTemplate messagingTemplate;
     private final Clock clock;
 
@@ -51,6 +53,7 @@ public class MeetingAnimationService {
      * @param meetingRepository repository for meeting (and cascaded agenda item) persistence
      * @param actionRepository  repository for captured in-meeting actions
      * @param accessService     resolves meetings with tenant/authorization enforcement
+     * @param reportService     freezes the compte-rendu snapshot on closure (US12.3.1)
      * @param messagingTemplate STOMP broadcaster
      * @param clock             the shared {@code meetOpsClock}, overridable in tests
      */
@@ -58,11 +61,13 @@ public class MeetingAnimationService {
             final MeetingRepository meetingRepository,
             final MeetingActionRepository actionRepository,
             final MeetingAccessService accessService,
+            final MeetingReportService reportService,
             final SimpMessagingTemplate messagingTemplate,
             @Qualifier("meetOpsClock") final Clock clock) {
         this.meetingRepository = meetingRepository;
         this.actionRepository = actionRepository;
         this.accessService = accessService;
+        this.reportService = reportService;
         this.messagingTemplate = messagingTemplate;
         this.clock = clock;
     }
@@ -127,6 +132,10 @@ public class MeetingAnimationService {
             meetingRepository.save(meeting);
             messagingTemplate.convertAndSend(
                     MeetingDestinations.topicFor(meetingId), new MeetingEndedEvent(meetingId, now));
+            // US12.3.1: freeze the compte-rendu snapshot — this branch is one of the two places a
+            // meeting transitions to ENDED (see #end below, and MeetingReportService's own
+            // Javadoc for why no separate /close route exists).
+            reportService.freezeOnClose(meeting, principal);
         }
         return liveState(meeting, now);
     }
@@ -149,6 +158,9 @@ public class MeetingAnimationService {
         meeting.end(current, now);
         meetingRepository.save(meeting);
         messagingTemplate.convertAndSend(MeetingDestinations.topicFor(meetingId), new MeetingEndedEvent(meetingId, now));
+        // US12.3.1: freeze the compte-rendu snapshot — the other of the two places a meeting
+        // transitions to ENDED (see the last-item branch of #next above).
+        reportService.freezeOnClose(meeting, principal);
         return liveState(meeting, now);
     }
 
