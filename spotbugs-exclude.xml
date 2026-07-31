@@ -241,6 +241,17 @@
             <Package name="fr.pivot.collaboratif.context"/>
             <Package name="fr.pivot.collaboratif.config"/>
             <Package name="fr.pivot.collaboratif.exception"/>
+            <!-- US47.1.1 — Bingo des réunions à plusieurs : BingoMarkService/BingoRoomService
+                 store constructor-injected singleton beans (repositories, SimpMessagingTemplate);
+                 BingoPresenceRegistryService/BingoRoomAccessGrantService store a constructor-
+                 injected StringRedisTemplate; BingoWsController stores BingoMarkService/
+                 SimpMessagingTemplate (same rationale as the whiteboard.ws/vote/quiz packages
+                 above); GridDto is a DTO record that exposes a mutable List for JSON transport
+                 (same rationale as the canvas.dto/vote.dto packages above). -->
+            <Package name="fr.pivot.collaboratif.bingo"/>
+            <Package name="fr.pivot.collaboratif.bingo.dto"/>
+            <Package name="fr.pivot.collaboratif.bingo.exception"/>
+            <Package name="fr.pivot.collaboratif.bingo.ws"/>
         </Or>
     </Match>
 
