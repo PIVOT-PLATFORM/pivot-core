@@ -294,4 +294,62 @@
         </Or>
     </Match>
 
+    <!--
+        E12 Module MeetOps (Sprint 23, US12.1.1) — same centralized-exclusion rationale as the
+        collaboratif blocks above: Meeting/AgendaItem are JPA entities (mutable getters/setters
+        required by Hibernate; Meeting#getAgendaItems() exposes the live, mutable, aggregate-owned
+        collection by design, same pattern as fr.pivot.agilite.wheel.Wheel#getEntries());
+        MeetingService/MeetingController/DefaultMeetOpsModuleCheck store constructor-injected
+        singleton beans (repository, module check); DTO records (CreateMeetingRequest,
+        AgendaItemRequest, MeetingResponse, AgendaItemResponse) expose mutable List for JSON
+        transport (same rationale as the whiteboard/session dto packages above).
+
+        US12.2.1 (animation) extends this: MeetingAnimationService/MeetingAnimationController/
+        MeetingAccessService/MeetingTimerScheduler store constructor-injected singleton beans
+        (repositories, SimpMessagingTemplate, the qualified meetOpsClock); MeetingAction is a JPA
+        entity (same Hibernate rationale); MeetingLiveStateDto/AgendaItemStateDto expose mutable
+        List for JSON transport. fr.pivot.collaboratif.meeting.ws mirrors
+        fr.pivot.collaboratif.session.ws exactly: MeetingChannelInterceptor/
+        MeetingMembershipCacheService store constructor-injected StringRedisTemplate/repositories.
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Or>
+            <Package name="fr.pivot.collaboratif.meeting"/>
+            <Package name="fr.pivot.collaboratif.meeting.dto"/>
+            <Package name="fr.pivot.collaboratif.meeting.ws"/>
+            <!-- US12.3.1 — MeetingReportService stores constructor-injected singleton beans
+                 (repositories, MeetingMarkdownRenderer, SimpMessagingTemplate, ObjectMapper,
+                 Clock) — container-managed, not externally-mutable state, same rationale as the
+                 parent fr.pivot.collaboratif.meeting package above. MeetingReportDto's own
+                 List fields are already defensively copied in its compact constructor and
+                 accessors (see the class) rather than excluded here. -->
+            <Package name="fr.pivot.collaboratif.meeting.report"/>
+        </Or>
+    </Match>
+
+    <!--
+        E12 Module MeetOps — booking flow (Sprint 23, US12.4.1) — same centralized-exclusion
+        rationale as the fr.pivot.collaboratif.meeting block above: ProposedSlot/MeetingParticipant
+        are JPA entities (mutable getters/setters required by Hibernate; #getMeeting() exposes the
+        owning entity by design, same pattern as AgendaItem#getMeeting()/WheelEntry#getWheel());
+        BookingService/BookingController/MeetingRealtimePublisher/MeetingInvitationSender/
+        WindowEventListener store constructor-injected singleton beans (repositories,
+        BestSlotEngine, SimpMessagingTemplate, ApplicationEventPublisher); DTO/event records
+        (MeetingBookingResponse, WindowCreatedEvent, WindowUpdatedEvent,
+        MeetingInvitationsSentEvent, ...) expose mutable List for JSON transport / in-process event
+        payload (same rationale as the meeting.dto/session.*.dto packages above).
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Or>
+            <Package name="fr.pivot.collaboratif.meetops.booking"/>
+            <Package name="fr.pivot.collaboratif.meetops.booking.dto"/>
+            <Package name="fr.pivot.collaboratif.meetops.booking.ws"/>
+            <Package name="fr.pivot.collaboratif.meetops.bus"/>
+            <Package name="fr.pivot.collaboratif.meetops.bestslot"/>
+            <Package name="fr.pivot.collaboratif.meetops.availability"/>
+        </Or>
+    </Match>
+
 </FindBugsFilter>

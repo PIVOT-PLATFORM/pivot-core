@@ -1,6 +1,7 @@
 package fr.pivot.collaboratif.config;
 
 import fr.pivot.collaboratif.bingo.ws.BingoChannelInterceptor;
+import fr.pivot.collaboratif.meeting.ws.MeetingChannelInterceptor;
 import fr.pivot.collaboratif.session.ws.SessionChannelInterceptor;
 import fr.pivot.collaboratif.web.CollaboratifApiPaths;
 import fr.pivot.collaboratif.whiteboard.ws.SessionTrackingHandlerDecoratorFactory;
@@ -191,6 +192,7 @@ public class CollaboratifWebSocketConfig implements WebSocketMessageBrokerConfig
     private final WhiteboardChannelInterceptor whiteboardChannelInterceptor;
     private final SessionChannelInterceptor sessionChannelInterceptor;
     private final BingoChannelInterceptor bingoChannelInterceptor;
+    private final MeetingChannelInterceptor meetingChannelInterceptor;
     private final SessionTrackingHandlerDecoratorFactory sessionTrackingHandlerDecoratorFactory;
     private final String allowedOrigins;
     private final boolean activemqRelayEnabled;
@@ -212,6 +214,9 @@ public class CollaboratifWebSocketConfig implements WebSocketMessageBrokerConfig
      *                                                EN19.2)
      * @param bingoChannelInterceptor                 the STOMP frame interceptor for Bingo room
      *                                                access-grant authorization (US47.1.1, SEC-01)
+     * @param meetingChannelInterceptor               the STOMP frame interceptor for MeetOps
+     *                                                meeting animation SUBSCRIBE authorization
+     *                                                (US12.2.1 AC-S3)
      * @param sessionTrackingHandlerDecoratorFactory decorator factory that feeds
      *                                                {@code WhiteboardSessionRegistry}, used by
      *                                                {@code whiteboardChannelInterceptor} to
@@ -244,6 +249,7 @@ public class CollaboratifWebSocketConfig implements WebSocketMessageBrokerConfig
             final WhiteboardChannelInterceptor whiteboardChannelInterceptor,
             final SessionChannelInterceptor sessionChannelInterceptor,
             final BingoChannelInterceptor bingoChannelInterceptor,
+            final MeetingChannelInterceptor meetingChannelInterceptor,
             final SessionTrackingHandlerDecoratorFactory sessionTrackingHandlerDecoratorFactory,
             @Value("${pivot.cors.allowed-origins:*}") final String allowedOrigins,
             @Value("${pivot.activemq.relay-enabled:true}") final boolean activemqRelayEnabled,
@@ -254,6 +260,7 @@ public class CollaboratifWebSocketConfig implements WebSocketMessageBrokerConfig
         this.whiteboardChannelInterceptor = whiteboardChannelInterceptor;
         this.sessionChannelInterceptor = sessionChannelInterceptor;
         this.bingoChannelInterceptor = bingoChannelInterceptor;
+        this.meetingChannelInterceptor = meetingChannelInterceptor;
         this.sessionTrackingHandlerDecoratorFactory = sessionTrackingHandlerDecoratorFactory;
         this.allowedOrigins = allowedOrigins;
         this.activemqRelayEnabled = activemqRelayEnabled;
@@ -312,7 +319,8 @@ public class CollaboratifWebSocketConfig implements WebSocketMessageBrokerConfig
         heartbeatScheduler.initialize();
 
         config.enableSimpleBroker(
-                        "/topic/whiteboard", "/topic/collaboratif/session", "/topic/collaboratif/bingo", "/queue")
+                        "/topic/whiteboard", "/topic/collaboratif/session", "/topic/collaboratif/bingo",
+                        "/topic/collaboratif/meeting", "/queue")
                 .setHeartbeatValue(new long[]{25000L, 30000L})
                 .setTaskScheduler(heartbeatScheduler);
 
@@ -378,12 +386,14 @@ public class CollaboratifWebSocketConfig implements WebSocketMessageBrokerConfig
 
     /**
      * Registers {@link StompAuthenticationChannelInterceptor}, {@link
-     * WhiteboardChannelInterceptor} and {@link SessionChannelInterceptor} on the client inbound
+     * WhiteboardChannelInterceptor}, {@link SessionChannelInterceptor}, {@link
+     * BingoChannelInterceptor} and {@link MeetingChannelInterceptor} on the client inbound
      * channel, in that order — {@code ChannelInterceptor}s run in registration order, and
      * authentication (CONNECT) must establish the session's principal before authorization
-     * (SUBSCRIBE/SEND) can rely on it. The two authorization interceptors are disjoint by
-     * destination prefix ({@code /topic/whiteboard/*} vs {@code /topic/collaboratif/session/*}),
-     * so each simply passes through frames it does not own.
+     * (SUBSCRIBE/SEND) can rely on it. The four authorization interceptors are disjoint by
+     * destination prefix ({@code /topic/whiteboard/*} vs {@code /topic/collaboratif/session/*} vs
+     * {@code /topic/collaboratif/bingo/*} vs {@code /topic/collaboratif/meeting/*}), so each
+     * simply passes through frames it does not own.
      *
      * @param registration the inbound channel registration
      */
@@ -391,7 +401,7 @@ public class CollaboratifWebSocketConfig implements WebSocketMessageBrokerConfig
     public void configureClientInboundChannel(final ChannelRegistration registration) {
         registration.interceptors(
                 stompAuthenticationChannelInterceptor, whiteboardChannelInterceptor, sessionChannelInterceptor,
-                bingoChannelInterceptor);
+                bingoChannelInterceptor, meetingChannelInterceptor);
     }
 
     /**

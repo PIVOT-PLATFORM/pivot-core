@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -296,6 +297,25 @@ public class CollaboratifExceptionHandler {
     }
 
     /**
+     * Returns HTTP 400 with code {@code INVALID_REQUEST_BODY} when the request body cannot even
+     * be parsed — malformed JSON, or a value that does not match its target type (e.g. a
+     * non-ISO-8601 {@code scheduledAt} string on {@code CreateMeetingRequest}, US12.1.1 AC6).
+     * This fires <strong>before</strong> Bean Validation runs (Jackson binding fails first), so
+     * it cannot report a specific field — {@link #handleValidation} covers every other
+     * field-level validation failure once binding has actually succeeded.
+     *
+     * @param ex the message-not-readable exception
+     * @return a 400 problem detail carrying the code
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail handleMessageNotReadable(final HttpMessageNotReadableException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Malformed request body");
+        problem.setProperties(Map.of("code", "INVALID_REQUEST_BODY"));
+        return problem;
+    }
+
+    /**
      * Returns HTTP 400 for parameter constraint violations (e.g. {@code @Min} / {@code @Max}
      * on request parameters).
      *
@@ -499,6 +519,133 @@ public class CollaboratifExceptionHandler {
         problem.setTitle("Forbidden");
         problem.setDetail(ex.getMessage());
         problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 403 when the MeetOps module is disabled for the caller's tenant (US12.1.1
+     * AC8).
+     *
+     * @param ex the thrown exception
+     * @return a 403 problem detail
+     */
+    @ExceptionHandler(MeetOpsModuleDisabledException.class)
+    public ProblemDetail handleMeetOpsModuleDisabled(final MeetOpsModuleDisabledException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Module disabled");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 404 when a meeting creation request's {@code teamId} does not resolve to a
+     * team of the caller's tenant (US12.1.1 AC7, anti-enumeration).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(MeetingTeamNotFoundException.class)
+    public ProblemDetail handleMeetingTeamNotFound(final MeetingTeamNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Team not found");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 404 when a meeting id does not resolve to a meeting accessible to the caller
+     * (US12.2.1 AC-S1 — never 403, anti-enumeration).
+     *
+     * @param ex the thrown exception
+     * @return a 404 problem detail
+     */
+    @ExceptionHandler(MeetingNotFoundException.class)
+    public ProblemDetail handleMeetingNotFound(final MeetingNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
+        problem.setTitle("Meeting not found");
+        problem.setDetail(ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 403 with a machine-readable {@code code} property when an animation action is
+     * attempted by a caller who is neither the meeting's owner nor {@code ROLE_ADMIN} (US12.2.1
+     * AC-S2).
+     *
+     * @param ex the thrown exception
+     * @return a 403 problem detail carrying the code
+     */
+    @ExceptionHandler(MeetingForbiddenException.class)
+    public ProblemDetail handleMeetingForbidden(final MeetingForbiddenException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        problem.setTitle("Forbidden");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 with a machine-readable {@code code} property for a meeting-domain
+     * lifecycle conflict (US12.2.1 AC-E1/AC-E2).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail carrying the code
+     */
+    @ExceptionHandler(MeetingConflictException.class)
+    public ProblemDetail handleMeetingConflict(final MeetingConflictException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Conflict");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", ex.getCode()));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 409 with a machine-readable {@code code} property when {@code start} is
+     * attempted on a meeting with no agenda items (US12.2.1 AC-E3, finalized code {@code
+     * MEETING_HAS_NO_AGENDA}).
+     *
+     * @param ex the thrown exception
+     * @return a 409 problem detail carrying the code
+     */
+    @ExceptionHandler(MeetingEmptyAgendaException.class)
+    public ProblemDetail handleMeetingEmptyAgenda(final MeetingEmptyAgendaException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.CONFLICT);
+        problem.setTitle("Nothing to animate");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "MEETING_HAS_NO_AGENDA"));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 400 with code {@code UNSUPPORTED_EXPORT_FORMAT} when {@code GET
+     * .../report/export} is called with a {@code format} other than {@code json}/{@code
+     * markdown} (US12.3.1 AC error case) — no report body is returned.
+     *
+     * @param ex the thrown exception
+     * @return a 400 problem detail carrying the code
+     */
+    @ExceptionHandler(MeetingReportUnsupportedFormatException.class)
+    public ProblemDetail handleMeetingReportUnsupportedFormat(final MeetingReportUnsupportedFormatException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+        problem.setTitle("Unsupported export format");
+        problem.setDetail(ex.getMessage());
+        problem.setProperties(Map.of("code", "UNSUPPORTED_EXPORT_FORMAT"));
+        return problem;
+    }
+
+    /**
+     * Returns HTTP 422 when a confirm/adjust request targets a {@code slotId} absent from the
+     * meeting's own {@code proposed_slots} (US12.4.1).
+     *
+     * @param ex the thrown exception
+     * @return a 422 problem detail
+     */
+    @ExceptionHandler(MeetingSlotInvalidException.class)
+    public ProblemDetail handleMeetingSlotInvalid(final MeetingSlotInvalidException ex) {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNPROCESSABLE_ENTITY);
+        problem.setTitle("Invalid slot");
+        problem.setDetail(ex.getMessage());
         return problem;
     }
 }
