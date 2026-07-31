@@ -145,7 +145,14 @@ class BingoWsIT extends AbstractCollaboratifIntegrationTest {
         RoomFixture room = createRoom();
         StompSession session = connectAs(room.creator());
         CompletableFuture<String> bingoFuture = new CompletableFuture<>();
-        session.subscribe(room.wsTopic(), new StompFrameHandler() {
+        // Subscribe headers must carry the access-token (BingoChannelInterceptor denies bare
+        // subscribes, same as every send in this file) — a plain session.subscribe(String, ...)
+        // silently fails the SUBSCRIBE frame ("Access denied") without ever surfacing to this
+        // future, which is indistinguishable from a slow/never-arriving BINGO broadcast.
+        StompHeaders subscribeHeaders = new StompHeaders();
+        subscribeHeaders.setDestination(room.wsTopic());
+        subscribeHeaders.set("access-token", room.creatorAccessToken());
+        session.subscribe(subscribeHeaders, new StompFrameHandler() {
             @Override
             public Type getPayloadType(final StompHeaders headers) {
                 return byte[].class;
