@@ -1,7 +1,9 @@
--- V17: Bingo des reunions (US47.1.1, E47/F47.1) -- room-scoped real-time mini-game. Declines the
+-- V21: Bingo des reunions (US47.1.1, E47/F47.1) -- room-scoped real-time mini-game. Declines the
 -- planning-poker (agilite) room + Redis access-grant pattern (EN09.1) inside the collaboratif
 -- module (fr.pivot.collaboratif.bingo) -- no inter-module dependency (ADR-006). Additive, never
--- touching V1..V16.
+-- touching V1..V20 (renumbered from V17 -- the MeetOps module (US12.x) claimed V17..V20 for its
+-- own migrations in a parallel branch; both branches picked the next-free version independently
+-- since neither existed on main when the other started, discovered and resolved on merge).
 
 -- bingo_rooms: one row per game. code is the 6-character invite code (InviteCodeGenerator
 -- alphabet, decliner of agilite's own generator). creator_user_id/tenant_id are nullable because

@@ -11,7 +11,7 @@ import java.util.UUID;
 
 /**
  * JPA entity backing a single phrase of the shared default Bingo phrase bank (US47.1.1), table
- * {@code collaboratif.bingo_phrases} — seeded by {@code V17__bingo.sql}, never written to by
+ * {@code collaboratif.bingo_phrases} — seeded by {@code V21__bingo.sql}, never written to by
  * application code in this US (custom/editable banks are explicitly out of scope).
  */
 @Entity
