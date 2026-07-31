@@ -11,7 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.MediaType;
-import org.springframework.messaging.converter.StringMessageConverter;
+import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
@@ -148,7 +148,7 @@ class BingoSpectatorDegradationIT extends AbstractCollaboratifIntegrationTest {
         StompHeaders connectHeaders = new StompHeaders();
         connectHeaders.add("Authorization", user.authorizationHeader());
         WebSocketStompClient client = new WebSocketStompClient(new StandardWebSocketClient());
-        client.setMessageConverter(new StringMessageConverter());
+        client.setMessageConverter(new JacksonJsonMessageConverter());
         StompSession session = client
                 .connectAsync("ws://localhost:" + port + "/api/collaboratif/ws/collaboratif",
                         new WebSocketHttpHeaders(), connectHeaders, new StompSessionHandlerAdapter() {

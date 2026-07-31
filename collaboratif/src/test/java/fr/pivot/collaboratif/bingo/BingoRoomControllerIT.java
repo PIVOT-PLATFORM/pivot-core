@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.time.Instant;
@@ -262,6 +263,7 @@ class BingoRoomControllerIT extends AbstractCollaboratifIntegrationTest {
     }
 
     @Test
+    @Transactional
     void join_finishedRoom_returnsTheSameGeneric404AsAnUnknownCode() throws Exception {
         String createBody = createRoom(userA).getResponse().getContentAsString();
         String code = JsonPath.read(createBody, "$.code");
