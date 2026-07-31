@@ -34,13 +34,20 @@ public interface BingoRoomRepository extends JpaRepository<BingoRoom, UUID> {
      * actually matches a row (return value {@code 1}) is the declared winner; every other
      * concurrent caller sees {@code 0} and must not broadcast a second {@code BINGO}.
      *
+     * <p>{@code clearAutomatically = true}: a bulk JPQL {@code UPDATE} bypasses the first-level
+     * cache by design — without clearing it, any managed {@link BingoRoom} instance already
+     * sitting in the persistence context from an earlier read in the same transaction would make
+     * a subsequent lookup (e.g. {@link #findByCode}/{@code findById}) return that pre-update,
+     * now-stale instance instead of hitting the database again — same pitfall already documented
+     * on {@code CardRepository#updateContentIfUnlocked} (US08.6.3).
+     *
      * @param roomId              the room id
      * @param winnerParticipantId the winning {@link BingoGrid}'s id
      * @param winningLineKind     {@code ROW}/{@code COLUMN}/{@code DIAGONAL}
      * @param winningLineIndex    the winning line's index (0..4)
      * @return the number of rows updated — {@code 1} if this call won the race, {@code 0} otherwise
      */
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("UPDATE BingoRoom r SET r.status = 'FINISHED', r.winnerParticipantId = :winnerParticipantId, "
             + "r.winningLineKind = :winningLineKind, r.winningLineIndex = :winningLineIndex "
             + "WHERE r.id = :roomId AND r.status = 'OPEN'")

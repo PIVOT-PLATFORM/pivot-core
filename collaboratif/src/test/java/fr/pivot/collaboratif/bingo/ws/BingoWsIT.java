@@ -161,9 +161,15 @@ class BingoWsIT extends AbstractCollaboratifIntegrationTest {
         });
         Thread.sleep(150);
 
-        // Row 0 is cell indices 0..4.
+        // Row 0 is cell indices 0..4. Each mark is its own @Transactional call, dispatched to a
+        // separate broker thread — sending all 5 back-to-back with zero delay races them: a
+        // transaction's victory check only ever sees already-*committed* sibling marks (READ
+        // COMMITTED), so 5 near-simultaneous marks can each see just their own cell and miss the
+        // completed row entirely. A short gap serializes them, matching how a real player
+        // actually completes a row (five distinct clicks, never sub-millisecond apart).
         for (int i = 0; i < 5; i++) {
             sendMark(session, room, i, true);
+            Thread.sleep(50);
         }
 
         String bingoFrame = bingoFuture.get(5, TimeUnit.SECONDS);
