@@ -15,11 +15,19 @@ import java.time.Clock;
  * <p>{@link ConditionalOnMissingBean} matters here specifically because the two module JARs are
  * combined on one classpath in the deployed {@code app} module (both {@code pivot-agilite} and
  * {@code pivot-collaboratif} are its dependencies) — without it, both this class and agilite's
- * would each unconditionally register a bean literally named {@code clock}, and Spring Boot
- * would refuse to start (bean definition conflict). In each module's own isolated test/build
- * classpath (the other module's classes aren't present), this one applies normally.
+ * would each unconditionally register a {@link Clock} bean, and Spring Boot would refuse to
+ * start (bean definition conflict). In each module's own isolated test/build classpath (the
+ * other module's classes aren't present), this one applies normally.
+ *
+ * <p>The {@link Configuration @Configuration} annotation is given an explicit bean name
+ * ({@code collaboratifClockConfig}) because both this class and agilite's are named
+ * {@code ClockConfig} — with the default name (derived from the simple class name), Spring
+ * would register both configuration classes themselves under the same bean name
+ * ({@code clockConfig}) and fail to start with a {@code ConflictingBeanDefinitionException},
+ * independently of the {@link Clock} bean conflict {@link ConditionalOnMissingBean} guards
+ * against.
  */
-@Configuration
+@Configuration("collaboratifClockConfig")
 public class ClockConfig {
 
     /**

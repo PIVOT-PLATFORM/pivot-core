@@ -16,8 +16,16 @@ import java.time.Clock;
  * on one classpath in the deployed {@code app} module, so without this guard whichever of the
  * two gets processed second would collide with a bean already named {@code clock}. Whichever
  * runs first here wins; harmless either way since both produce {@link Clock#systemUTC()}.
+ *
+ * <p>The {@link Configuration @Configuration} annotation is given an explicit bean name
+ * ({@code agiliteClockConfig}) because {@code fr.pivot.collaboratif.config.ClockConfig} shares
+ * the same simple class name — with the default name (derived from the simple class name),
+ * Spring registers both configuration classes themselves under the same bean name
+ * ({@code clockConfig}) on that combined classpath and fails to start with a
+ * {@code ConflictingBeanDefinitionException}, independently of the {@link Clock} bean conflict
+ * {@link ConditionalOnMissingBean} guards against.
  */
-@Configuration
+@Configuration("agiliteClockConfig")
 public class ClockConfig {
 
     /**
