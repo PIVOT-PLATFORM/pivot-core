@@ -137,8 +137,14 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        // Tenant-scoped audit events must be deleted before their tenant (fk_audit_tenant is
-        // ON DELETE RESTRICT — RGPD Art. 5.2 accountability, no cascading delete by design).
+        // Tenant-scoped audit events AND users must be deleted before their tenant — both
+        // fk_audit_tenant and fk_users_tenant are ON DELETE RESTRICT (RGPD Art. 5.2
+        // accountability for audit events; no cascading delete by design for either). Users
+        // first came second, discovered as pivot-core#277: createTenant provisions an invited
+        // admin user on every IT-created tenant, and deleting the tenant before that user threw
+        // DataIntegrityViolationException on every subsequent test method's tearDown (the failed
+        // delete leaves the tenant behind, so it — and every user IT-created afterward — kept
+        // accumulating for the rest of the class run).
         // IT-created tenants must not leak into other test methods of this class (no per-tenant
         // isolation query here by design — the endpoint is deliberately cross-tenant) nor into
         // other IT classes reusing the same Testcontainers instance across the module.
@@ -149,6 +155,9 @@ class SuperAdminTenantIntegrationTest extends AbstractIntegrationTest {
         auditEventRepository.findAll().stream()
                 .filter(event -> event.getTenant() != null && createdIds.contains(event.getTenant().getId()))
                 .forEach(auditEventRepository::delete);
+        userRepository.findAll().stream()
+                .filter(user -> user.getTenant() != null && createdIds.contains(user.getTenant().getId()))
+                .forEach(userRepository::delete);
         tenantRepository.deleteAll(createdByThisTest);
 
         rateLimiterService.reset(rateLimiterService.tenantCreationBucket(String.valueOf(superAdmin.getId())));
