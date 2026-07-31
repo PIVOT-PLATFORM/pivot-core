@@ -283,6 +283,27 @@ class AccountProfileIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void ac0212_02_patchProfile_updatesLanguageOnly_whenNameFieldsAbsent() throws Exception {
+        // Real-world shape sent by the navbar language selector (LanguagePreferenceService) —
+        // `{"preferredLanguage":"en"}` alone, no firstName/lastName at all. Regression test for
+        // the bug where this always 400'd: ProfileService unconditionally required both names,
+        // and the controller passed a literal null for any absent key straight through to it.
+        mockMvc.perform(patch("/account/profile")
+                        .header("Authorization", "Bearer " + rawToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"preferredLanguage\":\"en\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.preferredLanguage").value("en"))
+                .andExpect(jsonPath("$.firstName").value(originalFirstName))
+                .andExpect(jsonPath("$.lastName").value(originalLastName));
+
+        final User reloaded = userRepository.findById(testUser.getId()).orElseThrow();
+        assertThat(reloaded.getLocale()).isEqualTo("en");
+        assertThat(reloaded.getFirstName()).isEqualTo(originalFirstName);
+        assertThat(reloaded.getLastName()).isEqualTo(originalLastName);
+    }
+
+    @Test
     void ac0212_err_patchProfile_rejectsUnsupportedLanguage_returns400() throws Exception {
         mockMvc.perform(patch("/account/profile")
                         .header("Authorization", "Bearer " + rawToken)

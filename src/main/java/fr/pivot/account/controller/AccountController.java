@@ -114,10 +114,17 @@ public class AccountController {
      * the user's language unchanged. When present, it must be {@code fr} or {@code en}
      * (case-insensitive) — any other value is rejected with {@code 400}, never defaulted.
      *
+     * <p>{@code firstName}/{@code lastName} are each independently optional too — an
+     * <strong>absent</strong> key falls back to the user's current value (so a language-only
+     * body, e.g. the navbar's {@code {"preferredLanguage":"en"}}, doesn't need to re-send the
+     * name and doesn't touch it). This is distinct from a <strong>present but blank/oversized</strong>
+     * value, which is still rejected by {@link ProfileService} exactly as before (US02.1.1's
+     * "name is mandatory" AC only ever applied to a client that is actually editing the name).
+     *
      * @param body    the raw request body
      * @param request incoming request (IP, User-Agent extraction for audit)
      * @return {@code 200} with the updated {@link ProfileDto} · {@code 400} on validation
-     *     failure (missing/blank/too-long name, invalid {@code preferredLanguage}) or if an
+     *     failure (blank/too-long name, invalid {@code preferredLanguage}) or if an
      *     {@code email} property is present · {@code 401} if the authentication context is
      *     invalid
      */
@@ -134,8 +141,8 @@ public class AccountController {
         }
 
         final ProfileUpdateRequest req = new ProfileUpdateRequest(
-                asString(body.get("firstName")),
-                asString(body.get("lastName")),
+                body.containsKey("firstName") ? asString(body.get("firstName")) : user.getFirstName(),
+                body.containsKey("lastName") ? asString(body.get("lastName")) : user.getLastName(),
                 asString(body.get("preferredLanguage")));
         final ProfileDto dto = profileService.updateProfile(user, req);
         auditService.log(user, AuditService.PROFILE_UPDATED,
